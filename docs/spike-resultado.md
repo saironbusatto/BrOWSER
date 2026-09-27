@@ -28,7 +28,7 @@ Como rodar: `bun run spike <agy|codex|claude>`, com a extensão carregada no Chr
 - **Recarga remota da extensão:** o comando `recarregar` no `/control` evita clicar ⟳ a cada build.
 
 ## Pendências
-1. **Falha do Claude (aberta).** Por volta da 3ª chamada, todo comando CDP na aba retorna *"Cannot access a chrome-extension:// URL of different extension"*, e só com o processo `claude` rodando. Hipóteses descartadas, com teste:
+1. ~~**Falha do Claude.**~~ **Resolvida em 27/09 (branch `fix/revisao`): o Claude passa 3/3.** A causa exata não foi isolada; entre as correções daquele dia estão a fila de comandos na extensão e a detecção do servidor de formulário travado (overlay de erro do Bun cobrindo a página). Histórico: Por volta da 3ª chamada, todo comando CDP na aba retorna *"Cannot access a chrome-extension:// URL of different extension"*, e só com o processo `claude` rodando. Hipóteses descartadas, com teste:
    - integração Claude in Chrome (`--no-chrome` + extensão desativada);
    - menu de autofill do Bitwarden (`webNavigation.getAllFrames` no erro mostra só os frames do formulário);
    - chamadas em paralelo (a mesma rajada sem IA funciona);
@@ -37,4 +37,4 @@ Como rodar: `bun run spike <agy|codex|claude>`, com a extensão carregada no Chr
 2. **Plano B por content script (Q13):** ainda não implementado.
 3. **Iframes de outro domínio (OOPIF):** exigem uma sessão CDP própria; ainda não suportado.
 4. **Registro da ponte:** só Linux/Chrome (`bun run --cwd packages/bridge install-host`).
-5. ⚠️ **Permissões da IA** (Q14): o `agy` roda com `--dangerously-skip-permissions`. Restringir (`--sandbox`) antes de distribuir.
+5. ✅ **Permissões da IA** (Q14): resolvido. Em teste, o `agy` com `--dangerously-skip-permissions` rodou `find /`, `ps aux` e leu a config com o token da ponte para "achar um anexo". Agora roda sem essa flag e só com `mcp(browser/*)` liberado; terminal é negado. O `--sandbox` do agy foi testado e **não** restringe leitura da home, escrita ou rede.
