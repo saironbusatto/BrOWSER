@@ -11,7 +11,18 @@ import { z } from 'zod';
 import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
 import { executar, type Execucao } from './ias';
 import { abrirLoginOficial, obterStatusAssinaturas } from './assinaturas';
+import { pathComIAs } from './caminhos';
+import { registrarHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
+
+process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
+
+// `bridge --install`: registra o próprio executável no Chrome/Brave/Edge e sai (usuário final, sem Bun).
+if (process.argv.includes('--install')) {
+  for (const r of registrarHost(process.execPath)) console.log(`✓ ${r.navegador}: ${r.destino}`);
+  console.log('Pronto. Reinicie o navegador para ativar a ponte.');
+  process.exit(0);
+}
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;

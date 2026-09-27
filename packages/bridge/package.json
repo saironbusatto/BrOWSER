@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "install-host": "bun scripts/install-host.ts"
+    "install-host": "bun scripts/install-host.ts",
+    "build": "bun build --compile src/main.ts --outfile dist/bridge",
+    "build:win": "bun build --compile --target=bun-windows-x64 src/main.ts --outfile dist/bridge.exe"
   },
   "dependencies": {
     "@browser/shared": "workspace:*",

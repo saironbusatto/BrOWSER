@@ -1,6 +1,7 @@
 // Status real de login de cada ferramenta de IA e disparo do login OFICIAL (o usuário conclui
 // no navegador; a assinatura nunca passa por nós).
 import type { Ia, ItemAssinatura } from '@browser/shared';
+import { comandoExecutavel } from './caminhos';
 
 const TIMEOUT_STATUS_MS = 15_000;
 
@@ -11,7 +12,7 @@ const CATALOGO: Record<Ia, { nome: string; subtitulo: string; status: string[]; 
 };
 
 async function estaLogado(ia: Ia): Promise<boolean> {
-  const proc = Bun.spawn(CATALOGO[ia].status, { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+  const proc = Bun.spawn(comandoExecutavel(CATALOGO[ia].status), { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_STATUS_MS);
   const saida = await new Response(proc.stdout).text();
   const codigo = await proc.exited;

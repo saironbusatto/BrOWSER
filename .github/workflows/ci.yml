@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  ponte-e-extensao:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+      - run: bun run --cwd packages/extension build
+
+      - name: Compilar a ponte
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then bun run --cwd packages/bridge build:win; else bun run --cwd packages/bridge build; fi
+
+      # Sem login: só confere que o codex (shim .cmd no Windows) é iniciável pela ponte.
+      - name: Instalar codex
+        run: npm install -g @openai/codex
+
+      - name: Registrar a ponte (bridge --install)
+        shell: bash
+        run: |
+          EXE=packages/bridge/dist/bridge; [ "$RUNNER_OS" = "Windows" ] && EXE=packages/bridge/dist/bridge.exe
+          "$EXE" --install
+
+      - name: Conferir registro (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($chave in 'Google\Chrome', 'BraveSoftware\Brave-Browser', 'Microsoft\Edge') {
+            $manifesto = (Get-ItemProperty "HKCU:\Software\$chave\NativeMessagingHosts\com.browser.bridge").'(default)'
+            if (-not (Test-Path $manifesto)) { throw "manifesto não encontrado para ${chave}: $manifesto" }
+          }
+          Get-Content $manifesto
+
+      - name: Conferir registro (Linux)
+        if: runner.os == 'Linux'
+        run: cat ~/.config/google-chrome/NativeMessagingHosts/com.browser.bridge.json
+
+      - name: Ponte ↔ extensão falsa (sem IA)
+        shell: bash
+        run: |
+          EXE=packages/bridge/dist/bridge; [ "$RUNNER_OS" = "Windows" ] && EXE=packages/bridge/dist/bridge.exe
+          bun packages/bridge/scripts/smoke.ts "$EXE" --codex
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ponte-${{ matrix.os }}
+          path: packages/bridge/dist/
