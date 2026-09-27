@@ -103,6 +103,57 @@ export function salvarBlueprintLocal(blueprint: SiteBlueprint): void {
 }
 
 /**
+ * Mescla um blueprint recém-aprendido com um existente (se houver),
+ * evitando duplicação de campos e acumulando novos gatilhos e tipos esperados.
+ */
+export function mesclarBlueprints(existente: SiteBlueprint, novo: SiteBlueprint): SiteBlueprint {
+  const mapaCampos = new Map<string, CampoBlueprint>();
+  for (const c of existente.campos) {
+    mapaCampos.set(c.idSemantico || c.rotulo, c);
+  }
+  for (const c of novo.campos) {
+    const chave = c.idSemantico || c.rotulo;
+    const anterior = mapaCampos.get(chave);
+    if (!anterior) {
+      mapaCampos.set(chave, c);
+    } else {
+      mapaCampos.set(chave, {
+        ...anterior,
+        ...c,
+        tipoEsperado: c.tipoEsperado || anterior.tipoEsperado,
+        opcoes: c.opcoes && c.opcoes.length > 0 ? c.opcoes : anterior.opcoes,
+      });
+    }
+  }
+
+  const mapaGatilhos = new Map<string, AcaoGatilho>();
+  for (const g of existente.gatilhos ?? []) {
+    mapaGatilhos.set(g.seletorOuNome, g);
+  }
+  for (const g of novo.gatilhos ?? []) {
+    mapaGatilhos.set(g.seletorOuNome, g);
+  }
+
+  return {
+    ...existente,
+    titulo: novo.titulo || existente.titulo,
+    atualizadoEm: new Date().toISOString(),
+    campos: Array.from(mapaCampos.values()),
+    gatilhos: Array.from(mapaGatilhos.values()),
+  };
+}
+
+/**
+ * Salva ou mescla um blueprint no cache local do usuário.
+ */
+export function salvarOuAtualizarBlueprint(novo: SiteBlueprint): SiteBlueprint {
+  const existente = carregarBlueprintLocal(novo.dominio);
+  const final = existente ? mesclarBlueprints(existente, novo) : novo;
+  salvarBlueprintLocal(final);
+  return final;
+}
+
+/**
  * Sanitiza e gera um blueprint a partir do estado da página lida pelo bRowser.
  * GARANTIA DE PRIVACIDADE:
  * - Remove 100% dos valores digitados ou sensíveis.

@@ -63,7 +63,13 @@ export type RespostaUsuario = {
   respostasCampos?: Record<string, string>;
 };
 
-export type MensagemExtensao = Pedir | RespostaUsuario;
+// extensão -> ponte: telemetria passiva de formulário aprendida pelo content script
+export type TelemetriaBlueprint = {
+  tipo: 'telemetria_blueprint';
+  blueprint: import('./blueprint').SiteBlueprint;
+};
+
+export type MensagemExtensao = Pedir | RespostaUsuario | TelemetriaBlueprint;
 
 // Papéis no pipeline multiagente concorrente
 export type PapelAgente = 'scout' | 'synthesizer' | 'geral';

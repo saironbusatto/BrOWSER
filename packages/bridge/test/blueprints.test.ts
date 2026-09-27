@@ -4,8 +4,10 @@ import {
   carregarBlueprintLocal,
   formatarBlueprintParaIa,
   gerarBlueprintAnonimizado,
+  mesclarBlueprints,
   normalizarDominio,
   obterBlueprint,
+  salvarOuAtualizarBlueprint,
 } from '../src/blueprints';
 
 describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', () => {
@@ -121,5 +123,71 @@ describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', (
     expect(md).toContain('Menu Ferramentas');
     expect(md).toContain('Nome do Cliente');
     expect(md).toContain('(obrigatório)');
+  });
+
+  it('deve mesclar blueprints recebidos via telemetria passiva sem duplicar campos', () => {
+    const blueprintAntigo = {
+      $schema: 'https://browser.ai/schemas/blueprint.v1.json',
+      dominio: 'teste-shadow.local',
+      versao: '1.0.0',
+      titulo: 'App Legado',
+      atualizadoEm: '2026-09-01T00:00:00Z',
+      gatilhos: [],
+      campos: [
+        {
+          idSemantico: 'nome',
+          rotulo: 'Nome',
+          papel: 'textbox',
+          seletorAcessivel: 'Nome',
+        },
+      ],
+    };
+
+    const telemetriaNova = {
+      $schema: 'https://browser.ai/schemas/blueprint.v1.json',
+      dominio: 'teste-shadow.local',
+      versao: '1.0.0',
+      titulo: 'App Legado v2',
+      atualizadoEm: '2026-09-27T00:00:00Z',
+      gatilhos: [
+        {
+          descricao: 'Gravar Cadastro',
+          seletorOuNome: 'Gravar Cadastro',
+          tipo: 'botao' as const,
+        },
+      ],
+      campos: [
+        {
+          idSemantico: 'nome',
+          rotulo: 'Nome',
+          papel: 'textbox',
+          seletorAcessivel: 'Nome',
+          obrigatorio: true,
+        },
+        {
+          idSemantico: 'email',
+          rotulo: 'E-mail',
+          papel: 'textbox',
+          seletorAcessivel: 'E-mail',
+          tipoEsperado: 'email' as const,
+        },
+      ],
+    };
+
+    const mesclado = mesclarBlueprints(blueprintAntigo, telemetriaNova);
+
+    // Não duplica o campo 'nome', atualiza para obrigatorio: true
+    expect(mesclado.campos.length).toBe(2);
+    expect(mesclado.campos.find((c) => c.idSemantico === 'nome')?.obrigatorio).toBe(true);
+    expect(mesclado.campos.find((c) => c.idSemantico === 'email')?.tipoEsperado).toBe('email');
+    // Adiciona o novo gatilho
+    expect(mesclado.gatilhos?.length).toBe(1);
+    expect(mesclado.gatilhos?.[0].descricao).toBe('Gravar Cadastro');
+
+    // Testa persistência
+    salvarOuAtualizarBlueprint(mesclado);
+    const carregado = carregarBlueprintLocal('teste-shadow.local');
+    expect(carregado).not.toBeNull();
+    expect(carregado?.campos.length).toBe(2);
   });
 });

@@ -46,6 +46,11 @@ export default defineBackground(() => {
       responder({ ok: true });
       return;
     }
+    if (msg?.tipo === 'telemetria_blueprint') {
+      porta?.postMessage(msg);
+      responder({ ok: true });
+      return;
+    }
   });
 });
 

@@ -10,7 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import type { Campo, Cmd, Comandos, Evento, Ia, MensagemExtensao, PapelAgente, Pedir, Resposta, RespostaUsuario, SiteBlueprint } from '@browser/shared';
 import { executar, type Execucao } from './ias';
-import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado } from './blueprints';
+import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;
@@ -57,6 +57,11 @@ async function lerStdin() {
           if (resolver) {
             perguntasPendentes.delete(msg.perguntaId);
             resolver({ resposta: msg.resposta, respostasCampos: msg.respostasCampos });
+          }
+        } else if (msg.tipo === 'telemetria_blueprint') {
+          if (msg.blueprint && msg.blueprint.dominio && Array.isArray(msg.blueprint.campos)) {
+            const atualizado = salvarOuAtualizarBlueprint(msg.blueprint);
+            log(`[telemetria] Blueprint passivo atualizado para ${atualizado.dominio} (${atualizado.campos.length} campos, ${atualizado.gatilhos?.length ?? 0} gatilhos)`);
           }
         }
         continue;
@@ -131,7 +136,7 @@ async function atenderPedido(p: Pedir) {
         const estadoFinal = (await enviar('ler_campos', {}).catch(() => null)) as { url: string; titulo: string; campos: Campo[] } | null;
         if (estadoFinal && estadoFinal.campos.length > 0) {
           const novoBp = gerarBlueprintAnonimizado(estadoFinal);
-          salvarBlueprintLocal(novoBp);
+          salvarOuAtualizarBlueprint(novoBp);
           log(`blueprint auto-aprendido e salvo: ${novoBp.dominio} (${novoBp.campos.length} campos)`);
         }
       } catch {}
