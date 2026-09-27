@@ -1,0 +1,6 @@
+{
+  "name": "@browser/shared",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/protocol.ts" }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@browser/extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wxt build",
+    "dev": "wxt build --watch"
+  },
+  "dependencies": {
+    "@browser/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.0",
+    "wxt": "^0.21.4"
+  }
+}
