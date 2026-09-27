@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { IAS, type ArquivoAnexo, type Ia, type ItemAssinatura, type PapelAgente, type SiteBlueprint } from '@browser/shared';
@@ -57,29 +57,64 @@ Diretrizes de atuação:
    - Exemplo de prompt criado: "Prompt gerado e configurado no campo de mensagem da página. Só conferir e enviar."`;
 }
 
-function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>): string[] {
+// O prompt vai pelo stdin, nunca como argumento: a linha de comando do Windows tem ~32 mil
+// caracteres, e prompt com blueprint + anexos passa disso.
+// O agy descarta calado mensagens de stdin acima de ~20-40 mil caracteres (responde SUCCESS sem
+// chamar o modelo); acima desse limite o pedido vai num arquivo que ele lê do diretório de trabalho.
+const AGY_MAX_STDIN = 20_000;
+const ARQUIVO_PEDIDO = 'pedido.md';
+
+type Invocacao = { args: string[]; stdin: string; manterStdinAberto?: boolean };
+
+function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string): Invocacao {
   switch (ia) {
-    case 'agy':
-      return ['agy', '-p', prompt, '--dangerously-skip-permissions', '--output-format', 'json'];
+    case 'agy': {
+      let conteudo = prompt;
+      if (prompt.length > AGY_MAX_STDIN) {
+        writeFileSync(join(cwd, ARQUIVO_PEDIDO), prompt, { mode: 0o600 });
+        conteudo = `Leia o arquivo ${ARQUIVO_PEDIDO} neste diretório: ele contém o pedido completo do usuário e as regras. Siga-o à risca.`;
+      }
+      return {
+        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '--dangerously-skip-permissions', '-p', ''],
+        stdin: `${JSON.stringify({ event: 'user', message: { content: conteudo } })}\n`,
+        manterStdinAberto: true, // fechar antes do "result" encerra a sessão sem chamar o modelo
+      };
+    }
     case 'codex':
       env.BROWSER_TOKEN = mcp.token;
-      return ['codex', 'exec', '--json', '--skip-git-repo-check',
-        '-c', `mcp_servers.browser.url="${mcp.url}"`,
-        '-c', 'mcp_servers.browser.bearer_token_env_var="BROWSER_TOKEN"',
-        // Aprova só as ferramentas do nosso MCP; comandos de shell seguem bloqueados.
-        '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"',
-        '-c', 'approval_policy="never"', prompt];
+      return {
+        args: ['codex', 'exec', '--json', '--skip-git-repo-check',
+          '-c', `mcp_servers.browser.url="${mcp.url}"`,
+          '-c', 'mcp_servers.browser.bearer_token_env_var="BROWSER_TOKEN"',
+          // Aprova só as ferramentas do nosso MCP; comandos de shell seguem bloqueados.
+          '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"',
+          '-c', 'approval_policy="never"', '-'],
+        stdin: prompt,
+      };
     case 'claude':
-      return ['claude', '-p', prompt, '--output-format', 'json', '--strict-mcp-config', '--no-chrome',
-        '--mcp-config', JSON.stringify({ mcpServers: { browser: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } }),
-        '--allowedTools', TOOLS.map((t) => `mcp__browser__${t}`).join(',')];
+      return {
+        args: ['claude', '-p', '--output-format', 'json', '--strict-mcp-config', '--no-chrome',
+          '--mcp-config', JSON.stringify({ mcpServers: { browser: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } }),
+          '--allowedTools', TOOLS.map((t) => `mcp__browser__${t}`).join(',')],
+        stdin: prompt,
+      };
   }
+}
+
+function eventoResultadoAgy(saida: string): { status?: string; response?: string } | undefined {
+  for (const linha of saida.trim().split('\n').reverse()) {
+    try {
+      const e = JSON.parse(linha);
+      if (e.event === 'result') return e.result;
+    } catch {}
+  }
+  return undefined;
 }
 
 // Texto final da IA, a partir da saída JSON de cada ferramenta.
 export function respostaFinal(ia: Ia, saida: string): string | undefined {
   try {
-    if (ia === 'agy') return JSON.parse(saida.trim().split('\n').pop()!).response;
+    if (ia === 'agy') return eventoResultadoAgy(saida)?.response || undefined;
     if (ia === 'claude') return JSON.parse(saida).result;
     const msgs = saida.trim().split('\n').map((l) => JSON.parse(l))
       .filter((e) => e.type === 'item.completed' && e.item?.type === 'agent_message');
@@ -101,12 +136,27 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   }
 
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
-  mkdirSync(cwd, { recursive: true });
-  const proc = Bun.spawn(comando(ia, instrucoes(pedido, arquivos, blueprint), mcp, env), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+  mkdirSync(cwd, { recursive: true, mode: 0o700 });
+  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint), mcp, env, cwd);
+  const proc = Bun.spawn(inv.args, { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
-  const [saida, erros] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
+  proc.stdin.write(inv.stdin);
+  proc.stdin.flush();
+  if (!inv.manterStdinAberto) proc.stdin.end();
+
+  const lerSaida = async () => {
+    let texto = '';
+    const dec = new TextDecoder();
+    for await (const pedaco of proc.stdout) {
+      texto += dec.decode(pedaco, { stream: true });
+      if (inv.manterStdinAberto && texto.includes('"event":"result"')) proc.stdin.end();
+    }
+    return texto;
+  };
+  const [saida, erros] = await Promise.all([lerSaida(), new Response(proc.stderr).text()]);
   const codigo = await proc.exited;
   clearTimeout(timer);
+  rmSync(join(cwd, ARQUIVO_PEDIDO), { force: true }); // pode conter dados de anexos do usuário
 
   const texto = respostaFinal(ia, saida);
   if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
