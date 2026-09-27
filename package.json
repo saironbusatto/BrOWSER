@@ -1,0 +1,8 @@
+{
+  "name": "browser",
+  "private": true,
+  "workspaces": ["packages/*", "fixtures/*"],
+  "scripts": {
+    "form": "bun run --cwd fixtures/form dev"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "prompt": "Preencha o cadastro com os dados da Maria Souza: e-mail maria.souza@example.com, nascida em 15/03/1990, mora em Minas Gerais, CEP 30130-010, celular (31) 98765-4321, é pessoa física e aceita os termos.",
+  "expected": {
+    "nome": "Maria Souza",
+    "email": "maria.souza@example.com",
+    "nascimento": "1990-03-15",
+    "estado": "MG",
+    "tipo": "PF",
+    "aceite": true,
+    "cep": "30130-010",
+    "telefone": "(31) 98765-4321",
+    "enviado": false
+  }
+}

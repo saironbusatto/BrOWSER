@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Cadastro (fixture do teste)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 520px; margin: 2rem auto; padding: 0 16px; }
+    label, fieldset { display: block; margin: 0 0 1rem; }
+    input[type=text], input[type=email], input[type=date], input[type=tel], select { display: block; width: 100%; padding: .4rem; }
+    iframe { width: 100%; height: 90px; border: 1px dashed #999; }
+  </style>
+</head>
+<body>
+  <h1>Cadastro</h1>
+  <form id="cadastro">
+    <label>Nome completo <input type="text" name="nome" required></label>
+    <label>E-mail <input type="email" name="email" required></label>
+    <label>Data de nascimento <input type="date" name="nascimento" required></label>
+    <label>Estado
+      <select name="estado" required>
+        <option value="">Selecione…</option>
+        <option value="SP">São Paulo</option>
+        <option value="MG">Minas Gerais</option>
+        <option value="RJ">Rio de Janeiro</option>
+        <option value="PR">Paraná</option>
+      </select>
+    </label>
+    <fieldset>
+      <legend>Tipo de pessoa</legend>
+      <label><input type="radio" name="tipo" value="PF"> Pessoa física</label>
+      <label><input type="radio" name="tipo" value="PJ"> Pessoa jurídica</label>
+    </fieldset>
+    <!-- campo React controlado: o valor que conta é o estado do React, não o DOM -->
+    <div id="telefone-root"></div>
+    <!-- campo dentro de iframe (mesma origem) -->
+    <iframe id="frame-cep" src="/frame" title="Endereço"></iframe>
+    <label><input type="checkbox" name="aceite"> Aceito os termos de uso</label>
+    <button type="submit">Enviar</button>
+  </form>
+
+  <script type="module" src="./phone.tsx"></script>
+  <script type="module">
+    const form = document.getElementById('cadastro');
+    window.__submitted = false;
+    form.addEventListener('submit', (e) => { e.preventDefault(); window.__submitted = true; });
+
+    // Lido pelo `bun run spike` para conferir o resultado.
+    window.formValues = () => {
+      const f = new FormData(form);
+      const cep = document.getElementById('frame-cep').contentDocument?.querySelector('[name=cep]')?.value ?? '';
+      return {
+        nome: f.get('nome'),
+        email: f.get('email'),
+        nascimento: f.get('nascimento'),
+        estado: f.get('estado'),
+        tipo: f.get('tipo'),
+        aceite: f.get('aceite') === 'on',
+        cep,
+        telefone: window.__telefoneReact ?? '',
+        enviado: window.__submitted,
+      };
+    };
+  </script>
+</body>
+</html>

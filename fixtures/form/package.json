@@ -1,0 +1,15 @@
+{
+  "name": "@browser/fixture-form",
+  "private": true,
+  "scripts": {
+    "dev": "bun --port 5173 ./index.html ./frame.html"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0"
+  }
+}
