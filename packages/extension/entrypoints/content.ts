@@ -133,7 +133,7 @@ function coletarEEnviarTelemetria(form: HTMLFormElement | null, botaoGatilho: HT
       gatilhos.push({
         descricao: textoBotao,
         seletorOuNome: textoBotao,
-        tipo: 'botao',
+        tipo: 'click',
       });
     }
   }

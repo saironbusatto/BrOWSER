@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AcaoGatilho, Campo, CampoBlueprint, SiteBlueprint } from '@browser/shared';
+import { sanitizarBlueprint } from './sanitizar';
 
 const CACHE_DIR = join(homedir(), '.config', 'browser-bridge', 'blueprints');
 const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/saironbusatto/BrOWSER/main/blueprints';
@@ -92,13 +93,14 @@ export async function obterBlueprint(urlOuDominio: string): Promise<SiteBlueprin
 }
 
 /**
- * Salva um blueprint no cache local do usuário.
+ * Salva um blueprint no cache local do usuário. Único ponto de gravação: tudo que chega
+ * (auto-aprendizado, telemetria passiva, GitHub) passa pelo sanitizador aqui.
  */
 export function salvarBlueprintLocal(blueprint: SiteBlueprint): void {
   const norm = normalizarDominio(blueprint.dominio);
   const caminho = join(CACHE_DIR, `${norm}.json`);
   try {
-    writeFileSync(caminho, JSON.stringify(blueprint, null, 2), 'utf8');
+    writeFileSync(caminho, JSON.stringify(sanitizarBlueprint(blueprint), null, 2), { encoding: 'utf8', mode: 0o600 });
   } catch {}
 }
 
@@ -195,7 +197,7 @@ export function gerarBlueprintAnonimizado(dados: {
     return bp;
   });
 
-  return {
+  return sanitizarBlueprint({
     $schema: 'https://browser.ai/schemas/blueprint.v1.json',
     dominio,
     versao: '1.0.0',
@@ -203,7 +205,7 @@ export function gerarBlueprintAnonimizado(dados: {
     atualizadoEm: new Date().toISOString(),
     gatilhos: dados.gatilhos ?? [],
     campos: camposMapeados,
-  };
+  });
 }
 
 function gerarIdSemantico(texto: string): string {

@@ -29,8 +29,8 @@ async function controle(cmd: string, args: object = {}) {
     method: 'POST', headers: { Authorization: `Bearer ${ponte.token}` }, body: JSON.stringify({ cmd, args }),
     timeout: false, // `executar` pode passar de 5 min; o limite real fica na ponte
   } as RequestInit);
-  const j = await r.json();
-  if (!j.ok) throw new Error(`${cmd}: ${j.error}`);
+  const j = (await r.json().catch(() => null)) as { ok: boolean; result?: any; error?: string } | null;
+  if (!j?.ok) throw new Error(`${cmd}: ${j?.error ?? `HTTP ${r.status} sem corpo`}`);
   return j.result;
 }
 

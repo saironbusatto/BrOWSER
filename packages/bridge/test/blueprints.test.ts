@@ -33,28 +33,28 @@ describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', (
   it('deve gerar blueprint anonimizado garantindo ZERO vazamento de dados do usuário (PII)', () => {
     const camposComDadosSensiveis: (Campo & { valor?: string })[] = [
       {
-        indice: 0,
+        ref: 0,
         papel: 'caixa de texto',
         nome: 'CNPJ do Contribuinte',
         obrigatorio: true,
         valor: '12.345.678/0001-99', // DADO SENSÍVEL
       },
       {
-        indice: 1,
+        ref: 1,
         papel: 'caixa de texto',
         nome: 'CPF do Responsável',
         obrigatorio: false,
         valor: '123.456.789-00', // DADO SENSÍVEL
       },
       {
-        indice: 2,
+        ref: 2,
         papel: 'caixa de texto',
         nome: 'E-mail Corporativo',
         obrigatorio: true,
         valor: 'diretoria@minhaempresa.com.br', // DADO SENSÍVEL
       },
       {
-        indice: 3,
+        ref: 3,
         papel: 'caixa de texto',
         nome: 'Valor Total (R$)',
         obrigatorio: false,
@@ -103,7 +103,7 @@ describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', (
         {
           descricao: 'Menu Ferramentas',
           seletorOuNome: 'Abrir Ferramentas',
-          tipo: 'botao' as const,
+          tipo: 'click' as const,
         },
       ],
       campos: [
@@ -153,7 +153,7 @@ describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', (
         {
           descricao: 'Gravar Cadastro',
           seletorOuNome: 'Gravar Cadastro',
-          tipo: 'botao' as const,
+          tipo: 'click' as const,
         },
       ],
       campos: [

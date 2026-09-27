@@ -182,10 +182,10 @@ async function abaAlvo(): Promise<number> {
   return (alvo = tab.id);
 }
 
-async function cdp<T = any>(method: string, params: object = {}): Promise<T> {
+async function cdp<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   const tabId = await abaAlvo();
   await garantirAnexado(tabId);
-  return chrome.debugger.sendCommand({ tabId }, method, params) as Promise<T>;
+  return (await chrome.debugger.sendCommand({ tabId }, method, params)) as T;
 }
 
 // Executa `fn` com `this` = elemento do backendNodeId.
@@ -212,7 +212,7 @@ function varrerDom(root: any) {
     if (interno) internos.add(n.backendNodeId);
     if (n.nodeName === 'INPUT') {
       const attrs: string[] = n.attributes ?? [];
-      const tipo = attrs[attrs.indexOf('type') + 1];
+      const tipo = attrs[attrs.indexOf('type') + 1] ?? '';
       if (attrs.includes('type') && WIDGETS.includes(tipo)) widgets.push({ ref: n.backendNodeId, tipo });
     }
     n.children?.forEach((c: any) => andar(c, interno));
@@ -299,9 +299,9 @@ async function clicar(ref: number) {
   try {
     await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
     const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });
-    const q: number[] = model.content;
-    const x = (q[0] + q[2] + q[4] + q[6]) / 4;
-    const y = (q[1] + q[3] + q[5] + q[7]) / 4;
+    const [x1 = 0, y1 = 0, x2 = 0, y2 = 0, x3 = 0, y3 = 0, x4 = 0, y4 = 0]: number[] = model.content;
+    const x = (x1 + x2 + x3 + x4) / 4;
+    const y = (y1 + y2 + y3 + y4) / 4;
     for (const type of ['mousePressed', 'mouseReleased']) {
       await cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     }

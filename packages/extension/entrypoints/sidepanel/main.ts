@@ -496,6 +496,11 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
 
 // ── Bridge Events ──
 chrome.runtime.onMessage.addListener((e: Evento) => {
+  // Não pertence a um pedido: tratar antes da guarda abaixo (antes, a guarda a descartava sempre).
+  if (e.tipo === 'status_assinaturas') {
+    renderizarAssinaturas(e.assinaturas, e.iaAtiva);
+    return;
+  }
   if (e.pedidoId !== pedidoAtual || !cardAtivo) return;
 
   if (e.tipo === 'status') {
@@ -557,11 +562,6 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
 
     setBusy(false);
     scrollToEnd();
-    return;
-  }
-
-  if (e.tipo === 'status_assinaturas') {
-    renderizarAssinaturas(e.assinaturas, e.iaAtiva);
     return;
   }
 });

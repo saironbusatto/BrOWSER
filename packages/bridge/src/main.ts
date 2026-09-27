@@ -264,7 +264,8 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
   }
   if (req.url === '/control' && req.method === 'POST' && body?.cmd === 'executar') {
     // Mesmo caminho do painel lateral, para o `bun run spike` testar o fluxo real.
-    const r = await rodarPedido(String(body.args?.texto ?? ''), (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
+    const pedido: Pedir = { tipo: 'pedido', pedidoId: randomUUID(), texto: String(body.args?.texto ?? ''), tabId: -1 };
+    const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
     return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: r }));
   }
   if (req.url === '/control' && req.method === 'POST') {

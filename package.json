@@ -7,9 +7,15 @@
   ],
   "scripts": {
     "form": "bun run --cwd fixtures/form dev",
-    "spike": "bun scripts/spike.ts"
+    "spike": "bun scripts/spike.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p packages/extension",
+    "test": "bun test"
   },
   "dependencies": {
     "@browser/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "typescript": "^7.0.2"
   }
 }

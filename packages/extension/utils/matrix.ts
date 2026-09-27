@@ -203,9 +203,9 @@ export function iniciarMatrixOverlay() {
     ctx!.font = fontSize + 'px monospace';
 
     for (let i = 0; i < drops.length; i++) {
-      const char = chars[Math.floor(Math.random() * chars.length)];
+      const char = chars[Math.floor(Math.random() * chars.length)] ?? '';
       const x = i * fontSize;
-      const y = drops[i] * fontSize;
+      const y = (drops[i] ?? 0) * fontSize;
 
       if (y > 0) {
         ctx!.fillStyle = '#eaffea';
@@ -221,7 +221,7 @@ export function iniciarMatrixOverlay() {
       if (y > canvas.height && Math.random() > 0.95) {
         drops[i] = 0;
       }
-      drops[i]++;
+      drops[i] = (drops[i] ?? 0) + 1;
     }
   }
 
