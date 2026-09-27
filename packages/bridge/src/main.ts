@@ -9,7 +9,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
-import { executar, iniciarLoginAssinatura, obterStatusAssinaturas, type Execucao } from './ias';
+import { executar, type Execucao } from './ias';
+import { abrirLoginOficial, obterStatusAssinaturas } from './assinaturas';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
@@ -65,22 +66,14 @@ async function lerStdin() {
             log(`[telemetria] Blueprint passivo atualizado para ${atualizado.dominio} (${atualizado.campos.length} campos, ${atualizado.gatilhos?.length ?? 0} gatilhos)`);
           }
         } else if (msg.tipo === 'consultar_assinaturas') {
-          const assinaturas = obterStatusAssinaturas(iaAtivaPreferencial);
-          const ativa = assinaturas.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
-          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: ativa });
+          emitirStatusAssinaturas();
         } else if (msg.tipo === 'ativar_assinatura') {
           iaAtivaPreferencial = msg.ia;
-          const assinaturas = obterStatusAssinaturas(iaAtivaPreferencial);
-          const ativa = assinaturas.find((a) => a.ativo)?.ia ?? msg.ia;
-          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: ativa });
+          emitirStatusAssinaturas();
         } else if (msg.tipo === 'conectar_assinatura') {
-          const loginInfo = iniciarLoginAssinatura(msg.ia);
-          log(`iniciando fluxo oficial de login para ${msg.ia}`);
-          if (loginInfo.urlExterna) {
-            enviar('abrir', { url: loginInfo.urlExterna }).catch(() => {});
-          }
-          const assinaturas = obterStatusAssinaturas(msg.ia);
-          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: msg.ia });
+          const erro = abrirLoginOficial(msg.ia);
+          log(erro ? `login ${msg.ia}: ${erro}` : `login oficial aberto para ${msg.ia}`);
+          if (!erro) acompanharLogin(msg.ia);
         }
         continue;
       }
@@ -93,6 +86,30 @@ async function lerStdin() {
   }
   log('stdin fechado: Chrome desconectou, encerrando');
   process.exit(0);
+}
+
+// ---- Assinaturas ----
+const INTERVALO_LOGIN_MS = 5_000;
+const LIMITE_LOGIN_MS = 5 * 60_000;
+
+async function emitirStatusAssinaturas() {
+  const assinaturas = await obterStatusAssinaturas(iaAtivaPreferencial);
+  const iaAtiva = assinaturas.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
+  escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva } satisfies Evento);
+  return assinaturas;
+}
+
+// O usuário conclui o login no terminal/navegador; avisa o painel quando virar "conectado".
+async function acompanharLogin(ia: Ia) {
+  const fim = Date.now() + LIMITE_LOGIN_MS;
+  while (Date.now() < fim) {
+    await Bun.sleep(INTERVALO_LOGIN_MS);
+    const assinaturas = await emitirStatusAssinaturas();
+    if (assinaturas.find((a) => a.ia === ia)?.conectado) {
+      log(`login concluído: ${ia}`);
+      return;
+    }
+  }
 }
 
 // ---- Pedidos do painel lateral ----

@@ -1,8 +1,8 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { IAS, type ArquivoAnexo, type Ia, type ItemAssinatura, type PapelAgente, type SiteBlueprint } from '@browser/shared';
-import { formatarContextoArquivos } from './documentos';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { IAS, type ArquivoAnexo, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
+import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 import { formatarBlueprintParaIa } from './blueprints';
 
 const TIMEOUT_MS = 5 * 60_000;
@@ -12,11 +12,13 @@ const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHR
 export type Mcp = { url: string; token: string };
 export type Execucao = { ok: boolean; ia?: Ia; texto: string };
 
-export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null) {
-  const contextoArquivos = formatarContextoArquivos(arquivos);
+export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null, caminhos: Record<string, string> = {}) {
+  const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
   return `Você é o bRowser AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
 Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario, consultar_blueprint).
+Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comandos de shell nem acesso a arquivos do computador: qualquer tentativa é bloqueada e encerra o atendimento. Tudo o que precisa já está neste texto; a única exceção são arquivos que este texto mandar ler explicitamente (anexos/ no diretório de trabalho).
+
 
 Instrução ou mensagem do usuário:
 "${pedido}"
@@ -66,7 +68,7 @@ const ARQUIVO_PEDIDO = 'pedido.md';
 
 type Invocacao = { args: string[]; stdin: string; manterStdinAberto?: boolean };
 
-function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string): Invocacao {
+function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string, anexos: string[]): Invocacao {
   switch (ia) {
     case 'agy': {
       let conteudo = prompt;
@@ -75,7 +77,10 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
         conteudo = `Leia o arquivo ${ARQUIVO_PEDIDO} neste diretório: ele contém o pedido completo do usuário e as regras. Siga-o à risca.`;
       }
       return {
-        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '--dangerously-skip-permissions', '-p', ''],
+        // Sem --dangerously-skip-permissions: só mcp(browser/*) é liberado (garantirPermissaoAgy);
+        // terminal e arquivos são negados. Com ele, o agy chegou a rodar `find /` e ler a config
+        // que guarda o token da ponte para "achar um anexo".
+        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '-p', ''],
         stdin: `${JSON.stringify({ event: 'user', message: { content: conteudo } })}\n`,
         manterStdinAberto: true, // fechar antes do "result" encerra a sessão sem chamar o modelo
       };
@@ -88,16 +93,38 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
           '-c', 'mcp_servers.browser.bearer_token_env_var="BROWSER_TOKEN"',
           // Aprova só as ferramentas do nosso MCP; comandos de shell seguem bloqueados.
           '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"',
-          '-c', 'approval_policy="never"', '-'],
+          '-c', 'approval_policy="never"',
+          // Imagens entram como imagem de verdade; PDF o codex lê pelo caminho indicado no prompt.
+          ...anexos.filter((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)).flatMap((a) => ['-i', a]),
+          '-'],
         stdin: prompt,
       };
     case 'claude':
       return {
         args: ['claude', '-p', '--output-format', 'json', '--strict-mcp-config', '--no-chrome',
           '--mcp-config', JSON.stringify({ mcpServers: { browser: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } }),
-          '--allowedTools', TOOLS.map((t) => `mcp__browser__${t}`).join(',')],
+          // Read só da pasta de anexos (PDF/imagem); o resto do disco segue fora.
+          '--allowedTools', [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(',')],
         stdin: prompt,
       };
+  }
+}
+
+// Libera no agy só as ferramentas do nosso MCP (aditivo: não mexe nas outras regras do usuário).
+const AGY_SETTINGS = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
+const REGRA_MCP = 'mcp(browser/*)';
+
+function garantirPermissaoAgy(): string | undefined {
+  try {
+    const cfg = existsSync(AGY_SETTINGS) ? JSON.parse(readFileSync(AGY_SETTINGS, 'utf8')) : {};
+    const allow: string[] = cfg.permissions?.allow ?? [];
+    if (allow.includes(REGRA_MCP)) return undefined;
+    const novo = { ...cfg, permissions: { ...cfg.permissions, allow: [...allow, REGRA_MCP] } };
+    mkdirSync(dirname(AGY_SETTINGS), { recursive: true });
+    writeFileSync(AGY_SETTINGS, JSON.stringify(novo, null, 2));
+    return undefined;
+  } catch (e) {
+    return `não consegui liberar o MCP no agy (${AGY_SETTINGS}): ${e}`;
   }
 }
 
@@ -133,11 +160,14 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
     // agy não aceita MCP por sessão: grava (ou atualiza) o servidor "browser" na config global.
     const add = Bun.spawnSync(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url], { env });
     if (add.exitCode !== 0) return { ok: false, ia, texto: `agy mcp add falhou: ${add.stderr}` };
+    const erro = garantirPermissaoAgy();
+    if (erro) return { ok: false, ia, texto: erro };
   }
 
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
-  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint), mcp, env, cwd);
+  const caminhos = salvarAnexosBinarios(cwd, arquivos);
+  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos));
   const proc = Bun.spawn(inv.args, { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
   proc.stdin.write(inv.stdin);
@@ -157,6 +187,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   const codigo = await proc.exited;
   clearTimeout(timer);
   rmSync(join(cwd, ARQUIVO_PEDIDO), { force: true }); // pode conter dados de anexos do usuário
+  apagarAnexos(cwd);
 
   const texto = respostaFinal(ia, saida);
   if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
@@ -183,52 +214,4 @@ export async function executar(
     avisar(`${ia} falhou; tentando a próxima IA…`, 'geral');
   }
   return { ok: false, texto: `Todas as IAs falharam:\n${falhas.join('\n')}` };
-}
-
-export function obterStatusAssinaturas(iaAtivaPreferencial?: Ia): ItemAssinatura[] {
-  const lista: ItemAssinatura[] = [
-    {
-      ia: 'agy',
-      nome: 'Google AI Pro',
-      subtitulo: 'Gemini Advanced & Google One AI Premium',
-      instalado: Boolean(Bun.which('agy')),
-      conectado: Boolean(Bun.which('agy')),
-      ativo: false,
-    },
-    {
-      ia: 'codex',
-      nome: 'ChatGPT Plus / Pro',
-      subtitulo: 'OpenAI ChatGPT Subscription',
-      instalado: Boolean(Bun.which('codex')),
-      conectado: Boolean(Bun.which('codex')),
-      ativo: false,
-    },
-    {
-      ia: 'claude',
-      nome: 'Claude Pro',
-      subtitulo: 'Anthropic Claude Pro Subscription',
-      instalado: Boolean(Bun.which('claude')),
-      conectado: Boolean(Bun.which('claude')),
-      ativo: false,
-    },
-  ];
-
-  const ativa =
-    lista.find((item) => item.ia === iaAtivaPreferencial && item.conectado) ||
-    lista.find((item) => item.conectado) ||
-    lista[0];
-
-  if (ativa) ativa.ativo = true;
-  return lista;
-}
-
-export function iniciarLoginAssinatura(ia: Ia): { comando: string[]; urlExterna?: string } {
-  switch (ia) {
-    case 'agy':
-      return { comando: ['agy'], urlExterna: 'https://gemini.google.com' };
-    case 'codex':
-      return { comando: ['codex', 'login'], urlExterna: 'https://chatgpt.com' };
-    case 'claude':
-      return { comando: ['claude', 'login'], urlExterna: 'https://claude.ai/login' };
-  }
 }

@@ -83,3 +83,31 @@ describe('Módulo de Extração de Documentos', () => {
     expect(md).toContain('maria@email.com');
   });
 });
+
+describe('Anexos binários e texto longo', () => {
+  const { mkdtempSync, readdirSync, readFileSync, existsSync } = require('node:fs') as typeof import('node:fs');
+  const { tmpdir } = require('node:os') as typeof import('node:os');
+  const { join } = require('node:path') as typeof import('node:path');
+  const { salvarAnexosBinarios, apagarAnexos } = require('../src/documentos') as typeof import('../src/documentos');
+
+  it('grava PDF dentro de anexos/ e neutraliza nome com ../', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'anexos-teste-'));
+    const caminhos = salvarAnexosBinarios(dir, [
+      { nome: '../../.ssh/authorized_keys', tipo: 'application/pdf', tamanho: 4, dadosBase64: 'data:application/pdf;base64,JVBERg==' },
+    ]);
+    const rel = caminhos['../../.ssh/authorized_keys']!;
+    expect(rel.startsWith('anexos/')).toBe(true);
+    expect(rel).not.toContain('..');
+    expect(readdirSync(join(dir, 'anexos'))).toHaveLength(1);
+    expect(readFileSync(join(dir, rel), 'latin1')).toBe('%PDF');
+    expect(formatarContextoArquivos([{ nome: '../../.ssh/authorized_keys', tipo: 'application/pdf', tamanho: 4, dadosBase64: 'x' }], caminhos)).toContain(rel);
+    apagarAnexos(dir);
+    expect(existsSync(join(dir, 'anexos'))).toBe(false);
+  });
+
+  it('não corta dado no fim de texto longo (antes cortava em 1.500)', () => {
+    const conteudoTexto = 'enchimento\n'.repeat(2000) + 'CLIENTE: Joana Final';
+    const md = formatarContextoArquivos([{ nome: 'r.txt', tipo: 'text/plain', tamanho: conteudoTexto.length, conteudoTexto }]);
+    expect(md).toContain('Joana Final');
+  });
+});
