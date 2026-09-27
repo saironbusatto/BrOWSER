@@ -27,7 +27,8 @@ function conectar() {
       fila = vez.catch(() => {});
       r = { id: p.id, ok: true, result: await vez };
     } catch (e) {
-      const aba = alvo === undefined ? 'nenhuma' : await chrome.tabs.get(alvo).then((t) => `${alvo} ${t.url}`, () => `${alvo} (fechada)`);
+      const frames = alvo === undefined ? [] : (await chrome.webNavigation.getAllFrames({ tabId: alvo }).catch(() => null)) ?? [];
+      const aba = alvo === undefined ? 'nenhuma' : `${alvo} frames=${frames.map((f) => f.url).join(' , ')}`;
       r = { id: p.id, ok: false, error: `${e instanceof Error ? e.message : String(e)} [aba alvo: ${aba}]` };
     }
     porta.postMessage(r);
