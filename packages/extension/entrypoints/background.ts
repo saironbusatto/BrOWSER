@@ -1,9 +1,11 @@
-import { HOST_NAME, type Campo, type Comandos, type Evento, type Pedido, type Pedir, type Resposta } from '@browser/shared';
+import { HOST_NAME, type Campo, type Comandos, type Evento, type MensagemExtensao, type Pedido, type Pedir, type Resposta, type RespostaUsuario } from '@browser/shared';
+import { iniciarMatrixOverlay, gerarScriptUpdate, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
 
 // Papéis da árvore de acessibilidade que o LLM pode preencher ou clicar.
 const PAPEIS = new Set([
   'textbox', 'searchbox', 'combobox', 'listbox', 'checkbox', 'radio', 'switch',
   'spinbutton', 'slider', 'button', 'date', 'DateTime', 'InputTime',
+  'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'link', 'option', 'treeitem',
 ]);
 const RECONEXAO_MS = 2000;
 
@@ -17,21 +19,87 @@ let porta: chrome.runtime.Port | undefined;
 
 export default defineBackground(() => {
   conectar();
-  chrome.debugger.onDetach.addListener(({ tabId }) => tabId && anexadas.delete(tabId));
+  chrome.debugger.onDetach.addListener(({ tabId }) => {
+    if (tabId) {
+      anexadas.delete(tabId);
+      desligarMatrix(tabId).catch(() => {});
+    }
+  });
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
 
-  // Painel lateral -> ponte. A aba ativa quando o usuário pediu vira a aba alvo.
-  chrome.runtime.onMessage.addListener((msg: Pedir, _remetente, responder) => {
-    if (msg?.tipo !== 'pedido') return;
-    if (!porta) {
-      responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do bRowser.' });
+  // Painel lateral -> ponte.
+  chrome.runtime.onMessage.addListener((msg: MensagemExtensao, _remetente, responder) => {
+    if (msg?.tipo === 'pedido') {
+      if (!porta) {
+        responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do bRowser.' });
+        return;
+      }
+      alvo = msg.tabId;
+      ligarMatrix(alvo, 'IA conectada. Assumindo controle…');
+      porta.postMessage(msg);
+      responder({ ok: true });
       return;
     }
-    alvo = msg.tabId;
-    porta.postMessage(msg);
-    responder({ ok: true });
+    if (msg?.tipo === 'resposta_usuario') {
+      if (alvo) ligarMatrix(alvo, 'Resposta recebida! Continuando na página…').catch(() => {});
+      porta?.postMessage(msg);
+      responder({ ok: true });
+      return;
+    }
   });
 });
+
+async function garantirAnexado(tabId: number) {
+  if (anexadas.has(tabId)) return;
+  try {
+    await chrome.debugger.attach({ tabId }, '1.3');
+    anexadas.add(tabId);
+  } catch (err: any) {
+    if (err?.message?.includes('already attached')) {
+      anexadas.add(tabId);
+    } else {
+      throw err;
+    }
+  }
+}
+
+async function ligarMatrix(tabId: number, status?: string) {
+  try {
+    await garantirAnexado(tabId);
+    const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `(${iniciarMatrixOverlay.toString()})()`,
+      returnByValue: true,
+    }) as any;
+    if (r?.exceptionDetails) {
+      console.warn('Erro ao avaliar iniciarMatrixOverlay:', r.exceptionDetails);
+    }
+    if (status) {
+      await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+        expression: gerarScriptUpdate(status),
+      });
+    }
+  } catch (err) {
+    console.warn('Matrix overlay não pôde ser injetado:', err);
+  }
+}
+
+async function atualizarMatrix(tabId: number, status: string) {
+  try {
+    if (!anexadas.has(tabId)) return;
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: gerarScriptUpdate(status),
+    });
+  } catch {}
+}
+
+async function desligarMatrix(tabId: number) {
+  try {
+    if (!anexadas.has(tabId)) return;
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: SCRIPT_PARAR_MATRIX,
+    });
+  } catch {}
+}
 
 function conectar() {
   porta = chrome.runtime.connectNative(HOST_NAME);
@@ -39,6 +107,15 @@ function conectar() {
     if ('tipo' in p) {
       // Evento da ponte -> painel (se o painel estiver fechado, ninguém recebe; tudo bem).
       chrome.runtime.sendMessage(p).catch(() => {});
+      if (alvo) {
+        if (p.tipo === 'status') {
+          atualizarMatrix(alvo, p.texto);
+        } else if (p.tipo === 'pergunta') {
+          atualizarMatrix(alvo, 'Aguardando suas informações no painel lateral…');
+        } else if (p.tipo === 'resultado') {
+          desligarMatrix(alvo);
+        }
+      }
       return;
     }
     let r: Resposta;
@@ -93,10 +170,7 @@ async function abaAlvo(): Promise<number> {
 
 async function cdp<T = any>(method: string, params: object = {}): Promise<T> {
   const tabId = await abaAlvo();
-  if (!anexadas.has(tabId)) {
-    await chrome.debugger.attach({ tabId }, '1.3');
-    anexadas.add(tabId);
-  }
+  await garantirAnexado(tabId);
   return chrome.debugger.sendCommand({ tabId }, method, params) as Promise<T>;
 }
 
@@ -136,6 +210,7 @@ function varrerDom(root: any) {
 }
 
 async function lerCampos() {
+  if (alvo) ligarMatrix(alvo, 'Mapeando campos do formulário…').catch(() => {});
   const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true }); // pierce: inclui iframes
   const { internos, widgets } = varrerDom(root);
   const { frameTree } = await cdp('Page.getFrameTree');
@@ -172,6 +247,7 @@ async function lerCampos() {
 }
 
 async function preencher(ref: number, valor: string) {
+  if (alvo) ligarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`).catch(() => {});
   const tipo = await noElemento<string>(ref, 'function(){return this.tagName==="SELECT"?"select":(this.type||"text")}');
 
   if (tipo === 'select') {
@@ -205,13 +281,19 @@ async function preencher(ref: number, valor: string) {
 }
 
 async function clicar(ref: number) {
-  await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
-  const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });
-  const q: number[] = model.content;
-  const x = (q[0] + q[2] + q[4] + q[6]) / 4;
-  const y = (q[1] + q[3] + q[5] + q[7]) / 4;
-  for (const type of ['mousePressed', 'mouseReleased']) {
-    await cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+  if (alvo) ligarMatrix(alvo, 'Clicando no elemento…').catch(() => {});
+  try {
+    await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
+    const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });
+    const q: number[] = model.content;
+    const x = (q[0] + q[2] + q[4] + q[6]) / 4;
+    const y = (q[1] + q[3] + q[5] + q[7]) / 4;
+    for (const type of ['mousePressed', 'mouseReleased']) {
+      await cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
+    }
+  } catch {
+    // Fallback: se o elemento não tem boxModel direto (ex.: SVG, botão customizado), clica via DOM direto
+    await noElemento(ref, 'function(){ this.click?.(); }');
   }
   return { ok: true as const };
 }

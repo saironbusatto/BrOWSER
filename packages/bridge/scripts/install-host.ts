@@ -1,6 +1,5 @@
-// Registra a ponte como host de Native Messaging no Chrome (Linux).
-// ponytail: só Linux/Chrome; macOS, Windows (registro) e Edge/Brave entram no instalador de verdade.
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+// Registra a ponte como host de Native Messaging em todos os navegadores Chromium instalados (Linux).
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { HOST_NAME } from '@browser/shared';
@@ -15,15 +14,36 @@ mkdirSync(dir, { recursive: true, mode: 0o700 });
 writeFileSync(wrapper, `#!/bin/sh\nexport PATH="${process.env.PATH}"\nexec "${process.execPath}" "${main}"\n`);
 chmodSync(wrapper, 0o755);
 
-const hostsDir = join(homedir(), '.config', 'google-chrome', 'NativeMessagingHosts');
-mkdirSync(hostsDir, { recursive: true });
-const manifest = join(hostsDir, `${HOST_NAME}.json`);
-writeFileSync(manifest, JSON.stringify({
+const manifestBody = JSON.stringify({
   name: HOST_NAME,
   description: 'bRowser bridge',
   path: wrapper,
   type: 'stdio',
   allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
-}, null, 2));
+}, null, 2);
 
-console.log(`host registrado: ${manifest}\nwrapper: ${wrapper}`);
+// Todos os navegadores Chromium no Linux usam NativeMessagingHosts dentro do seu config dir.
+const BROWSERS = [
+  { name: 'Chrome',    dir: join(homedir(), '.config', 'google-chrome', 'NativeMessagingHosts') },
+  { name: 'Brave',     dir: join(homedir(), '.config', 'BraveSoftware', 'Brave-Browser', 'NativeMessagingHosts') },
+  { name: 'Edge',      dir: join(homedir(), '.config', 'microsoft-edge', 'NativeMessagingHosts') },
+  { name: 'Chromium',  dir: join(homedir(), '.config', 'chromium', 'NativeMessagingHosts') },
+  { name: 'Vivaldi',   dir: join(homedir(), '.config', 'vivaldi', 'NativeMessagingHosts') },
+  { name: 'Opera',     dir: join(homedir(), '.config', 'opera', 'NativeMessagingHosts') },
+];
+
+let registrados = 0;
+for (const browser of BROWSERS) {
+  // Registra se o navegador está instalado (diretório pai existe) ou se é Chrome/Brave (sempre).
+  const parentDir = join(browser.dir, '..');
+  if (!existsSync(parentDir) && browser.name !== 'Chrome' && browser.name !== 'Brave') continue;
+
+  mkdirSync(browser.dir, { recursive: true });
+  const manifest = join(browser.dir, `${HOST_NAME}.json`);
+  writeFileSync(manifest, manifestBody);
+  console.log(`✓ ${browser.name}: ${manifest}`);
+  registrados++;
+}
+
+console.log(`\nwrapper: ${wrapper}`);
+console.log(`${registrados} navegador(es) registrado(s). Reinicie o navegador para ativar.`);

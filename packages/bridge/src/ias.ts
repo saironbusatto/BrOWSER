@@ -1,27 +1,61 @@
-// Dispara as ferramentas oficiais de IA (logadas na assinatura do usuário) apontando para o MCP da ponte.
 import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { IAS, type Ia } from '@browser/shared';
+import { IAS, type ArquivoAnexo, type Ia, type PapelAgente } from '@browser/shared';
+import { formatarContextoArquivos } from './documentos';
 
 const TIMEOUT_MS = 5 * 60_000;
-const TOOLS = ['ler_campos', 'preencher', 'clicar'];
+const TOOLS = ['ler_campos', 'preencher', 'clicar', 'perguntar_ao_usuario'];
 const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
 
 export type Mcp = { url: string; token: string };
 export type Execucao = { ok: boolean; ia?: Ia; texto: string };
 
-export function instrucoes(pedido: string) {
-  return `Você controla o navegador do usuário pelas ferramentas do servidor MCP "browser" (ler_campos, preencher, clicar). A aba com o formulário já está aberta.
+export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[]) {
+  const contextoArquivos = formatarContextoArquivos(arquivos);
+  return `Você é o bRowser AI, um copiloto inteligente, prestativo e conversacional no painel lateral do navegador com arquitetura multiagente (Navegação Web + Síntese de Dados).
+Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario).
 
-Pedido do usuário: ${pedido}
+Instrução ou mensagem do usuário:
+"${pedido}"
+${contextoArquivos}
 
-Regras:
-1. Chame ler_campos primeiro.
-2. Preencha cada campo com preencher (use clicar só se preencher não resolver).
-3. NÃO envie o formulário: nunca clique em "Enviar" ou equivalente. O usuário envia depois de conferir.
-4. No fim, chame ler_campos de novo para conferir e responda com um resumo curto do que foi preenchido e do que ficou faltando.
-Não use nenhuma outra ferramenta além das do servidor "browser".`;
+Diretrizes de atuação:
+1. ARQUITETURA MULTIAGENTE & INTERAÇÃO DINÂMICA COM A PÁGINA (SCOUT / NAVEGADOR):
+   - Chame 'ler_campos' para inspecionar os elementos visíveis na página ativa.
+   - PÁGINAS MODERNAS COM CAMADAS E MENUS OCULTOS (ex.: Gemini, ChatGPT, Gmail, ERPs, ferramentas em nuvem):
+     * Muitas opções, ferramentas, modos ou modelos (como menus "+", "Adicionar ferramentas", "Gems", "Nano Banana", seletores de modo, abas ou dropdowns) NÃO aparecem no 'ler_campos' inicial porque estão escondidos atrás de um menu ou botão disparador.
+     * Se o usuário pediu para usar uma ferramenta, modo, modelo ou opção específica que NÃO está na lista inicial de campos:
+       a) Identifique se há um botão disparador provável (ex.: "+", "Adicionar", "Ferramentas", "Gems", "Modelos", "Menu", "Mais opções", ou o nome do dropdown).
+       b) Chame 'clicar' nesse botão disparador para abrir o menu/gaveta.
+       c) Chame 'ler_campos' novamente! Agora as opções recém-abertas (menuitem, botão, lista) estarão visíveis.
+       d) Localize a opção desejada (ex.: a ferramenta/modelo solicitada) e chame 'clicar' nela.
+   - PREENCHIMENTO E AÇÕES:
+     * Preencha cada campo necessário usando 'preencher' (ou 'clicar' para botões, switches, checkboxes e itens de menu).
+     * NUNCA clique em botões de envio final irrevogável ("Enviar", "Submit", "Finalizar") sem autorização explícita do usuário.
+     * Ao concluir, faça uma breve conferência com 'ler_campos' e conte amigavelmente ao usuário o que foi feito.
+
+2. DOCUMENTOS E ARQUIVOS ANEXADOS (SYNTHESIZER / DADOS):
+   * Se o usuário anexou arquivos (como notas fiscais XML, JSON, CSV, pedidos ou relatórios), os dados estruturados já foram extraídos e organizados para você na seção "DADOS DE ARQUIVOS ANEXADOS PELO USUÁRIO" acima.
+   * Mapeie os dados do documento para os campos correspondentes identificados pelo 'ler_campos' na página (ex.: CNPJ -> campo de CNPJ, Razão Social -> campo de Nome, Total -> campo de Valor, Vencimento -> campo de Data, etc.).
+   * Se os dados do arquivo já contêm a informação necessária, preencha diretamente sem perguntar ao usuário.
+
+3. SE FALTAR INFORMAÇÃO ESSENCIAL OU HOUVER DÚVIDA:
+   * NÃO invente dados fictícios para campos pessoais ou sensíveis (CPF, RG, endereço, etc.) se eles não estiverem nem na mensagem nem nos arquivos.
+   * Chame IMEDIATAMENTE a ferramenta 'perguntar_ao_usuario' especificando o que você precisa que ele informe e os campos.
+   * O painel lateral exibirá uma caixa de interação para o usuário responder e devolverá a resposta para você.
+   * Assim que receber a resposta, use 'preencher' ou 'clicar' para aplicar os dados e continue o fluxo normalmente!
+
+4. CONVERSAÇÃO E PROMPTS:
+   - Se o usuário pedir prompts (como prompt para criar logo, gerar imagem, etc.), forneça sugestões criativas, de alta qualidade e bem estruturadas.
+   - Se houver uma caixa de comando ou chat na página (como no Gemini ou ChatGPT), além de entregar o texto no painel lateral com formatação primorosa, preencha o campo de texto na página se isso fizer sentido com o pedido do usuário.
+
+5. FORMATAÇÃO VISUAL (MUITO IMPORTANTE):
+   - Responda em português com formatação rica em Markdown.
+   - Use **negrito** para destacar campos, dados e valores importantes.
+   - Use listas estruturadas com marcadores para organizar passos ou listas de itens.
+   - Use blocos de código (\`\`\`) para prompts, comandos ou código técnico.
+   - Seja conciso, humano e agradável. Evite relatórios frios ou tabelas cruas sem contexto.`;
 }
 
 function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>): string[] {
@@ -56,7 +90,7 @@ export function respostaFinal(ia: Ia, saida: string): string | undefined {
   }
 }
 
-async function rodar(ia: Ia, pedido: string, mcp: Mcp): Promise<Execucao> {
+async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]): Promise<Execucao> {
   // Sem chaves de API no ambiente: garante que a IA roda pela assinatura.
   const env: Record<string, string | undefined> = { ...process.env };
   for (const k of CHAVES_API) delete env[k];
@@ -69,7 +103,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp): Promise<Execucao> {
 
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
   mkdirSync(cwd, { recursive: true });
-  const proc = Bun.spawn(comando(ia, instrucoes(pedido), mcp, env), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+  const proc = Bun.spawn(comando(ia, instrucoes(pedido, arquivos), mcp, env), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
   const [saida, erros] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
   const codigo = await proc.exited;
@@ -81,17 +115,22 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp): Promise<Execucao> {
 }
 
 // Failover (Q8): tenta as IAs instaladas na ordem; passa para a próxima quando uma falha.
-// ponytail: qualquer falha dispara o failover, não só erro de cota; separar quando os erros de cota de cada CLI forem mapeados.
-export async function executar(pedido: string, mcp: Mcp, avisar: (t: string) => void, ordem: readonly Ia[] = IAS): Promise<Execucao> {
+export async function executar(
+  pedido: string,
+  mcp: Mcp,
+  avisar: (t: string, agente?: PapelAgente) => void,
+  arquivos?: ArquivoAnexo[],
+  ordem: readonly Ia[] = IAS
+): Promise<Execucao> {
   const instaladas = ordem.filter((ia) => Bun.which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
   const falhas: string[] = [];
   for (const ia of instaladas) {
-    avisar(`Preenchendo com ${ia}…`);
-    const r = await rodar(ia, pedido, mcp);
+    avisar(`Conectando ${ia}…`, 'geral');
+    const r = await rodar(ia, pedido, mcp, arquivos);
     if (r.ok) return r;
     falhas.push(r.texto);
-    avisar(`${ia} falhou; tentando a próxima IA…`);
+    avisar(`${ia} falhou; tentando a próxima IA…`, 'geral');
   }
   return { ok: false, texto: `Todas as IAs falharam:\n${falhas.join('\n')}` };
 }

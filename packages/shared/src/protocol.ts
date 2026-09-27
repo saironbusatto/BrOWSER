@@ -36,10 +36,47 @@ export type Resposta =
 export const IAS = ['agy', 'codex', 'claude'] as const; // ordem padrão do failover (Q8)
 export type Ia = (typeof IAS)[number];
 
+// ---- Arquivos e Anexos ----
+export type ArquivoAnexo = {
+  nome: string;
+  tipo: string; // mime type (ex: application/pdf, text/xml, image/png)
+  tamanho: number;
+  conteudoTexto?: string; // para XML, JSON, CSV, TXT
+  dadosBase64?: string; // para PDF, imagens binárias
+};
+
 // extensão -> ponte: o usuário escreveu um pedido no painel lateral
-export type Pedir = { tipo: 'pedido'; pedidoId: string; texto: string; tabId: number };
+export type Pedir = {
+  tipo: 'pedido';
+  pedidoId: string;
+  texto: string;
+  tabId: number;
+  arquivos?: ArquivoAnexo[];
+};
+
+// extensão -> ponte: o usuário respondeu a uma pergunta da IA
+export type RespostaUsuario = {
+  tipo: 'resposta_usuario';
+  pedidoId: string;
+  perguntaId: string;
+  resposta: string;
+  respostasCampos?: Record<string, string>;
+};
+
+export type MensagemExtensao = Pedir | RespostaUsuario;
+
+// Papéis no pipeline multiagente concorrente
+export type PapelAgente = 'scout' | 'synthesizer' | 'geral';
 
 // ponte -> extensão -> painel
 export type Evento =
-  | { tipo: 'status'; pedidoId: string; texto: string }
+  | { tipo: 'status'; pedidoId: string; texto: string; agente?: PapelAgente }
+  | {
+      tipo: 'pergunta';
+      pedidoId: string;
+      perguntaId: string;
+      pergunta: string;
+      campos?: string[];
+      opcoes?: string[];
+    }
   | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string };

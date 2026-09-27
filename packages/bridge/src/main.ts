@@ -2,13 +2,13 @@
 // stdout é exclusivo do protocolo do Chrome: todo log vai para arquivo.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { Cmd, Comandos, Evento, Ia, Pedir, Resposta } from '@browser/shared';
+import type { Cmd, Comandos, Evento, Ia, MensagemExtensao, PapelAgente, Pedir, Resposta, RespostaUsuario } from '@browser/shared';
 import { executar, type Execucao } from './ias';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
@@ -21,6 +21,8 @@ const log = (...a: unknown[]) => appendFileSync(join(DIR, 'bridge.log'), `${new 
 // ---- Native Messaging: mensagens com prefixo uint32 little-endian ----
 let seq = 0;
 const pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
+const perguntasPendentes = new Map<string, (r: { resposta: string; respostasCampos?: Record<string, string> }) => void>();
+let pedidoAtivo: string | undefined;
 
 function escrever(msg: object) {
   const corpo = Buffer.from(JSON.stringify(msg));
@@ -44,10 +46,18 @@ async function lerStdin() {
     buf = Buffer.concat([buf, Buffer.from(pedaco)]);
     while (buf.length >= 4 && buf.length >= 4 + buf.readUInt32LE(0)) {
       const tam = buf.readUInt32LE(0);
-      const msg = JSON.parse(buf.subarray(4, 4 + tam).toString()) as Resposta | Pedir;
+      const msg = JSON.parse(buf.subarray(4, 4 + tam).toString()) as Resposta | MensagemExtensao;
       buf = buf.subarray(4 + tam);
       if ('tipo' in msg) {
-        atenderPedido(msg);
+        if (msg.tipo === 'pedido') {
+          atenderPedido(msg);
+        } else if (msg.tipo === 'resposta_usuario') {
+          const resolver = perguntasPendentes.get(msg.perguntaId);
+          if (resolver) {
+            perguntasPendentes.delete(msg.perguntaId);
+            resolver({ resposta: msg.resposta, respostasCampos: msg.respostasCampos });
+          }
+        }
         continue;
       }
       const r = msg;
@@ -65,24 +75,37 @@ async function lerStdin() {
 let mcp: { url: string; token: string } | undefined; // definido quando o HTTP sobe
 let ocupado = false;
 
-async function rodarPedido(texto: string, avisar: (t: string) => void, ordem?: Ia[]): Promise<Execucao> {
+async function rodarPedido(p: Pedir, avisar: (t: string, agente?: PapelAgente) => void, ordem?: Ia[]): Promise<Execucao> {
   if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
   try {
-    return await executar(texto, mcp, avisar, ordem);
+    return await executar(p.texto, mcp, avisar, p.arquivos, ordem);
   } finally {
     ocupado = false;
   }
 }
 
 async function atenderPedido(p: Pedir) {
+  pedidoAtivo = p.pedidoId;
   const emitir = (e: Evento) => escrever(e);
-  const r = await rodarPedido(p.texto, (texto) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto }))
-    .catch((e): Execucao => ({ ok: false, texto: String(e) }));
-  log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
-  emitir({ tipo: 'resultado', pedidoId: p.pedidoId, ...r });
+  try {
+    if (p.arquivos && p.arquivos.length > 0) {
+      emitir({
+        tipo: 'status',
+        pedidoId: p.pedidoId,
+        texto: `Pré-processando ${p.arquivos.length} arquivo(s) anexado(s)…`,
+        agente: 'synthesizer',
+      });
+    }
+    const r = await rodarPedido(p, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
+      .catch((e): Execucao => ({ ok: false, texto: String(e) }));
+    log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
+    emitir({ tipo: 'resultado', pedidoId: p.pedidoId, ...r });
+  } finally {
+    pedidoAtivo = undefined;
+  }
 }
 
 // ---- MCP ----
@@ -93,15 +116,58 @@ function criarMcp() {
   s.registerTool('ler_campos', {
     description: 'Lê a aba atual do navegador e lista os campos de formulário e botões: ref, papel, rótulo (nome), valor atual, se está marcado e as opções de selects. Chame antes de preencher e de novo no fim para conferir.',
     inputSchema: {},
-  }, async () => texto(await enviar('ler_campos', {})));
+  }, async () => {
+    if (pedidoAtivo) {
+      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Mapeando elementos e botões da página…', agente: 'scout' } satisfies Evento);
+    }
+    return texto(await enviar('ler_campos', {}));
+  });
   s.registerTool('preencher', {
     description: 'Preenche um campo pelo ref obtido em ler_campos. Datas: AAAA-MM-DD. Select: texto ou valor da opção. Checkbox/radio: "true" para marcar, "false" para desmarcar. Retorna o valor que ficou no campo.',
     inputSchema: { ref: z.number().int().describe('ref do campo em ler_campos'), valor: z.string() },
-  }, async ({ ref, valor }) => texto(await enviar('preencher', { ref, valor })));
+  }, async ({ ref, valor }) => {
+    if (pedidoAtivo) {
+      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`, agente: 'scout' } satisfies Evento);
+    }
+    return texto(await enviar('preencher', { ref, valor }));
+  });
   s.registerTool('clicar', {
     description: 'Clica num elemento pelo ref obtido em ler_campos. NUNCA clique em botões que enviam o formulário sem confirmação explícita do usuário.',
     inputSchema: { ref: z.number().int() },
-  }, async ({ ref }) => texto(await enviar('clicar', { ref })));
+  }, async ({ ref }) => {
+    if (pedidoAtivo) {
+      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Navegando / abrindo menu na página…', agente: 'scout' } satisfies Evento);
+    }
+    return texto(await enviar('clicar', { ref }));
+  });
+  s.registerTool('perguntar_ao_usuario', {
+    description: 'Use para perguntar dados essenciais faltantes (como CPF, telefone, data de nascimento, ou opções de escolha) diretamente ao usuário no painel lateral. Retorna a resposta fornecida pelo usuário.',
+    inputSchema: {
+      pergunta: z.string().describe('Mensagem explicativa e amigável para o usuário sobre o que você precisa que ele informe'),
+      campos: z.array(z.string()).optional().describe('Lista opcional de nomes dos campos específicos que o usuário deve preencher'),
+      opcoes: z.array(z.string()).optional().describe('Lista opcional de opções de escolha para o usuário clicar'),
+    },
+  }, async ({ pergunta, campos, opcoes }) => {
+    if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
+    const perguntaId = randomUUID();
+    escrever({
+      tipo: 'pergunta',
+      pedidoId: pedidoAtivo,
+      perguntaId,
+      pergunta,
+      campos,
+      opcoes,
+    } satisfies Evento);
+    const resposta = await new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
+      perguntasPendentes.set(perguntaId, resolve);
+      setTimeout(() => {
+        if (perguntasPendentes.delete(perguntaId)) {
+          resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
+        }
+      }, 5 * 60_000);
+    });
+    return texto(resposta);
+  });
   return s;
 }
 
