@@ -11,8 +11,8 @@ const wrapper = join(dir, 'bridge.sh');
 const main = resolve(import.meta.dir, '../src/main.ts');
 
 mkdirSync(dir, { recursive: true, mode: 0o700 });
-// Chrome inicia o host sem o PATH do shell: caminho absoluto do bun.
-writeFileSync(wrapper, `#!/bin/sh\nexec "${process.execPath}" "${main}"\n`);
+// Chrome inicia o host sem o PATH do shell: caminho absoluto do bun + PATH atual (onde estão agy/codex/claude).
+writeFileSync(wrapper, `#!/bin/sh\nexport PATH="${process.env.PATH}"\nexec "${process.execPath}" "${main}"\n`);
 chmodSync(wrapper, 0o755);
 
 const hostsDir = join(homedir(), '.config', 'google-chrome', 'NativeMessagingHosts');

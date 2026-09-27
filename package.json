@@ -1,9 +1,15 @@
 {
   "name": "browser",
   "private": true,
-  "workspaces": ["packages/*", "fixtures/*"],
+  "workspaces": [
+    "packages/*",
+    "fixtures/*"
+  ],
   "scripts": {
     "form": "bun run --cwd fixtures/form dev",
     "spike": "bun scripts/spike.ts"
+  },
+  "dependencies": {
+    "@browser/shared": "workspace:*"
   }
 }

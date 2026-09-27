@@ -1,4 +1,4 @@
-import { HOST_NAME, type Campo, type Comandos, type Pedido, type Resposta } from '@browser/shared';
+import { HOST_NAME, type Campo, type Comandos, type Evento, type Pedido, type Pedir, type Resposta } from '@browser/shared';
 
 // Papéis da árvore de acessibilidade que o LLM pode preencher ou clicar.
 const PAPEIS = new Set([
@@ -13,14 +13,34 @@ const anexadas = new Set<number>();
 // foco + seleção + digitação de dois campos ao mesmo tempo se misturam.
 let fila: Promise<unknown> = Promise.resolve();
 
+let porta: chrome.runtime.Port | undefined;
+
 export default defineBackground(() => {
   conectar();
   chrome.debugger.onDetach.addListener(({ tabId }) => tabId && anexadas.delete(tabId));
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+
+  // Painel lateral -> ponte. A aba ativa quando o usuário pediu vira a aba alvo.
+  chrome.runtime.onMessage.addListener((msg: Pedir, _remetente, responder) => {
+    if (msg?.tipo !== 'pedido') return;
+    if (!porta) {
+      responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do bRowser.' });
+      return;
+    }
+    alvo = msg.tabId;
+    porta.postMessage(msg);
+    responder({ ok: true });
+  });
 });
 
 function conectar() {
-  const porta = chrome.runtime.connectNative(HOST_NAME);
-  porta.onMessage.addListener(async (p: Pedido) => {
+  porta = chrome.runtime.connectNative(HOST_NAME);
+  porta.onMessage.addListener(async (p: Pedido | Evento) => {
+    if ('tipo' in p) {
+      // Evento da ponte -> painel (se o painel estiver fechado, ninguém recebe; tudo bem).
+      chrome.runtime.sendMessage(p).catch(() => {});
+      return;
+    }
     let r: Resposta;
     try {
       const vez = fila.then(() => executar(p));
@@ -31,10 +51,11 @@ function conectar() {
       const aba = alvo === undefined ? 'nenhuma' : `${alvo} frames=${frames.map((f) => f.url).join(' , ')}`;
       r = { id: p.id, ok: false, error: `${e instanceof Error ? e.message : String(e)} [aba alvo: ${aba}]` };
     }
-    porta.postMessage(r);
+    porta?.postMessage(r);
   });
   porta.onDisconnect.addListener(() => {
     console.warn('ponte desconectada:', chrome.runtime.lastError?.message);
+    porta = undefined;
     setTimeout(conectar, RECONEXAO_MS);
   });
 }

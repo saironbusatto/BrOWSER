@@ -8,7 +8,8 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { Cmd, Comandos, Resposta } from '@browser/shared';
+import type { Cmd, Comandos, Evento, Ia, Pedir, Resposta } from '@browser/shared';
+import { executar, type Execucao } from './ias';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;
@@ -21,12 +22,16 @@ const log = (...a: unknown[]) => appendFileSync(join(DIR, 'bridge.log'), `${new 
 let seq = 0;
 const pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
 
-function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
-  const id = ++seq;
-  const corpo = Buffer.from(JSON.stringify({ id, cmd, args }));
+function escrever(msg: object) {
+  const corpo = Buffer.from(JSON.stringify(msg));
   const cab = Buffer.alloc(4);
   cab.writeUInt32LE(corpo.length);
   process.stdout.write(Buffer.concat([cab, corpo]));
+}
+
+function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
+  const id = ++seq;
+  escrever({ id, cmd, args });
   return new Promise((ok, falha) => {
     pendentes.set(id, { ok: ok as (v: unknown) => void, falha });
     setTimeout(() => pendentes.delete(id) && falha(new Error(`timeout em ${cmd}`)), TIMEOUT_MS);
@@ -39,8 +44,13 @@ async function lerStdin() {
     buf = Buffer.concat([buf, Buffer.from(pedaco)]);
     while (buf.length >= 4 && buf.length >= 4 + buf.readUInt32LE(0)) {
       const tam = buf.readUInt32LE(0);
-      const r = JSON.parse(buf.subarray(4, 4 + tam).toString()) as Resposta;
+      const msg = JSON.parse(buf.subarray(4, 4 + tam).toString()) as Resposta | Pedir;
       buf = buf.subarray(4 + tam);
+      if ('tipo' in msg) {
+        atenderPedido(msg);
+        continue;
+      }
+      const r = msg;
       const p = pendentes.get(r.id);
       pendentes.delete(r.id);
       if (!p) continue;
@@ -49,6 +59,30 @@ async function lerStdin() {
   }
   log('stdin fechado: Chrome desconectou, encerrando');
   process.exit(0);
+}
+
+// ---- Pedidos do painel lateral ----
+let mcp: { url: string; token: string } | undefined; // definido quando o HTTP sobe
+let ocupado = false;
+
+async function rodarPedido(texto: string, avisar: (t: string) => void, ordem?: Ia[]): Promise<Execucao> {
+  if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
+  // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
+  if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
+  ocupado = true;
+  try {
+    return await executar(texto, mcp, avisar, ordem);
+  } finally {
+    ocupado = false;
+  }
+}
+
+async function atenderPedido(p: Pedir) {
+  const emitir = (e: Evento) => escrever(e);
+  const r = await rodarPedido(p.texto, (texto) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto }))
+    .catch((e): Execucao => ({ ok: false, texto: String(e) }));
+  log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
+  emitir({ tipo: 'resultado', pedidoId: p.pedidoId, ...r });
 }
 
 // ---- MCP ----
@@ -96,6 +130,11 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
     await criarMcp().connect(t);
     return t.handleRequest(req, res, body);
   }
+  if (req.url === '/control' && req.method === 'POST' && body?.cmd === 'executar') {
+    // Mesmo caminho do painel lateral, para o `bun run spike` testar o fluxo real.
+    const r = await rodarPedido(String(body.args?.texto ?? ''), (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
+    return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: r }));
+  }
   if (req.url === '/control' && req.method === 'POST') {
     if (!CONTROLE.includes(body?.cmd)) return res.writeHead(400).end('comando inválido');
     try {
@@ -112,8 +151,10 @@ const http = createServer((req, res) => atender(req, res).catch((e) => {
   log('erro http', e?.stack ?? e);
   if (!res.headersSent) res.writeHead(500).end();
 }));
+http.requestTimeout = 0; // `executar` pode levar minutos
 http.listen(0, '127.0.0.1', () => {
   const { port } = http.address() as { port: number };
+  mcp = { url: `http://127.0.0.1:${port}/mcp`, token };
   writeFileSync(join(DIR, 'bridge.json'), JSON.stringify({ port, token, pid: process.pid }), { mode: 0o600 });
   log(`ponte ouvindo em 127.0.0.1:${port}`);
 });

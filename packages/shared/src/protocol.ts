@@ -30,3 +30,16 @@ export type Pedido<C extends Cmd = Cmd> = { id: number; cmd: C; args: Comandos[C
 export type Resposta =
   | { id: number; ok: true; result: unknown }
   | { id: number; ok: false; error: string };
+
+// ---- Eventos (têm `tipo`; os comandos acima têm `cmd`) ----
+
+export const IAS = ['agy', 'codex', 'claude'] as const; // ordem padrão do failover (Q8)
+export type Ia = (typeof IAS)[number];
+
+// extensão -> ponte: o usuário escreveu um pedido no painel lateral
+export type Pedir = { tipo: 'pedido'; pedidoId: string; texto: string; tabId: number };
+
+// ponte -> extensão -> painel
+export type Evento =
+  | { tipo: 'status'; pedidoId: string; texto: string }
+  | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string };

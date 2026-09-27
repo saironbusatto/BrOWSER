@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>bRowser</title>
+  <style>
+    :root { --bg: #fff; --fg: #1a1a1a; --muted: #666; --borda: #ccc; --acento: #2563eb; --erro: #b91c1c; --ok: #15803d; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1b1b1f; --fg: #eee; --muted: #aaa; --borda: #444; --acento: #60a5fa; --erro: #f87171; --ok: #4ade80; }
+    }
+    body { font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
+    h1 { font-size: 16px; margin: 0 0 12px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 120px; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--borda); border-radius: 6px; resize: vertical; }
+    button { margin-top: 8px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--acento); border: 0; border-radius: 6px; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: progress; }
+    #status { color: var(--muted); margin: 12px 0 0; min-height: 1.4em; }
+    #resultado { white-space: pre-wrap; margin-top: 8px; padding: 10px; border-radius: 6px; border: 1px solid var(--borda); }
+    #resultado:empty { display: none; }
+    #resultado.erro { border-color: var(--erro); }
+    #resultado.ok { border-color: var(--ok); }
+    .dica { color: var(--muted); font-size: 12px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>bRowser</h1>
+  <form id="form">
+    <label for="texto">O que preencher nesta página?</label>
+    <textarea id="texto" required placeholder="Ex.: preencha com os dados da Maria Souza, e-mail maria@exemplo.com, nascida em 15/03/1990…"></textarea>
+    <button id="botao" type="submit">Preencher</button>
+  </form>
+  <p id="status" role="status" aria-live="polite"></p>
+  <div id="resultado" aria-live="polite"></div>
+  <p class="dica">A IA não envia o formulário. Confira os campos e clique em Enviar na página.</p>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

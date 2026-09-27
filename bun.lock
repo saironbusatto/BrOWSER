@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "browser",
+      "dependencies": {
+        "@browser/shared": "workspace:*",
+      },
     },
     "fixtures/form": {
       "name": "@browser/fixture-form",
