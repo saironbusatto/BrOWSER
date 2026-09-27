@@ -80,3 +80,5 @@ export type Evento =
       opcoes?: string[];
     }
   | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string };
+
+export * from './blueprint';

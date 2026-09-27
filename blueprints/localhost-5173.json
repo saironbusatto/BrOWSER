@@ -1,0 +1,76 @@
+{
+  "$schema": "https://browser.ai/schemas/blueprint.v1.json",
+  "dominio": "localhost-5173",
+  "urlPattern": "^http:\\/\\/localhost:5173\\/.*",
+  "versao": "1.0.0",
+  "titulo": "Cadastro (fixture do teste)",
+  "atualizadoEm": "2026-09-27T17:30:00Z",
+  "gatilhos": [],
+  "campos": [
+    {
+      "idSemantico": "nome_completo",
+      "rotulo": "Nome completo",
+      "papel": "textbox",
+      "seletorAcessivel": "Nome completo",
+      "tipoEsperado": "texto",
+      "obrigatorio": true
+    },
+    {
+      "idSemantico": "email",
+      "rotulo": "E-mail",
+      "papel": "textbox",
+      "seletorAcessivel": "E-mail",
+      "tipoEsperado": "email",
+      "obrigatorio": true
+    },
+    {
+      "idSemantico": "data_nascimento",
+      "rotulo": "Data de nascimento",
+      "papel": "date",
+      "seletorAcessivel": "Data de nascimento",
+      "tipoEsperado": "data",
+      "obrigatorio": true
+    },
+    {
+      "idSemantico": "estado",
+      "rotulo": "Estado",
+      "papel": "combobox",
+      "seletorAcessivel": "Estado",
+      "tipoEsperado": "texto",
+      "obrigatorio": true,
+      "opcoes": ["Selecione…", "São Paulo", "Minas Gerais", "Rio de Janeiro", "Paraná"]
+    },
+    {
+      "idSemantico": "tipo_pessoa_pf",
+      "rotulo": "Pessoa física",
+      "papel": "radio",
+      "seletorAcessivel": "Pessoa física"
+    },
+    {
+      "idSemantico": "tipo_pessoa_pj",
+      "rotulo": "Pessoa jurídica",
+      "papel": "radio",
+      "seletorAcessivel": "Pessoa jurídica"
+    },
+    {
+      "idSemantico": "telefone",
+      "rotulo": "Telefone celular",
+      "papel": "textbox",
+      "seletorAcessivel": "Telefone celular",
+      "tipoEsperado": "telefone"
+    },
+    {
+      "idSemantico": "cep",
+      "rotulo": "CEP",
+      "papel": "textbox",
+      "seletorAcessivel": "CEP",
+      "tipoEsperado": "cep"
+    },
+    {
+      "idSemantico": "aceite_termos",
+      "rotulo": "Aceito os termos de uso",
+      "papel": "checkbox",
+      "seletorAcessivel": "Aceito os termos de uso"
+    }
+  ]
+}

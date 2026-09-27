@@ -1,0 +1,32 @@
+{
+  "$schema": "https://browser.ai/schemas/blueprint.v1.json",
+  "dominio": "gemini.google.com",
+  "urlPattern": "^https:\\/\\/gemini\\.google\\.com\\/.*",
+  "versao": "1.0.0",
+  "titulo": "Google Gemini",
+  "atualizadoEm": "2026-09-27T17:30:00Z",
+  "gatilhos": [
+    {
+      "descricao": "Abrir menu de ferramentas e extensões (+)",
+      "seletorOuNome": "Abrir menu Adicionar",
+      "tipo": "click",
+      "esperarMilissegundos": 300
+    }
+  ],
+  "campos": [
+    {
+      "idSemantico": "prompt_input",
+      "rotulo": "Insira um comando para o Gemini",
+      "papel": "textbox",
+      "seletorAcessivel": "Insira um comando para o Gemini",
+      "tipoEsperado": "texto",
+      "obrigatorio": true
+    },
+    {
+      "idSemantico": "botao_enviar",
+      "rotulo": "Enviar mensagem",
+      "papel": "button",
+      "seletorAcessivel": "Enviar mensagem"
+    }
+  ]
+}

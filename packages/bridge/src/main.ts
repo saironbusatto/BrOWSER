@@ -8,8 +8,9 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { Cmd, Comandos, Evento, Ia, MensagemExtensao, PapelAgente, Pedir, Resposta, RespostaUsuario } from '@browser/shared';
+import type { Campo, Cmd, Comandos, Evento, Ia, MensagemExtensao, PapelAgente, Pedir, Resposta, RespostaUsuario, SiteBlueprint } from '@browser/shared';
 import { executar, type Execucao } from './ias';
+import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado } from './blueprints';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;
@@ -75,13 +76,13 @@ async function lerStdin() {
 let mcp: { url: string; token: string } | undefined; // definido quando o HTTP sobe
 let ocupado = false;
 
-async function rodarPedido(p: Pedir, avisar: (t: string, agente?: PapelAgente) => void, ordem?: Ia[]): Promise<Execucao> {
+async function rodarPedido(p: Pedir, blueprint: SiteBlueprint | null, avisar: (t: string, agente?: PapelAgente) => void, ordem?: Ia[]): Promise<Execucao> {
   if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
   try {
-    return await executar(p.texto, mcp, avisar, p.arquivos, ordem);
+    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordem);
   } finally {
     ocupado = false;
   }
@@ -99,10 +100,42 @@ async function atenderPedido(p: Pedir) {
         agente: 'synthesizer',
       });
     }
-    const r = await rodarPedido(p, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
+
+    // Consulta silenciosa de Blueprint comunitário / cache
+    let blueprint: SiteBlueprint | null = null;
+    let urlAba: string | undefined;
+    try {
+      const infoAba = (await enviar('ler_campos', {}).catch(() => null)) as { url: string; titulo: string; campos: Campo[] } | null;
+      if (infoAba?.url) {
+        urlAba = infoAba.url;
+        blueprint = await obterBlueprint(infoAba.url);
+        if (blueprint) {
+          emitir({
+            tipo: 'status',
+            pedidoId: p.pedidoId,
+            texto: `Blueprint comunitário carregado (${blueprint.dominio})`,
+            agente: 'scout',
+          });
+        }
+      }
+    } catch {}
+
+    const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
       .catch((e): Execucao => ({ ok: false, texto: String(e) }));
     log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
     emitir({ tipo: 'resultado', pedidoId: p.pedidoId, ...r });
+
+    // Se bem-sucedido, memoriza no cache local (auto-aprendizado anônimo)
+    if (r.ok && urlAba) {
+      try {
+        const estadoFinal = (await enviar('ler_campos', {}).catch(() => null)) as { url: string; titulo: string; campos: Campo[] } | null;
+        if (estadoFinal && estadoFinal.campos.length > 0) {
+          const novoBp = gerarBlueprintAnonimizado(estadoFinal);
+          salvarBlueprintLocal(novoBp);
+          log(`blueprint auto-aprendido e salvo: ${novoBp.dominio} (${novoBp.campos.length} campos)`);
+        }
+      } catch {}
+    }
   } finally {
     pedidoAtivo = undefined;
   }
@@ -113,6 +146,15 @@ const texto = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.s
 
 function criarMcp() {
   const s = new McpServer({ name: 'browser', version: '0.1.0' });
+  s.registerTool('consultar_blueprint', {
+    description: 'Consulta se há um mapa estrutural conhecido (blueprint) para a URL ou domínio especificado.',
+    inputSchema: {
+      urlOuDominio: z.string().describe('URL completa ou domínio a consultar (ex: gemini.google.com ou localhost:5173)'),
+    },
+  }, async ({ urlOuDominio }) => {
+    const bp = await obterBlueprint(urlOuDominio);
+    return texto(bp ?? { encontrado: false, mensagem: 'Nenhum blueprint disponível para este domínio ainda.' });
+  });
   s.registerTool('ler_campos', {
     description: 'Lê a aba atual do navegador e lista os campos de formulário e botões: ref, papel, rótulo (nome), valor atual, se está marcado e as opções de selects. Chame antes de preencher e de novo no fim para conferir.',
     inputSchema: {},
