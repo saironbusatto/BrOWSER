@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { IAS, type ArquivoAnexo, type Ia, type ItemAssinatura, type PapelAgente, type SiteBlueprint } from '@browser/shared';
+import { IAS, type ArquivoAnexo, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 import { formatarBlueprintParaIa } from './blueprints';
 
@@ -214,52 +214,4 @@ export async function executar(
     avisar(`${ia} falhou; tentando a próxima IA…`, 'geral');
   }
   return { ok: false, texto: `Todas as IAs falharam:\n${falhas.join('\n')}` };
-}
-
-export function obterStatusAssinaturas(iaAtivaPreferencial?: Ia): ItemAssinatura[] {
-  const lista: ItemAssinatura[] = [
-    {
-      ia: 'agy',
-      nome: 'Google AI Pro',
-      subtitulo: 'Gemini Advanced & Google One AI Premium',
-      instalado: Boolean(Bun.which('agy')),
-      conectado: Boolean(Bun.which('agy')),
-      ativo: false,
-    },
-    {
-      ia: 'codex',
-      nome: 'ChatGPT Plus / Pro',
-      subtitulo: 'OpenAI ChatGPT Subscription',
-      instalado: Boolean(Bun.which('codex')),
-      conectado: Boolean(Bun.which('codex')),
-      ativo: false,
-    },
-    {
-      ia: 'claude',
-      nome: 'Claude Pro',
-      subtitulo: 'Anthropic Claude Pro Subscription',
-      instalado: Boolean(Bun.which('claude')),
-      conectado: Boolean(Bun.which('claude')),
-      ativo: false,
-    },
-  ];
-
-  const ativa =
-    lista.find((item) => item.ia === iaAtivaPreferencial && item.conectado) ||
-    lista.find((item) => item.conectado) ||
-    lista[0];
-
-  if (ativa) ativa.ativo = true;
-  return lista;
-}
-
-export function iniciarLoginAssinatura(ia: Ia): { comando: string[]; urlExterna?: string } {
-  switch (ia) {
-    case 'agy':
-      return { comando: ['agy'], urlExterna: 'https://gemini.google.com' };
-    case 'codex':
-      return { comando: ['codex', 'login'], urlExterna: 'https://chatgpt.com' };
-    case 'claude':
-      return { comando: ['claude', 'login'], urlExterna: 'https://claude.ai/login' };
-  }
 }
