@@ -8,8 +8,8 @@ import { join } from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import type { Campo, Cmd, Comandos, Evento, Ia, MensagemExtensao, PapelAgente, Pedir, Resposta, RespostaUsuario, SiteBlueprint } from '@browser/shared';
-import { executar, type Execucao } from './ias';
+import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
+import { executar, iniciarLoginAssinatura, obterStatusAssinaturas, type Execucao } from './ias';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
@@ -24,6 +24,7 @@ let seq = 0;
 const pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
 const perguntasPendentes = new Map<string, (r: { resposta: string; respostasCampos?: Record<string, string> }) => void>();
 let pedidoAtivo: string | undefined;
+let iaAtivaPreferencial: Ia = 'agy';
 
 function escrever(msg: object) {
   const corpo = Buffer.from(JSON.stringify(msg));
@@ -63,6 +64,23 @@ async function lerStdin() {
             const atualizado = salvarOuAtualizarBlueprint(msg.blueprint);
             log(`[telemetria] Blueprint passivo atualizado para ${atualizado.dominio} (${atualizado.campos.length} campos, ${atualizado.gatilhos?.length ?? 0} gatilhos)`);
           }
+        } else if (msg.tipo === 'consultar_assinaturas') {
+          const assinaturas = obterStatusAssinaturas(iaAtivaPreferencial);
+          const ativa = assinaturas.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
+          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: ativa });
+        } else if (msg.tipo === 'ativar_assinatura') {
+          iaAtivaPreferencial = msg.ia;
+          const assinaturas = obterStatusAssinaturas(iaAtivaPreferencial);
+          const ativa = assinaturas.find((a) => a.ativo)?.ia ?? msg.ia;
+          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: ativa });
+        } else if (msg.tipo === 'conectar_assinatura') {
+          const loginInfo = iniciarLoginAssinatura(msg.ia);
+          log(`iniciando fluxo oficial de login para ${msg.ia}`);
+          if (loginInfo.urlExterna) {
+            enviar('abrir', { url: loginInfo.urlExterna }).catch(() => {});
+          }
+          const assinaturas = obterStatusAssinaturas(msg.ia);
+          escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva: msg.ia });
         }
         continue;
       }
@@ -87,7 +105,8 @@ async function rodarPedido(p: Pedir, blueprint: SiteBlueprint | null, avisar: (t
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
   try {
-    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordem);
+    const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
+    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordemFinal);
   } finally {
     ocupado = false;
   }

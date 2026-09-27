@@ -51,6 +51,15 @@ export default defineBackground(() => {
       responder({ ok: true });
       return;
     }
+    if (
+      msg?.tipo === 'consultar_assinaturas' ||
+      msg?.tipo === 'conectar_assinatura' ||
+      msg?.tipo === 'ativar_assinatura'
+    ) {
+      porta?.postMessage(msg);
+      responder({ ok: true });
+      return;
+    }
   });
 });
 

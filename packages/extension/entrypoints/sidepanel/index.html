@@ -934,28 +934,386 @@
       font-size: 11.5px;
     }
 
-    /* ── User message attachment badges ── */
-    .user-attachments {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 6px;
-    }
-
-    .user-attachment-tag {
+    /* ── Subscription Pill Button (Header) ── */
+    .subscription-pill-btn {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      padding: 2px 6px;
-      font-size: 11px;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--surface-secondary);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--fg);
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background var(--duration-fast), border-color var(--duration-fast), transform var(--duration-fast);
+      user-select: none;
+    }
+
+    .subscription-pill-btn:hover {
+      background: var(--surface);
+      border-color: var(--accent);
+      transform: translateY(-0.5px);
+    }
+
+    .subscription-pill-btn:active {
+      transform: scale(0.96);
+    }
+
+    .sub-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #8e8e93;
+      flex-shrink: 0;
+      transition: background var(--duration-fast);
+    }
+
+    .sub-dot.active {
+      background: var(--success);
+      box-shadow: 0 0 6px rgba(52, 199, 89, 0.45);
+    }
+
+    /* ── Apple HIG Sheet Modal Backdrop & Content ── */
+    .sheet-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .sheet-modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sheet-content {
+      background: var(--surface);
+      border-top-left-radius: 22px;
+      border-top-right-radius: 22px;
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.2);
+      padding: 12px 18px 22px;
+      transform: translateY(100%);
+      transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    .sheet-modal-backdrop.open .sheet-content {
+      transform: translateY(0);
+    }
+
+    .sheet-grabber {
+      width: 38px;
+      height: 5px;
+      border-radius: 2.5px;
+      background: var(--fg-tertiary);
+      margin: 0 auto 12px;
+      opacity: 0.6;
+    }
+
+    .sheet-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .sheet-title-group h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--fg);
+      margin: 0 0 3px;
+      letter-spacing: -0.01em;
+    }
+
+    .sheet-title-group p {
+      font-size: 12px;
+      color: var(--fg-secondary);
+      margin: 0;
+      line-height: 1.35;
+    }
+
+    .icon-close-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--surface-secondary);
+      border: 1px solid var(--border);
+      color: var(--fg-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background var(--duration-fast), color var(--duration-fast);
+    }
+
+    .icon-close-btn:hover {
+      background: var(--border);
+      color: var(--fg);
+    }
+
+    .plans-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .plan-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: var(--surface-secondary);
+      border: 1px solid var(--border);
+      transition: all var(--duration-fast) var(--ease-smooth);
+    }
+
+    .plan-card:hover {
+      background: var(--surface);
+      border-color: rgba(0, 113, 227, 0.3);
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .plan-card.active {
+      background: var(--surface);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 4px 16px rgba(0, 113, 227, 0.08);
+    }
+
+    .plan-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .plan-icon-wrap {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    .plan-details {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .plan-name-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .plan-name {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .plan-sub {
+      font-size: 11.5px;
+      color: var(--fg-secondary);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .plan-badge-active {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid rgba(52, 199, 89, 0.3);
+      border-radius: 12px;
+      padding: 1.5px 7px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .plan-action-btn {
+      padding: 6px 12px;
+      border-radius: 16px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all var(--duration-fast);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .plan-action-btn.btn-connect {
+      background: var(--accent);
       color: #ffffff;
+    }
+
+    .plan-action-btn.btn-connect:hover {
+      background: var(--accent-hover);
+      transform: scale(1.02);
+    }
+
+    .plan-action-btn.btn-switch {
+      background: var(--surface);
+      color: var(--fg);
+      border: 1px solid var(--border);
+    }
+
+    .plan-action-btn.btn-switch:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .plan-action-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .sheet-security-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 12px;
+      background: var(--surface-secondary);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--fg-secondary);
+      line-height: 1.35;
+    }
+
+    .sheet-security-banner svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--fg-tertiary);
     }
   </style>
 </head>
 <body>
   <div class="app-container">
+    <!-- Subscriptions Sheet Modal (Apple Design) -->
+    <div id="subscriptions-modal" class="sheet-modal-backdrop" aria-hidden="true">
+      <div class="sheet-content">
+        <div class="sheet-grabber"></div>
+        <div class="sheet-header">
+          <div class="sheet-title-group">
+            <h2>Planos & Assinaturas</h2>
+            <p>Conecte o plano que você já assina para navegar com IA sem chaves de API.</p>
+          </div>
+          <button id="close-subscriptions-btn" class="icon-close-btn" title="Fechar" aria-label="Fechar">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div id="plans-container" class="plans-list">
+          <!-- Card 1: Google AI Pro -->
+          <div class="plan-card active" data-ia="agy">
+            <div class="plan-left">
+              <div class="plan-icon-wrap" title="Google AI Pro">
+                <svg class="official-brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="none">
+                  <path d="M12 2C12 7.523 7.523 12 2 12c4.477 0 10 4.477 10 10 0-5.523 4.477-10 10-10-5.523 0-10-4.477-10-10z" fill="url(#gemini-sparkle-icon)"/>
+                  <defs>
+                    <linearGradient id="gemini-sparkle-icon" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                      <stop stop-color="#4285F4"/>
+                      <stop offset="0.35" stop-color="#9B72CB"/>
+                      <stop offset="0.7" stop-color="#D96570"/>
+                      <stop offset="1" stop-color="#1FA463"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <div class="plan-details">
+                <div class="plan-name-row">
+                  <span class="plan-name">Google AI Pro</span>
+                  <span class="plan-badge-active">● Ativo</span>
+                </div>
+                <div class="plan-sub">Gemini Advanced & Google One AI</div>
+              </div>
+            </div>
+            <button class="plan-action-btn btn-switch" data-action="select" data-ia="agy" disabled>Ativo</button>
+          </div>
+
+          <!-- Card 2: ChatGPT Plus / Pro -->
+          <div class="plan-card" data-ia="codex">
+            <div class="plan-left">
+              <div class="plan-icon-wrap" title="ChatGPT Plus / Pro">
+                <svg class="official-brand-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                  <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.6667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813v6.7227zm1.145-2.0728l3.056-1.7616 3.056 1.7616v3.5232l-3.056 1.7616-3.056-1.7616z"/>
+                </svg>
+              </div>
+              <div class="plan-details">
+                <div class="plan-name-row">
+                  <span class="plan-name">ChatGPT Plus / Pro</span>
+                </div>
+                <div class="plan-sub">OpenAI ChatGPT Subscription</div>
+              </div>
+            </div>
+            <button class="plan-action-btn btn-switch" data-action="select" data-ia="codex">Usar plano</button>
+          </div>
+
+          <!-- Card 3: Claude Pro -->
+          <div class="plan-card" data-ia="claude">
+            <div class="plan-left">
+              <div class="plan-icon-wrap" title="Claude Pro">
+                <svg class="official-brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="#D97757">
+                  <path d="M13.5 2C13.5 1.17157 12.8284 0.5 12 0.5C11.1716 0.5 10.5 1.17157 10.5 2V5.5C10.5 6.32843 11.1716 7 12 7C12.8284 7 13.5 6.32843 13.5 5.5V2Z"/>
+                  <path d="M13.5 18.5C13.5 17.6716 12.8284 17 12 17C11.1716 17 10.5 17.6716 10.5 18.5V22C10.5 22.8284 11.1716 23.5 12 23.5C12.8284 23.5 13.5 22.8284 13.5 22V18.5Z"/>
+                  <path d="M22 10.5C22.8284 10.5 23.5 11.1716 23.5 12C23.5 12.8284 22.8284 13.5 22 13.5H18.5C17.6716 13.5 17 12.8284 17 12C17 11.1716 17.6716 10.5 18.5 10.5H22Z"/>
+                  <path d="M5.5 10.5C6.32843 10.5 7 11.1716 7 12C7 12.8284 6.32843 13.5 5.5 13.5H2C1.17157 13.5 0.5 12.8284 0.5 12C0.5 11.1716 1.17157 10.5 2 10.5H5.5Z"/>
+                  <path d="M18.8284 3.75736C18.2426 3.17157 17.2929 3.17157 16.7071 3.75736C16.1213 4.34315 16.1213 5.29289 16.7071 5.87868L19.182 8.35355C19.7678 8.93934 20.7175 8.93934 21.3033 8.35355C21.8891 7.76777 21.8891 6.81802 21.3033 6.23223L18.8284 3.75736Z"/>
+                  <path d="M7.29289 15.2929C6.70711 14.7071 5.75736 14.7071 5.17157 15.2929C4.58579 15.8787 4.58579 16.8284 5.17157 17.4142L7.64645 19.8891C8.23223 20.4749 9.18198 20.4749 9.76777 19.8891C10.3536 19.3033 10.3536 18.3536 9.76777 17.7678L7.29289 15.2929Z"/>
+                  <path d="M16.7071 18.1213C17.2929 18.7071 18.2426 18.7071 18.8284 18.1213L21.3033 15.6464C21.8891 15.0607 21.8891 14.1109 21.3033 13.5251C20.7175 12.9393 19.7678 12.9393 19.182 13.5251L16.7071 16C16.1213 16.5858 16.1213 17.5355 16.7071 18.1213Z"/>
+                  <path d="M5.17157 6.58579C5.75736 7.17157 6.70711 7.17157 7.29289 6.58579C7.87868 6 7.87868 5.05025 7.29289 4.46447L4.81799 1.98959C4.23221 1.40381 3.28246 1.40381 2.69667 1.98959C2.11089 2.57538 2.11089 3.52513 2.69667 4.11091L5.17157 6.58579Z"/>
+                </svg>
+              </div>
+              <div class="plan-details">
+                <div class="plan-name-row">
+                  <span class="plan-name">Claude Pro</span>
+                </div>
+                <div class="plan-sub">Anthropic Claude Pro Subscription</div>
+              </div>
+            </div>
+            <button class="plan-action-btn btn-switch" data-action="select" data-ia="claude">Usar plano</button>
+          </div>
+        </div>
+
+        <div class="sheet-security-banner">
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clip-rule="evenodd"/>
+          </svg>
+          <span>Login oficial direto pelo navegador. Zero chaves de API, com sua própria assinatura.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Drop Overlay -->
     <div id="drop-overlay" class="drop-overlay">
       <div class="drop-modal">
@@ -982,6 +1340,14 @@
       </div>
 
       <div class="header-actions">
+        <button id="btn-subscriptions" class="subscription-pill-btn" title="Planos & Assinaturas Conectadas" aria-label="Gerenciar assinaturas de IA">
+          <span class="sub-dot active"></span>
+          <span id="active-subscription-name">Google AI Pro</span>
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
         <button id="btn-limpar" class="icon-btn" title="Nova conversa / Limpar chat" aria-label="Limpar conversa">
           <svg viewBox="0 0 16 16" fill="currentColor">
             <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z" clip-rule="evenodd"/>

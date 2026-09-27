@@ -69,7 +69,39 @@ export type TelemetriaBlueprint = {
   blueprint: import('./blueprint').SiteBlueprint;
 };
 
-export type MensagemExtensao = Pedir | RespostaUsuario | TelemetriaBlueprint;
+export type ItemAssinatura = {
+  ia: Ia;
+  nome: string; // "Google AI Pro", "ChatGPT Plus / Pro", "Claude Pro"
+  subtitulo: string;
+  instalado: boolean;
+  conectado: boolean;
+  ativo: boolean;
+};
+
+// extensão -> ponte: consulta status das assinaturas
+export type ConsultarAssinaturas = {
+  tipo: 'consultar_assinaturas';
+};
+
+// extensão -> ponte: disparar login oficial de uma assinatura
+export type ConectarAssinatura = {
+  tipo: 'conectar_assinatura';
+  ia: Ia;
+};
+
+// extensão -> ponte: definir assinatura preferencial ativa
+export type AtivarAssinatura = {
+  tipo: 'ativar_assinatura';
+  ia: Ia;
+};
+
+export type MensagemExtensao =
+  | Pedir
+  | RespostaUsuario
+  | TelemetriaBlueprint
+  | ConsultarAssinaturas
+  | ConectarAssinatura
+  | AtivarAssinatura;
 
 // Papéis no pipeline multiagente concorrente
 export type PapelAgente = 'scout' | 'synthesizer' | 'geral';
@@ -85,6 +117,7 @@ export type Evento =
       campos?: string[];
       opcoes?: string[];
     }
-  | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string };
+  | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string }
+  | { tipo: 'status_assinaturas'; assinaturas: ItemAssinatura[]; iaAtiva: Ia };
 
 export * from './blueprint';
