@@ -22,6 +22,17 @@ const closeSubscriptionsBtn = document.getElementById('close-subscriptions-btn')
 const activeSubscriptionName = document.getElementById('active-subscription-name')!;
 const plansContainer = document.getElementById('plans-container')!;
 
+// ── Termos Modal & Consent Refs ──
+const btnTermos = document.getElementById('btn-termos');
+const termosModal = document.getElementById('termos-modal');
+const closeTermosBtn = document.getElementById('close-termos-btn');
+const btnConcordarModal = document.getElementById('btn-concordar-modal');
+const linkTermosFooter = document.getElementById('link-termos-footer');
+const linkTermosBanner = document.getElementById('link-termos-banner');
+const firstRunBanner = document.getElementById('first-run-banner');
+const btnConcordarTermos = document.getElementById('btn-concordar-termos');
+
+
 let pedidoAtual: string | undefined;
 let cardAtivo: HTMLElement | null = null;
 let arquivosAnexados: ArquivoAnexo[] = [];
@@ -578,10 +589,50 @@ subscriptionsModal.addEventListener('click', (ev) => {
 });
 
 window.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape' && subscriptionsModal.classList.contains('open')) {
-    subscriptionsModal.classList.remove('open');
+  if (ev.key === 'Escape') {
+    if (subscriptionsModal.classList.contains('open')) subscriptionsModal.classList.remove('open');
+    if (termosModal && termosModal.classList.contains('open')) fecharTermos();
   }
 });
+
+// ── Termos Modal Interactions & Consent Gate ──
+function abrirTermos() {
+  if (!termosModal) return;
+  termosModal.classList.add('open');
+  termosModal.setAttribute('aria-hidden', 'false');
+}
+
+function fecharTermos() {
+  if (!termosModal) return;
+  termosModal.classList.remove('open');
+  termosModal.setAttribute('aria-hidden', 'true');
+}
+
+function concordarTermos() {
+  localStorage.setItem('browser_termos_aceitos_v2', 'true');
+  if (firstRunBanner) firstRunBanner.style.display = 'none';
+  fecharTermos();
+  showToast('Termos aceitos. Uso assistivo liberado.');
+}
+
+if (btnTermos) btnTermos.addEventListener('click', abrirTermos);
+if (closeTermosBtn) closeTermosBtn.addEventListener('click', fecharTermos);
+if (linkTermosFooter) linkTermosFooter.addEventListener('click', abrirTermos);
+if (linkTermosBanner) linkTermosBanner.addEventListener('click', abrirTermos);
+if (btnConcordarModal) btnConcordarModal.addEventListener('click', concordarTermos);
+if (btnConcordarTermos) btnConcordarTermos.addEventListener('click', concordarTermos);
+
+if (termosModal) {
+  termosModal.addEventListener('click', (ev) => {
+    if (ev.target === termosModal) fecharTermos();
+  });
+}
+
+// Banner de consentimento no primeiro uso
+if (!localStorage.getItem('browser_termos_aceitos_v2') && firstRunBanner) {
+  firstRunBanner.style.display = 'block';
+}
+
 
 function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
   const ativa = assinaturas.find((a) => a.ia === iaAtiva) || assinaturas.find((a) => a.ativo);

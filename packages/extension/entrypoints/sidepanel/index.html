@@ -1213,6 +1213,113 @@
       flex-shrink: 0;
       color: var(--fg-tertiary);
     }
+
+    /* ── Termos Modal & Legal Protection ── */
+    .termos-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 380px;
+      overflow-y: auto;
+      margin-bottom: 12px;
+      padding-right: 2px;
+    }
+
+    .termos-card-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--surface-secondary);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+    }
+
+    .termos-card-item strong {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 3px;
+    }
+
+    .termos-card-item p {
+      font-size: 11.5px;
+      color: var(--fg-secondary);
+      line-height: 1.4;
+      margin: 0;
+    }
+
+    .termos-item-icon {
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .legal-micro-footer {
+      text-align: center;
+      font-size: 10.5px;
+      color: var(--fg-tertiary);
+      padding: 6px 12px 2px;
+      line-height: 1.35;
+    }
+
+    .legal-micro-footer button.link-btn,
+    .first-run-banner button.link-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: inherit;
+      padding: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      display: inline;
+    }
+
+    .legal-micro-footer button.link-btn:hover,
+    .first-run-banner button.link-btn:hover {
+      color: var(--accent-hover);
+    }
+
+    .first-run-banner {
+      background: var(--surface-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 14px;
+      font-size: 11.5px;
+      color: var(--fg-secondary);
+      animation: banner-in var(--duration-normal) var(--ease-smooth);
+    }
+
+    @keyframes banner-in {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .first-run-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      line-height: 1.35;
+    }
+
+    .btn-agree-sm {
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 12px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background var(--duration-fast), transform var(--duration-fast);
+    }
+
+    .btn-agree-sm:hover {
+      background: var(--accent-hover);
+      transform: scale(1.02);
+    }
   </style>
 </head>
 <body>
@@ -1314,6 +1421,59 @@
       </div>
     </div>
 
+    <!-- Termos Sheet Modal (Apple Design) -->
+    <div id="termos-modal" class="sheet-modal-backdrop" aria-hidden="true">
+      <div class="sheet-content">
+        <div class="sheet-grabber"></div>
+        <div class="sheet-header">
+          <div class="sheet-title-group">
+            <h2>Termos de Uso & Proteção</h2>
+            <p>Uso assistivo gratuito • Limitação de responsabilidade</p>
+          </div>
+          <button id="close-termos-btn" class="icon-close-btn" title="Fechar" aria-label="Fechar">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="termos-body">
+          <div class="termos-card-item">
+            <span class="termos-item-icon">⚖️</span>
+            <div>
+              <strong>Software Gratuito (Art. 392 do Código Civil)</strong>
+              <p>O bRowser é cedido de forma 100% gratuita. Em contratos benéficos, a responsabilidade é restrita exclusivamente a dolo comprovado, não havendo dever de indenizar por falha técnica, erro leve ou indisponibilidade.</p>
+            </div>
+          </div>
+          <div class="termos-card-item">
+            <span class="termos-item-icon">✋</span>
+            <div>
+              <strong>Conferência Humana Obrigatória</strong>
+              <p>O robô nunca clica de forma autônoma em botões de envio final ou pagamento. A revisão e conferência visual de cada campo antes da submissão é dever exclusivo e indelegável do usuário.</p>
+            </div>
+          </div>
+          <div class="termos-card-item">
+            <span class="termos-item-icon">📑</span>
+            <div>
+              <strong>Inexistência de Assessoria Fiscal ou Bancária</strong>
+              <p>O bRowser não é consultoria contábil ou fiscal. Preenchimentos perante a Receita Federal, bancos ou órgãos públicos são de inteira responsabilidade do titular.</p>
+            </div>
+          </div>
+          <div class="termos-card-item">
+            <span class="termos-item-icon">🔒</span>
+            <div>
+              <strong>Garantia Zero PII & Privacidade</strong>
+              <p>Nenhum valor digitado, senha ou número de cartão é gravado ou compartilhado. Os mapas de sites aprendidos contêm apenas a estrutura anônima do HTML.</p>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 14px; display: flex; gap: 8px;">
+          <button id="btn-concordar-modal" class="plan-action-btn btn-connect" style="flex: 1; padding: 10px; border-radius: 10px; font-size: 13px;">Concordo com os Termos</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Drop Overlay -->
     <div id="drop-overlay" class="drop-overlay">
       <div class="drop-modal">
@@ -1348,6 +1508,12 @@
           </svg>
         </button>
 
+        <button id="btn-termos" class="icon-btn" title="Termos de Uso e Proteção" aria-label="Termos de Uso">
+          <svg viewBox="0 0 16 16" fill="currentColor">
+            <path fill-rule="evenodd" d="M8 1.027a.75.75 0 0 0-.26.046l-5.5 2A.75.75 0 0 0 1.75 3.8v4.7a8.25 8.25 0 0 0 5.86 7.92.75.75 0 0 0 .78 0 8.25 8.25 0 0 0 5.86-7.92V3.8a.75.75 0 0 0-.49-.727l-5.5-2A.75.75 0 0 0 8 1.027Zm0 1.57 4.75 1.727v4.203c0 3.328-1.927 6.326-4.75 7.42-2.823-1.094-4.75-4.092-4.75-7.42V4.324L8 2.597Zm-.75 4.153a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5Zm.75 6.25a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+
         <button id="btn-limpar" class="icon-btn" title="Nova conversa / Limpar chat" aria-label="Limpar conversa">
           <svg viewBox="0 0 16 16" fill="currentColor">
             <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.712Z" clip-rule="evenodd"/>
@@ -1355,6 +1521,14 @@
         </button>
       </div>
     </header>
+
+    <!-- First-Run Legal Consent Banner -->
+    <div id="first-run-banner" class="first-run-banner" style="display:none;">
+      <div class="first-run-content">
+        <span>🛡️ <strong>Uso Gratuito &amp; Assistivo:</strong> O preenchimento por IA requer sua conferência prévia. Ao utilizar, você aceita os <button type="button" id="link-termos-banner" class="link-btn">Termos de Uso</button>.</span>
+        <button type="button" id="btn-concordar-termos" class="btn-agree-sm">Entendi</button>
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast-container" role="alert" aria-live="assertive">
@@ -1415,6 +1589,9 @@
           </div>
         </div>
       </form>
+      <div class="legal-micro-footer">
+        O bRowser é gratuito e assistivo. <button type="button" id="link-termos-footer" class="link-btn">Termos &amp; Privacidade</button> • Revise sempre antes de enviar.
+      </div>
     </footer>
   </div>
 

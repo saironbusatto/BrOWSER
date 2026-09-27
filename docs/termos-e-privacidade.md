@@ -187,7 +187,20 @@ NA MÁXIMA EXTENSÃO PERMITIDA PELA LEI APLICÁVEL, EM NENHUM CASO OS CRIADORES,
 * QUAISQUER DANOS INDIRETOS, INCIDENTAIS, ESPECIAIS, PUNITIVOS OU CONSEQUENCIAIS,
 QUALQUER QUE SEJA A TEORIA DE RESPONSABILIDADE (CONTRATO, ILÍCITO CIVIL, NEGLIGÊNCIA OU OUTRA), MESMO QUE ADVERTIDOS DA POSSIBILIDADE DE TAIS DANOS.
 
-CASO QUALQUER JURISDIÇÃO NÃO PERMITA A EXCLUSÃO INTEGRAL DE RESPONSABILIDADE, A RESPONSABILIDADE TOTAL CUMULADA DOS CRIADORES DO BROWSER FICARÁ ESTRITAMENTE LIMITADA AO VALOR EFETIVAMENTE PAGO PELO USUÁRIO AOS DESENVOLVEDORES DIRETOS DO SOFTWARE PELO USO DO BROWSER NOS ÚLTIMOS 12 (DOZE) MESES ANTERIORES AO EVENTO DANOSO OU AO VALOR DE R$ 100,00 (CEM REAIS BRASILEIROS), O QUE FOR MENOR.
+### 10.4. Gratuidade Total, Natureza Benévola e Blindagem sob o Art. 392 do Código Civil
+1. **Natureza Jurídica de Contrato Benéfico:** O bRowser é disponibilizado a título estritamente gratuito, benévolo e sem qualquer contraprestação financeira direta ou indireta, visando única e exclusivamente o fomento à tecnologia e a facilitação comunitária da navegação assistida;
+2. **Aplicação do Artigo 392 do Código Civil Brasileiro:** Conforme expressamente determinado pelo Art. 392 da Lei Federal nº 10.406/2002 ("Nos contratos benéficos, responde por simples culpa o contratante a quem o contrato aproveite, e por dolo aquele a quem não favoreça"), os desenvolvedores e mantenedores do bRowser **NÃO RESPONDEM POR CULPA SIMPLES, CULPA LEVE, ERRO TÉCNICO, FALHA DE PROGRAMAÇÃO OU NEGLIGÊNCIA**, limitando-se eventual responsabilidade estritamente a hipóteses de **DOLO COMPROVADO** (intenção manifesta e deliberada de causar prejuízo);
+3. **Inexistência de Relação de Consumo Comercial:** Uma vez que o bRowser é oferecido de forma 100% gratuita, sem taxa de adesão, sem exibição de anúncios publicitários e sem comercialização de dados pessoais, não se aplica à relação o Código de Defesa do Consumidor (CDC) para fins de inversão do ônus da prova ou imputação de responsabilidade objetiva;
+4. **Teto Indenizatório Zero (R$ 0,00):** Em razão da gratuidade do Software e do princípio de que quem concede uma liberalidade não pode ser financeiramente punido por auxiliar o próximo, o valor máximo de qualquer eventual ressarcimento, indenização ou liquidação por danos materiais ou imateriais fica irrevogavelmente fixado no montante de **R$ 0,00 (Zero Reais)**.
+
+### 10.5. Inexistência de Consultoria Contábil, Fiscal, Financeira ou Jurídica
+1. O bRowser é uma ferramenta técnica de automação de entrada e transcrição de dados e **não presta serviços de consultoria contábil, tributária, advocatícia, financeira ou médica**;
+2. Qualquer preenchimento de declarações perante órgãos fiscais (ex.: Receita Federal do Brasil, Secretarias de Estado de Fazenda - SEFAZ, prefeituras municipais, portais de emissão de NF-e/NFS-e, guias DARF, DAS e eSocial) deve ser submetido à revisão criteriosa e chancela de um profissional contábil ou responsável habilitado;
+3. O Usuário é o único responsável pela veracidade, conformidade tributária e exatidão das informações transmitidas aos entes públicos ou privados.
+
+### 10.6. Isenção sobre Contas e Políticas de Terceiros
+Os desenvolvedores do bRowser não são responsáveis por qualquer cobrança, bloqueio cautelar, cancelamento de plano, aplicação de limites de uso (*rate limits*) ou suspensão de conta implementada pelos Provedores Terceirizados de IA (Google, OpenAI, Anthropic) contra o Usuário.
+
 
 ---
 
