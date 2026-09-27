@@ -1,6 +1,6 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { IAS, type ArquivoAnexo, type Ia, type ItemAssinatura, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { formatarContextoArquivos } from './documentos';
 import { formatarBlueprintParaIa } from './blueprints';
@@ -17,6 +17,8 @@ export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
   return `Você é o bRowser AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
 Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario, consultar_blueprint).
+Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comandos de shell nem acesso a arquivos do computador: qualquer tentativa é bloqueada e encerra o atendimento. Tudo o que precisa (incluindo anexos) já está neste texto.
+
 
 Instrução ou mensagem do usuário:
 "${pedido}"
@@ -75,7 +77,10 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
         conteudo = `Leia o arquivo ${ARQUIVO_PEDIDO} neste diretório: ele contém o pedido completo do usuário e as regras. Siga-o à risca.`;
       }
       return {
-        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '--dangerously-skip-permissions', '-p', ''],
+        // Sem --dangerously-skip-permissions: só mcp(browser/*) é liberado (garantirPermissaoAgy);
+        // terminal e arquivos são negados. Com ele, o agy chegou a rodar `find /` e ler a config
+        // que guarda o token da ponte para "achar um anexo".
+        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '-p', ''],
         stdin: `${JSON.stringify({ event: 'user', message: { content: conteudo } })}\n`,
         manterStdinAberto: true, // fechar antes do "result" encerra a sessão sem chamar o modelo
       };
@@ -98,6 +103,24 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
           '--allowedTools', TOOLS.map((t) => `mcp__browser__${t}`).join(',')],
         stdin: prompt,
       };
+  }
+}
+
+// Libera no agy só as ferramentas do nosso MCP (aditivo: não mexe nas outras regras do usuário).
+const AGY_SETTINGS = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
+const REGRA_MCP = 'mcp(browser/*)';
+
+function garantirPermissaoAgy(): string | undefined {
+  try {
+    const cfg = existsSync(AGY_SETTINGS) ? JSON.parse(readFileSync(AGY_SETTINGS, 'utf8')) : {};
+    const allow: string[] = cfg.permissions?.allow ?? [];
+    if (allow.includes(REGRA_MCP)) return undefined;
+    const novo = { ...cfg, permissions: { ...cfg.permissions, allow: [...allow, REGRA_MCP] } };
+    mkdirSync(dirname(AGY_SETTINGS), { recursive: true });
+    writeFileSync(AGY_SETTINGS, JSON.stringify(novo, null, 2));
+    return undefined;
+  } catch (e) {
+    return `não consegui liberar o MCP no agy (${AGY_SETTINGS}): ${e}`;
   }
 }
 
@@ -133,6 +156,8 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
     // agy não aceita MCP por sessão: grava (ou atualiza) o servidor "browser" na config global.
     const add = Bun.spawnSync(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url], { env });
     if (add.exitCode !== 0) return { ok: false, ia, texto: `agy mcp add falhou: ${add.stderr}` };
+    const erro = garantirPermissaoAgy();
+    if (erro) return { ok: false, ia, texto: erro };
   }
 
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário

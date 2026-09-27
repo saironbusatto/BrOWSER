@@ -275,8 +275,11 @@ async function preencher(ref: number, valor: string) {
     }`, [valor]);
   } else if (tipo === 'checkbox' || tipo === 'radio') {
     const querido = !/^(false|não|nao|0|off|desmarcar)$/i.test(valor.trim());
-    const atual = await noElemento<boolean>(ref, 'function(){return this.checked}');
-    if (atual !== querido) await clicar(ref);
+    const marcado = () => noElemento<boolean>(ref, 'function(){return this.checked}');
+    if ((await marcado()) !== querido) await clicar(ref);
+    // O clique por coordenada falha ~1 em 8 quando o layout ainda está mudando (iframe/React
+    // carregando): confere e, se não pegou, usa o click() do próprio elemento.
+    if ((await marcado()) !== querido) await noElemento(ref, 'function(){this.click()}');
   } else if (['date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(tipo)) {
     // Inputs com widget nativo não aceitam Input.insertText: setter nativo + eventos.
     await noElemento(ref, `function(v){
