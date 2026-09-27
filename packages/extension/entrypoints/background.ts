@@ -1,5 +1,51 @@
 import { HOST_NAME, type Campo, type Comandos, type Evento, type MensagemExtensao, type Pedido, type Pedir, type Resposta, type RespostaUsuario } from '@browser/shared';
 import { iniciarMatrixOverlay, gerarScriptUpdate, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
+import { clicarDom, lerCamposDom, preencherDom, type LeituraDom } from '../utils/dom-fallback';
+
+// ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
+// refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
+const REF_BASE_DOM = 1_000_000;
+const BLOQUEIO_DEBUGGER = /cannot access|cannot attach|another debugger|already attached|not allowed|chrome-extension:\/\//i;
+const abasSemDebugger = new Set<number>();
+let refsDom = new Map<number, { frameId: number; refLocal: number }>();
+
+async function lerCamposComPlanoB() {
+  const tabId = await abaAlvo();
+  if (!abasSemDebugger.has(tabId)) {
+    try {
+      return await lerCampos();
+    } catch (e) {
+      if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
+      abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
+    }
+  }
+  const resultados = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: lerCamposDom });
+  refsDom = new Map();
+  const campos: Campo[] = [];
+  let principal: LeituraDom | undefined;
+  for (const { frameId, result } of resultados) {
+    const leitura = result as LeituraDom | undefined;
+    if (!leitura) continue;
+    if (frameId === 0) principal = leitura;
+    for (const c of leitura.campos) {
+      const ref = REF_BASE_DOM + refsDom.size + 1;
+      refsDom.set(ref, { frameId, refLocal: c.ref });
+      campos.push({ ...c, ref });
+    }
+  }
+  return { url: principal?.url ?? '', titulo: principal?.titulo ?? '', campos, modo: 'dom' };
+}
+
+async function naPaginaDom<A extends unknown[], R>(ref: number, func: (refLocal: number, ...args: A) => R, args: A): Promise<R> {
+  const alvoRef = refsDom.get(ref);
+  if (!alvoRef) throw new Error(`ref ${ref} desconhecida: chame ler_campos de novo`);
+  const [r] = await chrome.scripting.executeScript({
+    target: { tabId: await abaAlvo(), frameIds: [alvoRef.frameId] },
+    func: func as (...a: unknown[]) => R,
+    args: [alvoRef.refLocal, ...args],
+  });
+  return r?.result as R;
+}
 
 // Papéis da árvore de acessibilidade que o LLM pode preencher ou clicar.
 const PAPEIS = new Set([
@@ -154,11 +200,12 @@ function conectar() {
 async function executar(p: Pedido): Promise<unknown> {
   switch (p.cmd) {
     case 'abrir': return abrir((p.args as Comandos['abrir']['args']).url);
-    case 'ler_campos': return lerCampos();
-    case 'preencher': { const a = p.args as Comandos['preencher']['args']; return preencher(a.ref, a.valor); }
-    case 'clicar': return clicar((p.args as Comandos['clicar']['args']).ref);
+    case 'ler_campos': return lerCamposComPlanoB();
+    case 'preencher': { const a = p.args as Comandos['preencher']['args']; return a.ref >= REF_BASE_DOM ? naPaginaDom(a.ref, preencherDom, [a.valor]) : preencher(a.ref, a.valor); }
+    case 'clicar': { const ref = (p.args as Comandos['clicar']['args']).ref; return ref >= REF_BASE_DOM ? naPaginaDom(ref, clicarDom, []) : clicar(ref); }
     case 'avaliar': return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar': setTimeout(() => chrome.runtime.reload(), 100); return { ok: true };
+    case 'forcar_modo_dom': abasSemDebugger.add(await abaAlvo()); return { ok: true };
     default: throw new Error(`comando desconhecido: ${p.cmd}`);
   }
 }
@@ -275,8 +322,11 @@ async function preencher(ref: number, valor: string) {
     }`, [valor]);
   } else if (tipo === 'checkbox' || tipo === 'radio') {
     const querido = !/^(false|não|nao|0|off|desmarcar)$/i.test(valor.trim());
-    const atual = await noElemento<boolean>(ref, 'function(){return this.checked}');
-    if (atual !== querido) await clicar(ref);
+    const marcado = () => noElemento<boolean>(ref, 'function(){return this.checked}');
+    if ((await marcado()) !== querido) await clicar(ref);
+    // O clique por coordenada falha ~1 em 8 quando o layout ainda está mudando (iframe/React
+    // carregando): confere e, se não pegou, usa o click() do próprio elemento.
+    if ((await marcado()) !== querido) await noElemento(ref, 'function(){this.click()}');
   } else if (['date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(tipo)) {
     // Inputs com widget nativo não aceitam Input.insertText: setter nativo + eventos.
     await noElemento(ref, `function(v){

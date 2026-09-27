@@ -1,3 +1,5 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ArquivoAnexo } from '@browser/shared';
 
 export type DadosExtraidos = {
@@ -139,11 +141,40 @@ function achatarObjeto(obj: any, prefixo: string, saida: Record<string, string>)
   }
 }
 
+// O prompt agora vai por stdin/arquivo (sem limite de linha de comando): texto de anexo cabe
+// inteiro até aqui. Antes era 1.500, e dado depois disso sumia.
+const MAX_TEXTO_ANEXO = 60_000;
+const DIR_ANEXOS = 'anexos';
+
+/**
+ * Grava anexos binários (PDF, imagem) no diretório de trabalho da IA para ela ler direto
+ * (Gemini e Claude leem PDF/imagem nativamente). Retorna nome original -> caminho relativo.
+ */
+export function salvarAnexosBinarios(dirTrabalho: string, arquivos?: ArquivoAnexo[]): Record<string, string> {
+  const caminhos: Record<string, string> = {};
+  const binarios = (arquivos ?? []).filter((a) => a.dadosBase64 && !a.conteudoTexto);
+  if (!binarios.length) return caminhos;
+  mkdirSync(join(dirTrabalho, DIR_ANEXOS), { recursive: true, mode: 0o700 });
+  binarios.forEach((a, i) => {
+    // Nome vem do usuário/página: nada de "../" nem separadores de caminho.
+    const seguro = a.nome.replace(/[^\w.\- ]+/g, '_').replace(/\.{2,}/g, '_').replace(/^\.+/, '') || 'anexo';
+    const relativo = `${DIR_ANEXOS}/${i}-${seguro}`;
+    const base64 = a.dadosBase64!.replace(/^data:[^,]*,/, '');
+    writeFileSync(join(dirTrabalho, relativo), Buffer.from(base64, 'base64'), { mode: 0o600 });
+    caminhos[a.nome] = relativo;
+  });
+  return caminhos;
+}
+
+export function apagarAnexos(dirTrabalho: string): void {
+  rmSync(join(dirTrabalho, DIR_ANEXOS), { recursive: true, force: true });
+}
+
 /**
  * Formata os dados de todos os arquivos anexados em uma seção Markdown rica
  * pronta para ser consumida diretamente pela IA.
  */
-export function formatarContextoArquivos(arquivos?: ArquivoAnexo[]): string {
+export function formatarContextoArquivos(arquivos?: ArquivoAnexo[], caminhos: Record<string, string> = {}): string {
   if (!arquivos || arquivos.length === 0) return '';
 
   const secoes = arquivos.map(arq => {
@@ -152,14 +183,17 @@ export function formatarContextoArquivos(arquivos?: ArquivoAnexo[]): string {
     texto += `*Status da extração:* ${extraido.resumo}\n`;
 
     const chaves = Object.keys(extraido.camposIdentificados);
-    if (chaves.length > 0) {
+    const caminho = caminhos[arq.nome];
+    if (caminho) {
+      texto += `\n**Leia o arquivo \`${caminho}\` (no diretório de trabalho) para extrair os dados.**\n`;
+    } else if (chaves.length > 0) {
       texto += `\n**Dados estruturados extraídos automaticamente:**\n`;
       for (const k of chaves) {
         texto += `- **${k}**: ${extraido.camposIdentificados[k]}\n`;
       }
     } else if (arq.conteudoTexto) {
-      const amostra = arq.conteudoTexto.slice(0, 1500);
-      texto += `\n**Conteúdo textual:**\n\`\`\`\n${amostra}${arq.conteudoTexto.length > 1500 ? '\n... [conteúdo truncado]' : ''}\n\`\`\`\n`;
+      const amostra = arq.conteudoTexto.slice(0, MAX_TEXTO_ANEXO);
+      texto += `\n**Conteúdo textual:**\n\`\`\`\n${amostra}${arq.conteudoTexto.length > MAX_TEXTO_ANEXO ? '\n... [conteúdo truncado]' : ''}\n\`\`\`\n`;
     }
 
     return texto;

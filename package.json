@@ -8,7 +8,7 @@
   "scripts": {
     "form": "bun run --cwd fixtures/form dev",
     "spike": "bun scripts/spike.ts",
-    "typecheck": "tsc -p tsconfig.json && tsc -p packages/extension",
+    "typecheck": "bun run --cwd packages/extension tipos && tsc -p tsconfig.json && tsc -p packages/extension",
     "test": "bun test"
   },
   "dependencies": {

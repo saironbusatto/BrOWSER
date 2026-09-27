@@ -56,8 +56,31 @@ export function carregarBlueprintLocal(dominio: string): SiteBlueprint | null {
  * Busca o blueprint no repositório público do GitHub (Raw / CDN).
  * Se encontrar, grava no cache local para acesso instantâneo futuro.
  */
+// Só pede ao GitHub o blueprint de um domínio que esteja no índice público. Sem isso, cada site
+// novo virava uma requisição `.../{domínio}.json`, e o GitHub ficava sabendo onde o usuário navega.
+const INDICE_CACHE = join(CACHE_DIR, '_indice.json');
+const INDICE_VALIDADE_MS = 24 * 60 * 60_000;
+
+async function dominiosPublicados(): Promise<string[]> {
+  try {
+    const cache = JSON.parse(readFileSync(INDICE_CACHE, 'utf8')) as { em: number; dominios: string[] };
+    if (Date.now() - cache.em < INDICE_VALIDADE_MS) return cache.dominios;
+  } catch {}
+  try {
+    const res = await fetch(`${GITHUB_RAW_BASE}/index.json`, { signal: AbortSignal.timeout(TIMEOUT_FETCH_MS) });
+    if (!res.ok) return [];
+    const dominios = ((await res.json()) as { dominios?: unknown }).dominios;
+    if (!Array.isArray(dominios)) return [];
+    writeFileSync(INDICE_CACHE, JSON.stringify({ em: Date.now(), dominios }), { mode: 0o600 });
+    return dominios as string[];
+  } catch {
+    return [];
+  }
+}
+
 export async function buscarBlueprintRemoto(dominio: string): Promise<SiteBlueprint | null> {
   const norm = normalizarDominio(dominio);
+  if (!(await dominiosPublicados()).includes(norm)) return null;
   const url = `${GITHUB_RAW_BASE}/${norm}.json`;
 
   try {

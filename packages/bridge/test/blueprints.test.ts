@@ -191,3 +191,14 @@ describe('Módulo de Blueprints de Sites (Memória Persistente Comunitária)', (
     expect(carregado?.campos.length).toBe(2);
   });
 });
+
+describe('Índice público de blueprints', () => {
+  it('blueprints/index.json lista exatamente os arquivos da pasta (senão o domínio nunca é buscado)', () => {
+    const { readdirSync, readFileSync } = require('node:fs') as typeof import('node:fs');
+    const { join } = require('node:path') as typeof import('node:path');
+    const pasta = join(import.meta.dir, '../../../blueprints');
+    const arquivos = readdirSync(pasta).filter((f) => f.endsWith('.json') && f !== 'index.json').map((f) => f.replace(/\.json$/, '')).sort();
+    const indice = (JSON.parse(readFileSync(join(pasta, 'index.json'), 'utf8')).dominios as string[]).slice().sort();
+    expect(indice).toEqual(arquivos);
+  });
+});
