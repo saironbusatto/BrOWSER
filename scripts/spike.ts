@@ -46,6 +46,12 @@ const normalizar = (k: string, v: unknown) => (k === 'telefone' || k === 'cep' ?
 // ---- execução ----
 const servidor = await garantirFormulario();
 await controle('abrir', { url: FORM_URL });
+// O dev server do Bun às vezes fica preso num erro de bundle ("Failed to load bundled module"):
+// o campo React não aparece e o overlay de erro engole os cliques. Falhar aqui, com a causa.
+if (!(await controle('avaliar', { expr: '!!document.querySelector("[name=telefone]")' }))) {
+  console.error('formulário de teste quebrado (campo React não renderizou). Reinicie: fuser -k 5173/tcp; bun run form');
+  process.exit(1);
+}
 
 console.log(`▶ ${ia}: preenchendo…`);
 const inicio = performance.now();
