@@ -33,10 +33,17 @@ jobs:
         run: npm install -g @openai/codex
 
       - name: Registrar a ponte (bridge --install)
-        shell: bash
+        if: runner.os == 'Linux'
+        run: packages/bridge/dist/bridge --install
+
+      # No Windows, testa o instalador do usuário final (copia para %LOCALAPPDATA% e registra).
+      - name: Instalador (setup.ps1)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          EXE=packages/bridge/dist/bridge; [ "$RUNNER_OS" = "Windows" ] && EXE=packages/bridge/dist/bridge.exe
-          "$EXE" --install
+          Copy-Item packages/bridge/scripts/setup.ps1 packages/bridge/dist/
+          & packages/bridge/dist/setup.ps1 -SemIA
+          if (-not (Test-Path "$env:LOCALAPPDATA\bRowser\bridge.exe")) { throw 'bridge.exe não foi copiado' }
 
       - name: Conferir registro (Windows)
         if: runner.os == 'Windows'
