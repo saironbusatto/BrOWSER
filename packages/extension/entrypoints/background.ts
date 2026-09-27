@@ -9,6 +9,9 @@ const RECONEXAO_MS = 2000;
 
 let alvo: number | undefined; // aba em que a IA está trabalhando
 const anexadas = new Set<number>();
+// Comandos em fila: a IA pode chamar ferramentas em paralelo (o Claude faz isso), e
+// foco + seleção + digitação de dois campos ao mesmo tempo se misturam.
+let fila: Promise<unknown> = Promise.resolve();
 
 export default defineBackground(() => {
   conectar();
@@ -20,9 +23,12 @@ function conectar() {
   porta.onMessage.addListener(async (p: Pedido) => {
     let r: Resposta;
     try {
-      r = { id: p.id, ok: true, result: await executar(p) };
+      const vez = fila.then(() => executar(p));
+      fila = vez.catch(() => {});
+      r = { id: p.id, ok: true, result: await vez };
     } catch (e) {
-      r = { id: p.id, ok: false, error: e instanceof Error ? e.message : String(e) };
+      const aba = alvo === undefined ? 'nenhuma' : await chrome.tabs.get(alvo).then((t) => `${alvo} ${t.url}`, () => `${alvo} (fechada)`);
+      r = { id: p.id, ok: false, error: `${e instanceof Error ? e.message : String(e)} [aba alvo: ${aba}]` };
     }
     porta.postMessage(r);
   });
@@ -39,6 +45,7 @@ async function executar(p: Pedido): Promise<unknown> {
     case 'preencher': { const a = p.args as Comandos['preencher']['args']; return preencher(a.ref, a.valor); }
     case 'clicar': return clicar((p.args as Comandos['clicar']['args']).ref);
     case 'avaliar': return avaliar((p.args as Comandos['avaliar']['args']).expr);
+    case 'recarregar': setTimeout(() => chrome.runtime.reload(), 100); return { ok: true };
     default: throw new Error(`comando desconhecido: ${p.cmd}`);
   }
 }
@@ -84,8 +91,31 @@ async function noElemento<T>(ref: number, fn: string, args: unknown[] = []): Pro
   return r.result.value as T;
 }
 
+const WIDGETS = ['date', 'time', 'datetime-local', 'month', 'week'];
+
+// Peças internas do navegador (ex.: Dia/Mês/Ano de um input date) ficam em shadow root
+// "user-agent": são escondidas, e o input em si entra como um campo só.
+function varrerDom(root: any) {
+  const internos = new Set<number>();
+  const widgets: { ref: number; tipo: string }[] = [];
+  const andar = (n: any, interno: boolean) => {
+    if (interno) internos.add(n.backendNodeId);
+    if (n.nodeName === 'INPUT') {
+      const attrs: string[] = n.attributes ?? [];
+      const tipo = attrs[attrs.indexOf('type') + 1];
+      if (attrs.includes('type') && WIDGETS.includes(tipo)) widgets.push({ ref: n.backendNodeId, tipo });
+    }
+    n.children?.forEach((c: any) => andar(c, interno));
+    n.shadowRoots?.forEach((s: any) => andar(s, interno || s.shadowRootType === 'user-agent'));
+    if (n.contentDocument) andar(n.contentDocument, interno);
+  };
+  andar(root, false);
+  return { internos, widgets };
+}
+
 async function lerCampos() {
-  await cdp('DOM.getDocument', { depth: -1, pierce: true }); // habilita backendNodeIds dos iframes
+  const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true }); // pierce: inclui iframes
+  const { internos, widgets } = varrerDom(root);
   const { frameTree } = await cdp('Page.getFrameTree');
   const frames: string[] = [];
   const andar = (t: any) => { frames.push(t.frame.id); t.childFrames?.forEach(andar); };
@@ -97,7 +127,7 @@ async function lerCampos() {
     const { nodes } = await cdp('Accessibility.getFullAXTree', { frameId }).catch(() => ({ nodes: [] }));
     for (const n of nodes) {
       const papel = n.role?.value;
-      if (n.ignored || !PAPEIS.has(papel) || !n.backendDOMNodeId) continue;
+      if (n.ignored || !PAPEIS.has(papel) || !n.backendDOMNodeId || internos.has(n.backendDOMNodeId)) continue;
       const prop = (k: string) => n.properties?.find((p: any) => p.name === k)?.value?.value;
       const campo: Campo = { ref: n.backendDOMNodeId, papel, nome: n.name?.value ?? '' };
       if (n.value?.value !== undefined) campo.valor = String(n.value.value);
@@ -108,6 +138,12 @@ async function lerCampos() {
       }
       campos.push(campo);
     }
+  }
+  for (const w of widgets) {
+    if (campos.some((c) => c.ref === w.ref)) continue;
+    const info = await noElemento<{ nome: string; valor: string; obrigatorio: boolean }>(w.ref,
+      'function(){return {nome: (this.labels?.[0]?.innerText || this.getAttribute("aria-label") || this.name || "").trim(), valor: this.value, obrigatorio: this.required}}');
+    campos.push({ ref: w.ref, papel: w.tipo, nome: info.nome, valor: info.valor, ...(info.obrigatorio && { obrigatorio: true }) });
   }
   const { result } = await cdp('Runtime.evaluate', { expression: '({url: location.href, titulo: document.title})', returnByValue: true });
   return { ...result.value, campos };

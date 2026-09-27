@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": ["packages/*", "fixtures/*"],
   "scripts": {
-    "form": "bun run --cwd fixtures/form dev"
+    "form": "bun run --cwd fixtures/form dev",
+    "spike": "bun scripts/spike.ts"
   }
 }

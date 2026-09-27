@@ -19,6 +19,8 @@ export type Comandos = {
   clicar: { args: { ref: number }; result: { ok: true } };
   // Só para o runner do teste conferir o resultado; não é exposto no MCP.
   avaliar: { args: { expr: string }; result: unknown };
+  // Dev: recarrega a extensão após um build (a ponte reinicia junto).
+  recarregar: { args: Record<string, never>; result: { ok: true } };
 };
 
 export type Cmd = keyof Comandos;

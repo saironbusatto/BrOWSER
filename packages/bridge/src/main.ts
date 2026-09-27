@@ -12,7 +12,7 @@ import type { Cmd, Comandos, Resposta } from '@browser/shared';
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;
-const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos']; // comandos do runner do teste
+const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar']; // comandos do runner do teste
 
 mkdirSync(DIR, { recursive: true, mode: 0o700 });
 const log = (...a: unknown[]) => appendFileSync(join(DIR, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);
