@@ -30,5 +30,6 @@ Painel lateral → Native Messaging → PONTE (executável único, Bun)
 
 ## Pendências para depois (deliberadas)
 - ⚠️ **Permissões da IA**: no teste ela roda com as permissões padrão de cada ferramenta (risco de prompt injection chegar ao shell). **Restringir às ferramentas do MCP antes de distribuir.**
-- Instalador para o leigo (no teste, um script registra a ponte no Chrome).
-- Perfis, CSV/planilha, Firefox, revisão dos termos de uso antes de distribuir.
+- Perfis, CSV/planilha, Firefox.
+- **Termos de uso e privacidade**: consolidados em [`docs/termos-e-privacidade.md`](termos-e-privacidade.md) com garantia de Zero PII (LGPD/GDPR), BYOS sem chave de API, parada obrigatória pré-submissão e isenção de responsabilidade.
+
