@@ -21,6 +21,8 @@ export type Comandos = {
   avaliar: { args: { expr: string }; result: unknown };
   // Dev: recarrega a extensão após um build (a ponte reinicia junto).
   recarregar: { args: Record<string, never>; result: { ok: true } };
+  // Dev/teste: faz a aba alvo usar o plano B (DOM) como se o chrome.debugger estivesse bloqueado.
+  forcar_modo_dom: { args: Record<string, never>; result: { ok: true } };
 };
 
 export type Cmd = keyof Comandos;

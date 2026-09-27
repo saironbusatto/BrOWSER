@@ -26,7 +26,7 @@ if (process.argv.includes('--install')) {
 
 export const DIR = join(homedir(), '.config', 'browser-bridge');
 const TIMEOUT_MS = 30_000;
-const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar']; // comandos do runner do teste
+const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste
 
 mkdirSync(DIR, { recursive: true, mode: 0o700 });
 const log = (...a: unknown[]) => appendFileSync(join(DIR, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);
