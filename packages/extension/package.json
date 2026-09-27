@@ -9,10 +9,13 @@
   },
   "dependencies": {
     "@browser/shared": "workspace:*",
+    "dompurify": "^3.4.16",
     "marked": "^18.0.14"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.0",
+    "@types/jsdom": "^30.0.0",
+    "jsdom": "^30.1.1",
     "wxt": "^0.21.4"
   }
 }

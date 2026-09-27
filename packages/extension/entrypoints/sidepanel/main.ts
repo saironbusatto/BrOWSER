@@ -1,10 +1,5 @@
 import type { ArquivoAnexo, Evento, ItemAssinatura, PapelAgente, Pedir, RespostaUsuario } from '@browser/shared';
-import { marked } from 'marked';
-
-marked.setOptions({
-  gfm: true,
-  breaks: true,
-});
+import { markdownSeguro } from '../../utils/markdown';
 
 // ── DOM refs ──
 const chatStream = document.getElementById('chat-stream')!;
@@ -530,7 +525,7 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
       // Render Rich Markdown
       const contentEl = cardAtivo.querySelector('.markdown-content')!;
       try {
-        contentEl.innerHTML = marked.parse(e.texto) as string;
+        contentEl.innerHTML = markdownSeguro(e.texto);
       } catch {
         contentEl.textContent = e.texto;
       }
