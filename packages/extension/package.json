@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "wxt build",
-    "dev": "wxt build --watch"
+    "dev": "wxt build --watch",
+    "tipos": "wxt prepare"
   },
   "dependencies": {
     "@browser/shared": "workspace:*",

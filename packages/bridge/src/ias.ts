@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { IAS, type ArquivoAnexo, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 import { formatarBlueprintParaIa } from './blueprints';
+import { comandoExecutavel } from './caminhos';
 
 const TIMEOUT_MS = 5 * 60_000;
 const TOOLS = ['ler_campos', 'preencher', 'clicar', 'perguntar_ao_usuario', 'consultar_blueprint'];
@@ -65,6 +66,14 @@ Diretrizes de atuação:
 // chamar o modelo); acima desse limite o pedido vai num arquivo que ele lê do diretório de trabalho.
 const AGY_MAX_STDIN = 20_000;
 const ARQUIVO_PEDIDO = 'pedido.md';
+const ARQUIVO_MCP_CLAUDE = 'mcp-claude.json';
+
+function escreverMcpClaude(cwd: string, mcp: Mcp): string {
+  const caminho = join(cwd, ARQUIVO_MCP_CLAUDE);
+  const config = { mcpServers: { browser: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } };
+  writeFileSync(caminho, JSON.stringify(config), { mode: 0o600 });
+  return caminho;
+}
 
 type Invocacao = { args: string[]; stdin: string; manterStdinAberto?: boolean };
 
@@ -89,11 +98,12 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
       env.BROWSER_TOKEN = mcp.token;
       return {
         args: ['codex', 'exec', '--json', '--skip-git-repo-check',
-          '-c', `mcp_servers.browser.url="${mcp.url}"`,
-          '-c', 'mcp_servers.browser.bearer_token_env_var="BROWSER_TOKEN"',
+          // Valores sem aspas (o codex trata como texto o que não é TOML): nada para o cmd.exe reinterpretar.
+          '-c', `mcp_servers.browser.url=${mcp.url}`,
+          '-c', 'mcp_servers.browser.bearer_token_env_var=BROWSER_TOKEN',
           // Aprova só as ferramentas do nosso MCP; comandos de shell seguem bloqueados.
-          '-c', 'mcp_servers.browser.default_tools_approval_mode="approve"',
-          '-c', 'approval_policy="never"',
+          '-c', 'mcp_servers.browser.default_tools_approval_mode=approve',
+          '-c', 'approval_policy=never',
           // Imagens entram como imagem de verdade; PDF o codex lê pelo caminho indicado no prompt.
           ...anexos.filter((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)).flatMap((a) => ['-i', a]),
           '-'],
@@ -102,7 +112,8 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
     case 'claude':
       return {
         args: ['claude', '-p', '--output-format', 'json', '--strict-mcp-config', '--no-chrome',
-          '--mcp-config', JSON.stringify({ mcpServers: { browser: { type: 'http', url: mcp.url, headers: { Authorization: `Bearer ${mcp.token}` } } } }),
+          // JSON por arquivo (0600, apagado ao final), não como argumento: aspas e chaves quebram no cmd.exe.
+          '--mcp-config', escreverMcpClaude(cwd, mcp),
           // Read só da pasta de anexos (PDF/imagem); o resto do disco segue fora.
           '--allowedTools', [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(',')],
         stdin: prompt,
@@ -158,7 +169,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
 
   if (ia === 'agy') {
     // agy não aceita MCP por sessão: grava (ou atualiza) o servidor "browser" na config global.
-    const add = Bun.spawnSync(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url], { env });
+    const add = Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url]), { env });
     if (add.exitCode !== 0) return { ok: false, ia, texto: `agy mcp add falhou: ${add.stderr}` };
     const erro = garantirPermissaoAgy();
     if (erro) return { ok: false, ia, texto: erro };
@@ -168,7 +179,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
   const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos));
-  const proc = Bun.spawn(inv.args, { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
+  const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
   proc.stdin.write(inv.stdin);
   proc.stdin.flush();
@@ -188,6 +199,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   clearTimeout(timer);
   rmSync(join(cwd, ARQUIVO_PEDIDO), { force: true }); // pode conter dados de anexos do usuário
   apagarAnexos(cwd);
+  rmSync(join(cwd, ARQUIVO_MCP_CLAUDE), { force: true }); // contém o token da ponte
 
   const texto = respostaFinal(ia, saida);
   if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
