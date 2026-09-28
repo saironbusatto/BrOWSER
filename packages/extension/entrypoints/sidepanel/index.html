@@ -275,10 +275,27 @@
               </button>
               <span class="input-hint">Ctrl+Enter para enviar</span>
             </div>
-            <button id="send-btn" class="send-btn" type="submit" title="Enviar mensagem">
-              <svg viewBox="0 0 16 16" fill="currentColor">
-                <path d="M3.47 7.72a.75.75 0 0 1 1.06 0L8 11.19l3.47-3.47a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 0 1 0-1.06Z" transform="rotate(180 8 8)"/>
+            <!--
+              Parar: um único botão que alterna entre enviar e parar.while o pedido roda, ele é o
+              botão vermelho; parado, volta a ser o de enviar. Uma pessoa com a mão no mouse
+              precisa poder interromper na hora (docs/termos-e-privacidade.md §7.3).
+            -->
+            <button id="send-btn" class="send-btn" type="submit" title="Enviar mensagem" aria-label="Enviar mensagem">
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M3.47 7.72a.75.75 0 0 1 1.06 0L8 11.19l3.47-3.47a3 3 0 1 1 1.06 1.06l-4 4a3 3 0 0 1-1.06 0l-4-4a3 3 0 0 1 0-1.06Z" transform="rotate(180 8 8)"/>
                 <path fill-rule="evenodd" d="M8 2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-1.5 0v-8.5A.75.75 0 0 1 8 2Z" clip-rule="evenodd"/>
+              </svg>
+            </button>
+            <button
+              id="stop-btn"
+              class="stop-btn"
+              type="button"
+              hidden
+              title="Parar agora (a IA não vai clicar em nada)"
+              aria-label="Parar o pedido em andamento"
+            >
+              <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <rect x="4" y="4" width="8" height="8" rx="1.5"/>
               </svg>
             </button>
           </div>

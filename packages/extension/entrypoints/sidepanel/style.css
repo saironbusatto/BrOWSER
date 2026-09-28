@@ -721,6 +721,29 @@ textarea#texto::placeholder {
 }
 
 .send-btn svg { width: 16px; height: 16px; }
+
+/* Parar: vermelho e sólido, do tamanho do botão de enviar (facilita o clique sob pressão). */
+.stop-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--error);
+  color: #ffffff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--duration-fast), transform var(--duration-fast), opacity var(--duration-fast);
+  flex-shrink: 0;
+}
+
+.stop-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--error) 82%, #000); }
+.stop-btn:active:not(:disabled) { transform: scale(0.92); }
+.stop-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.stop-btn svg { width: 16px; height: 16px; }
+/* Só durante o pedido: o botão de enviar continua visível mas desabilitado. */
+.stop-btn[hidden] { display: none; }
 /* ── Attachment Tray & Chips ── */
 .attachment-tray {
   display: flex;

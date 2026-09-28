@@ -1,6 +1,21 @@
 import type { ArquivoAnexo, Evento, ItemAssinatura, PapelAgente, Pedir, RespostaUsuario } from '@browser/shared';
-import { markdownSeguro } from '../../utils/markdown';
 import { iniciarCampoPontos } from '../../utils/campo-pontos';
+import { markdownSeguro } from '../../utils/markdown';
+import { bandejaHtml, classificarArquivos, ehArquivoTexto, mensagemAnexos } from './anexos';
+import { botaoVisivel, type EstadoBotao } from './botao';
+import { escapeHtml, urlSegura } from './escape';
+import { agenteDaMensagem, type Etapa, inferirEtapa } from './etapa';
+import { iconeMarca } from './icones';
+import {
+  camposHtml,
+  inputLivreHtml,
+  juntarResposta,
+  mostrarBotaoEnviar,
+  opcoesHtml,
+  type Pergunta,
+  type RespostaColetada,
+  respostaDeOpcao,
+} from './perguntas';
 
 iniciarCampoPontos(document.getElementById('campo-pontos') as HTMLCanvasElement);
 
@@ -10,6 +25,7 @@ const welcomeCard = document.getElementById('welcome-card')!;
 const chatForm = document.getElementById('chat-form') as HTMLFormElement;
 const texto = document.getElementById('texto') as HTMLTextAreaElement;
 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
+const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement;
 const btnLimpar = document.getElementById('btn-limpar')!;
 const toast = document.getElementById('toast')!;
 const toastMsg = document.getElementById('toast-msg')!;
@@ -34,7 +50,6 @@ const linkTermosFooter = document.getElementById('link-termos-footer');
 const linkTermosBanner = document.getElementById('link-termos-banner');
 const firstRunBanner = document.getElementById('first-run-banner');
 const btnConcordarTermos = document.getElementById('btn-concordar-termos');
-
 
 let pedidoAtual: string | undefined;
 let cardAtivo: HTMLElement | null = null;
@@ -62,64 +77,30 @@ function lerComoBase64(file: File): Promise<string> {
 }
 
 async function processarArquivos(files: FileList | File[]) {
-  const lista = Array.from(files);
-  for (const f of lista) {
-    if (f.size > 25 * 1024 * 1024) {
-      showToast(`Arquivo "${f.name}" excede o limite de 25MB`, 'error');
-      continue;
-    }
-    const isText = f.name.match(/\.(xml|json|csv|txt|html|md)$/i) || f.type.startsWith('text/') || f.type.includes('xml') || f.type.includes('json');
-    if (isText) {
-      const conteudoTexto = await f.text();
-      arquivosAnexados.push({
-        nome: f.name,
-        tipo: f.type || 'text/plain',
-        tamanho: f.size,
-        conteudoTexto,
-      });
-    } else {
-      const dadosBase64 = await lerComoBase64(f);
-      arquivosAnexados.push({
-        nome: f.name,
-        tipo: f.type || 'application/octet-stream',
-        tamanho: f.size,
-        dadosBase64,
-      });
-    }
+  const { aceitos, recusados } = classificarArquivos(Array.from(files).map((f) => ({ nome: f.name, tamanho: f.size, tipo: f.type })));
+
+  for (const f of Array.from(files).filter((x) => !recusados.some((r) => r.nome === x.name))) {
+    const tipo = ehArquivoTexto(f.name, f.type);
+    arquivosAnexados.push(
+      tipo
+        ? { nome: f.name, tipo: f.type || 'text/plain', tamanho: f.size, conteudoTexto: await f.text() }
+        : { nome: f.name, tipo: f.type || 'application/octet-stream', tamanho: f.size, dadosBase64: await lerComoBase64(f) },
+    );
   }
+
   renderAttachmentTray();
-  if (lista.length > 0) {
-    showToast(`${arquivosAnexados.length} arquivo(s) preparado(s)`);
-  }
+  const aviso = mensagemAnexos(aceitos.length, recusados);
+  if (aviso) showToast(aviso, recusados.length > 0 ? 'error' : 'success');
 }
 
 function renderAttachmentTray() {
-  if (arquivosAnexados.length === 0) {
-    attachmentTray.style.display = 'none';
-    attachmentTray.innerHTML = '';
-    return;
-  }
-
-  attachmentTray.style.display = 'flex';
-  attachmentTray.innerHTML = arquivosAnexados.map((arq, idx) => {
-    const kb = (arq.tamanho / 1024).toFixed(1);
-    const icone = arq.nome.endsWith('.xml') ? '📄' : arq.nome.endsWith('.pdf') ? '📑' : arq.nome.endsWith('.json') ? '📦' : '📎';
-    return `
-      <div class="attachment-chip" data-idx="${idx}">
-        <span>${icone}</span>
-        <span class="chip-name" title="${escapeHtml(arq.nome)}">${escapeHtml(arq.nome)}</span>
-        <span class="chip-size">(${kb} KB)</span>
-        <button type="button" class="chip-remove" data-remove="${idx}" title="Remover anexo">✕</button>
-      </div>
-    `;
-  }).join('');
-
+  attachmentTray.style.display = arquivosAnexados.length === 0 ? 'none' : 'flex';
+  attachmentTray.innerHTML = bandejaHtml(arquivosAnexados);
   attachmentTray.querySelectorAll<HTMLButtonElement>('.chip-remove').forEach((btn) => {
     btn.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      const idx = Number(btn.dataset.remove);
-      arquivosAnexados.splice(idx, 1);
+      arquivosAnexados.splice(Number(btn.dataset.remove), 1);
       renderAttachmentTray();
     });
   });
@@ -163,7 +144,7 @@ document.addEventListener('drop', (e) => {
 // ── Auto-expand Textarea ──
 texto.addEventListener('input', () => {
   texto.style.height = 'auto';
-  texto.style.height = Math.min(texto.scrollHeight, 160) + 'px';
+  texto.style.height = `${Math.min(texto.scrollHeight, 160)}px`;
 });
 
 // ── Ctrl+Enter / Cmd+Enter ──
@@ -187,13 +168,6 @@ btnLimpar.addEventListener('click', () => {
 // ── Helpers ──
 function scrollToEnd() {
   chatStream.scrollTop = chatStream.scrollHeight;
-}
-
-function inferirEtapa(textoStatus: string): number {
-  const t = textoStatus.toLowerCase();
-  if (t.includes('conferindo') || t.includes('verificando') || t.includes('conferir')) return 2;
-  if (t.includes('preenchendo') || t.includes('preencher') || t.includes('escrevendo') || t.includes('clicando')) return 1;
-  return 0;
 }
 
 function appendUserMessage(msg: string, anexos?: ArquivoAnexo[]) {
@@ -282,7 +256,7 @@ function appendAssistantMessage(): HTMLElement {
   return row.querySelector('.assistant-card')!;
 }
 
-function updateStepper(card: HTMLElement, etapa: number, textoStatus: string, agente?: PapelAgente) {
+function updateStepper(card: HTMLElement, etapa: Etapa, textoStatus: string, agente?: PapelAgente) {
   const steps = card.querySelectorAll<HTMLElement>('.step');
   const lines = card.querySelectorAll<HTMLElement>('.step-line');
   const statusEl = card.querySelector<HTMLElement>('.live-status-text');
@@ -301,32 +275,60 @@ function updateStepper(card: HTMLElement, etapa: number, textoStatus: string, ag
     statusEl.textContent = textoStatus;
   }
 
-  if (agente === 'scout' && scoutMsg) {
-    scoutMsg.textContent = textoStatus;
-  } else if (agente === 'synthesizer' && synthMsg) {
-    synthMsg.textContent = textoStatus;
-  } else {
-    if (scoutMsg) scoutMsg.textContent = textoStatus;
+  // Quem fala é o agente: o scout cuida da leitura da página, o synthesizer dos anexos/dados.
+  // Sem papel definido, o texto vai para os dois (antes ele ia só para o scout).
+  switch (agenteDaMensagem(agente)) {
+    case 'scout':
+      if (scoutMsg) scoutMsg.textContent = textoStatus;
+      break;
+    case 'synthesizer':
+      if (synthMsg) synthMsg.textContent = textoStatus;
+      break;
+    case 'ambos':
+      if (scoutMsg) scoutMsg.textContent = textoStatus;
+      if (synthMsg) synthMsg.textContent = textoStatus;
+      break;
   }
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+// Estado do botão enviar/parar. A regra em si está em botao.ts (testada); aqui é só o reflexo
+// no DOM.
+let estadoBotao: EstadoBotao = { tipo: 'ocioso' };
+
+function setEstadoBotao(estado: EstadoBotao) {
+  estadoBotao = estado;
+  const v = botaoVisivel(estado);
+  sendBtn.hidden = !v.enviar.visivel;
+  sendBtn.disabled = v.enviar.desabilitado;
+  sendBtn.title = v.enviar.titulo;
+  stopBtn.hidden = !v.parar.visivel;
+  stopBtn.disabled = v.parar.desabilitado;
+  stopBtn.title = v.parar.titulo;
+  // A captura de tela/anúncio do leitor de tela precisa saber que o controle mudou de propósito.
+  stopBtn.setAttribute('aria-busy', String(estado.tipo === 'parando'));
 }
 
 function setBusy(busy: boolean) {
-  sendBtn.disabled = busy;
   texto.disabled = busy;
   attachBtn.disabled = busy;
+  if (busy) setEstadoBotao({ tipo: 'rodando' });
+  else if (estadoBotao.tipo === 'erro') setEstadoBotao({ tipo: 'ocioso' });
+  else setEstadoBotao({ tipo: 'ocioso' });
   if (!busy) {
     texto.focus();
   }
 }
+
+// Botão Parar: pede o cancelamento e trava o botão até a ponte confirmar. Sem isto, a pessoa ficava
+// esperando o timeout de 5 minutos sem nenhuma forma de interromper (docs §7.3.1).
+stopBtn.addEventListener('click', () => {
+  if (estadoBotao.tipo !== 'rodando' || !pedidoAtual) return;
+  setEstadoBotao({ tipo: 'parando' });
+  chrome.runtime
+    .sendMessage({ tipo: 'parar', pedidoId: pedidoAtual } satisfies MensagemExtensaoParar)
+    .catch(() => setEstadoBotao({ tipo: 'rodando' }));
+});
+type MensagemExtensaoParar = { tipo: 'parar'; pedidoId: string };
 
 // ── Submit Handler ──
 chatForm.addEventListener('submit', async (e) => {
@@ -354,6 +356,7 @@ chatForm.addEventListener('submit', async (e) => {
   setBusy(true);
 
   pedidoAtual = crypto.randomUUID();
+  setEstadoBotao({ tipo: 'rodando' });
   const pedido: Pedir = {
     tipo: 'pedido',
     pedidoId: pedidoAtual,
@@ -377,45 +380,12 @@ chatForm.addEventListener('submit', async (e) => {
 });
 
 function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
+  const p: Pergunta = e;
   const row = document.createElement('div');
   row.className = 'message-row assistant';
 
-  let camposHtml = '';
-  if (e.campos && e.campos.length > 0) {
-    camposHtml = `
-      <div class="question-fields">
-        ${e.campos.map(c => `
-          <div class="question-field-row">
-            <label class="question-field-label">${escapeHtml(c)}</label>
-            <input type="text" class="question-field-input" data-campo="${escapeHtml(c)}" placeholder="Informe ${escapeHtml(c)}…" />
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  let opcoesHtml = '';
-  if (e.opcoes && e.opcoes.length > 0) {
-    opcoesHtml = `
-      <div class="question-options">
-        ${e.opcoes.map(op => `
-          <button type="button" class="question-option-btn" data-opcao="${escapeHtml(op)}">${escapeHtml(op)}</button>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  let freeInputHtml = '';
-  if ((!e.campos || e.campos.length === 0) && (!e.opcoes || e.opcoes.length === 0)) {
-    freeInputHtml = `
-      <div class="question-field-row">
-        <input type="text" class="question-field-input free-answer" placeholder="Digite sua resposta…" />
-      </div>
-    `;
-  }
-
   row.innerHTML = `
-    <div class="question-card" id="q-${e.perguntaId}">
+    <div class="question-card" id="q-${escapeHtml(e.perguntaId)}">
       <div class="question-badge">
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
           <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14Zm0-1.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11ZM6.5 6.25a1.5 1.5 0 1 1 2.378 1.226c-.346.242-.628.53-.628.924V9h-1.5v-.5a2.25 2.25 0 0 1 1.05-1.928.75.75 0 0 0-.3-.722.75.75 0 0 0-1-.15.75.75 0 0 1-1-.15Zm1.5 5.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"/>
@@ -423,10 +393,10 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
         <span>BrOWSER precisa de informações</span>
       </div>
       <p class="question-desc">${escapeHtml(e.pergunta)}</p>
-      ${camposHtml}
-      ${opcoesHtml}
-      ${freeInputHtml}
-      ${(!e.opcoes || e.opcoes.length === 0) ? '<button type="button" class="question-submit-btn">Enviar e Continuar</button>' : ''}
+      ${camposHtml(p.campos)}
+      ${opcoesHtml(p.opcoes)}
+      ${inputLivreHtml(p)}
+      ${mostrarBotaoEnviar(p) ? '<button type="button" class="question-submit-btn">Enviar e Continuar</button>' : ''}
     </div>
   `;
 
@@ -435,18 +405,20 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
 
   const card = row.querySelector('.question-card') as HTMLElement;
 
-  async function responder(textoResposta: string, respostasCampos?: Record<string, string>) {
+  function responder(coletada: RespostaColetada) {
     card.classList.add('respondido');
-    card.querySelectorAll('input, button').forEach(el => (el as HTMLInputElement | HTMLButtonElement).disabled = true);
-    
-    appendUserMessage(textoResposta);
+    card.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach((el) => {
+      el.disabled = true;
+    });
+
+    appendUserMessage(coletada.texto);
 
     const respMsg: RespostaUsuario = {
       tipo: 'resposta_usuario',
       pedidoId: e.pedidoId,
       perguntaId: e.perguntaId,
-      resposta: textoResposta,
-      respostasCampos,
+      resposta: coletada.texto,
+      respostasCampos: coletada.respostasCampos,
     };
     chrome.runtime.sendMessage(respMsg).catch(console.error);
     showToast('Informações enviadas! Continuando preenchimento…');
@@ -457,39 +429,25 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
     }
   }
 
-  // Handle option click
-  card.querySelectorAll<HTMLButtonElement>('.question-option-btn').forEach(btn => {
+  // Opção: um clique já é a resposta.
+  card.querySelectorAll<HTMLButtonElement>('.question-option-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const val = btn.dataset.opcao ?? btn.textContent ?? '';
-      responder(val);
+      responder(respostaDeOpcao(btn.dataset.opcao ?? btn.textContent ?? ''));
     });
   });
 
-  // Handle submit button
   const submitBtn = card.querySelector<HTMLButtonElement>('.question-submit-btn');
   if (submitBtn) {
     submitBtn.addEventListener('click', () => {
-      const inputs = card.querySelectorAll<HTMLInputElement>('.question-field-input');
-      const respostasCampos: Record<string, string> = {};
-      const partes: string[] = [];
-
-      inputs.forEach(inp => {
-        const campo = inp.dataset.campo;
-        const val = inp.value.trim();
-        if (campo) {
-          respostasCampos[campo] = val;
-          partes.push(`${campo}: ${val || '(em branco)'}`);
-        } else if (val) {
-          partes.push(val);
-        }
-      });
-
-      const textoFinal = partes.join(', ') || 'Continuar sem dados';
-      responder(textoFinal, respostasCampos);
+      // `dataset.campo` já vem decodificado pelo DOM; a chave que a IA recebe é a que a pessoa viu.
+      const entradas = Array.from(card.querySelectorAll<HTMLInputElement>('.question-field-input')).map((inp) => ({
+        campo: inp.dataset.campo,
+        valor: inp.value.trim(),
+      }));
+      responder(juntarResposta(entradas));
     });
 
-    // Enter submits
-    card.querySelectorAll<HTMLInputElement>('.question-field-input').forEach(inp => {
+    card.querySelectorAll<HTMLInputElement>('.question-field-input').forEach((inp) => {
       inp.addEventListener('keydown', (ev) => {
         if (ev.key === 'Enter') {
           ev.preventDefault();
@@ -559,6 +517,19 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
 
   if (e.tipo === 'pergunta') {
     renderQuestionCard(e);
+    return;
+  }
+
+  if (e.tipo === 'parado') {
+    // Parado a pedido da pessoa: encerra o cartão com a mensagem dela, não com erro da IA.
+    cardAtivo.classList.remove('status-active');
+    cardAtivo.querySelector('.live-stepper')?.remove();
+    const conteudo = cardAtivo.querySelector('.markdown-content')!;
+    conteudo.innerHTML = `<p style="color:var(--fg-secondary);font-weight:600;">■ Parado</p><p style="font-size:13px;">${escapeHtml(e.texto)}</p>`;
+    setEstadoBotao({ tipo: 'ocioso' });
+    setBusy(false);
+    showToast('Pedido parado. Nada foi enviado.', 'success');
+    scrollToEnd();
     return;
   }
 
@@ -634,7 +605,7 @@ subscriptionsModal.addEventListener('click', (ev) => {
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
     if (subscriptionsModal.classList.contains('open')) subscriptionsModal.classList.remove('open');
-    if (termosModal && termosModal.classList.contains('open')) fecharTermos();
+    if (termosModal?.classList.contains('open')) fecharTermos();
   }
 });
 
@@ -676,7 +647,6 @@ if (!localStorage.getItem('browser_termos_aceitos_v2') && firstRunBanner) {
   firstRunBanner.style.display = 'block';
 }
 
-
 // Card de login oficial: só o link e o código que a ponte extraiu do CLI escondido.
 let loginTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -699,9 +669,18 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
        <div class="login-dica">A página vai mostrar um código; cole ele aqui.</div>`
     : '';
 
+  // A URL vem da ponte (extraída do texto do CLI oficial). `escapeHtml` protege o atributo, mas
+  // não o esquema: um `javascript:` escapado ainda executa ao clicar. `urlSegura` fecha isso, e o
+  // mesmo objeto validado alimenta o link e a aba nova — não dá para um passar e o outro não.
+  const url = urlSegura(e.url);
+  if (!url) {
+    showToast('O CLI devolveu um endereço de login inesperado. Tente conectar de novo.', 'error');
+    return;
+  }
+
   box.innerHTML = `<div class="login-card">
     <div class="login-titulo">Conectando ${escapeHtml(e.nome)}</div>
-    <a class="login-link" href="${escapeHtml(e.url)}" target="_blank" rel="noreferrer">Abrir login no navegador</a>
+    <a class="login-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Abrir login no navegador</a>
     <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo BrOWSER.</div>
     ${codigo}${campo}
   </div>`;
@@ -710,7 +689,9 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
     const b = ev.currentTarget as HTMLElement;
     await navigator.clipboard.writeText(b.dataset.copiar!);
     b.textContent = 'copiado ✓';
-    setTimeout(() => (b.textContent = 'copiar'), 1500);
+    setTimeout(() => {
+      b.textContent = 'copiar';
+    }, 1500);
   });
 
   if (e.pedeCodigo) {
@@ -731,7 +712,7 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
 
   // O agy dá 60s e não estende: abrir a aba na hora é o que cabe nesses 60s. O botão continua
   // valendo pra quem preferir abrir depois.
-  chrome.tabs.create({ url: e.url, active: true }).catch(() => {});
+  chrome.tabs.create({ url, active: true }).catch(() => {});
 
   const prazo = box.querySelector<HTMLElement>('[data-prazo]');
   if (prazo && e.expiraEmSegundos) {
@@ -819,38 +800,7 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
     card.className = `plan-card ${isActive ? 'active com-ativo' : ''}`;
     card.dataset.ia = plano.ia;
 
-    let iconSvg = '';
-    if (plano.ia === 'agy') {
-      iconSvg = `
-        <svg class="official-brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="none">
-          <path d="M12 2C12 7.523 7.523 12 2 12c4.477 0 10 4.477 10 10 0-5.523 4.477-10 10-10-5.523 0-10-4.477-10-10z" fill="url(#gemini-sparkle-card-${plano.ia})"/>
-          <defs>
-            <linearGradient id="gemini-sparkle-card-${plano.ia}" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#4285F4"/>
-              <stop offset="0.35" stop-color="#9B72CB"/>
-              <stop offset="0.7" stop-color="#D96570"/>
-              <stop offset="1" stop-color="#1FA463"/>
-            </linearGradient>
-          </defs>
-        </svg>`;
-    } else if (plano.ia === 'codex') {
-      iconSvg = `
-        <svg class="official-brand-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-          <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.6667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813v6.7227zm1.145-2.0728l3.056-1.7616 3.056 1.7616v3.5232l-3.056 1.7616-3.056-1.7616z"/>
-        </svg>`;
-    } else {
-      iconSvg = `
-        <svg class="official-brand-icon" viewBox="0 0 24 24" width="22" height="22" fill="#D97757">
-          <path d="M13.5 2C13.5 1.17157 12.8284 0.5 12 0.5C11.1716 0.5 10.5 1.17157 10.5 2V5.5C10.5 6.32843 11.1716 7 12 7C12.8284 7 13.5 6.32843 13.5 5.5V2Z"/>
-          <path d="M13.5 18.5C13.5 17.6716 12.8284 17 12 17C11.1716 17 10.5 17.6716 10.5 18.5V22C10.5 22.8284 11.1716 23.5 12 23.5C12.8284 23.5 13.5 22.8284 13.5 22V18.5Z"/>
-          <path d="M22 10.5C22.8284 10.5 23.5 11.1716 23.5 12C23.5 12.8284 22.8284 13.5 22 13.5H18.5C17.6716 13.5 17 12.8284 17 12C17 11.1716 17.6716 10.5 18.5 10.5H22Z"/>
-          <path d="M5.5 10.5C6.32843 10.5 7 11.1716 7 12C7 12.8284 6.32843 13.5 5.5 13.5H2C1.17157 13.5 0.5 12.8284 0.5 12C0.5 11.1716 1.17157 10.5 2 10.5H5.5Z"/>
-          <path d="M18.8284 3.75736C18.2426 3.17157 17.2929 3.17157 16.7071 3.75736C16.1213 4.34315 16.1213 5.29289 16.7071 5.87868L19.182 8.35355C19.7678 8.93934 20.7175 8.93934 21.3033 8.35355C21.8891 7.76777 21.8891 6.81802 21.3033 6.23223L18.8284 3.75736Z"/>
-          <path d="M7.29289 15.2929C6.70711 14.7071 5.75736 14.7071 5.17157 15.2929C4.58579 15.8787 4.58579 16.8284 5.17157 17.4142L7.64645 19.8891C8.23223 20.4749 9.18198 20.4749 9.76777 19.8891C10.3536 19.3033 10.3536 18.3536 9.76777 17.7678L7.29289 15.2929Z"/>
-          <path d="M16.7071 18.1213C17.2929 18.7071 18.2426 18.7071 18.8284 18.1213L21.3033 15.6464C21.8891 15.0607 21.8891 14.1109 21.3033 13.5251C20.7175 12.9393 19.7678 12.9393 19.182 13.5251L16.7071 16C16.1213 16.5858 16.1213 17.5355 16.7071 18.1213Z"/>
-          <path d="M5.17157 6.58579C5.75736 7.17157 6.70711 7.17157 7.29289 6.58579C7.87868 6 7.87868 5.05025 7.29289 4.46447L4.81799 1.98959C4.23221 1.40381 3.28246 1.40381 2.69667 1.98959C2.11089 2.57538 2.11089 3.52513 2.69667 4.11091L5.17157 6.58579Z"/>
-        </svg>`;
-    }
+    const iconSvg = iconeMarca(plano.ia);
 
     card.innerHTML = `
       <div class="plan-left">
@@ -901,11 +851,26 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
 chrome.runtime.sendMessage({ tipo: 'consultar_assinaturas' }).catch(() => {});
 
 // ── Aprendizado passivo (liga/desliga; o background respeita a mesma chave) ──
+//
+// Default agora é DESLIGADO. Antes, "ausente = ligado" significava que instalar a extensão já
+// autorizava a coleta de estrutura de formulário de todas as páginas — consentimento por omissão,
+// que é o contrário do que os Termos prometem (privacy by default).
+const CHAVE_APRENDIZADO = 'aprendizadoPassivo';
 const toggleAprendizado = document.getElementById('toggle-aprendizado') as HTMLInputElement;
-chrome.storage.local.get('aprendizadoPassivo').then(({ aprendizadoPassivo }) => {
-  toggleAprendizado.checked = aprendizadoPassivo !== false;
-});
+const ligarAprendizado = (ligado: boolean) => chrome.storage.local.set({ [CHAVE_APRENDIZADO]: ligado });
+
+(async () => {
+  const { aprendizadoPassivo } = await chrome.storage.local.get(CHAVE_APRENDIZADO);
+  const ligado = aprendizadoPassivo === true; // opt-in: só liga quem já escolheu ligar
+  toggleAprendizado.checked = ligado;
+  if (aprendizadoPassivo === undefined) await ligarAprendizado(false);
+})();
+
 toggleAprendizado.addEventListener('change', () => {
-  chrome.storage.local.set({ aprendizadoPassivo: toggleAprendizado.checked });
-  showToast(toggleAprendizado.checked ? 'Aprendizado de formulários ligado' : 'Aprendizado de formulários desligado');
+  ligarAprendizado(toggleAprendizado.checked);
+  showToast(
+    toggleAprendizado.checked
+      ? 'Aprendizado de formulários ligado (só a estrutura dos campos, nunca valores)'
+      : 'Aprendizado de formulários desligado',
+  );
 });
