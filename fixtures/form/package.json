@@ -1,6 +1,7 @@
 {
   "name": "@browser/fixture-form",
   "private": true,
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "bun --port 5173 ./index.html ./frame.html"
   },
