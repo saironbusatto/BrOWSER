@@ -1,5 +1,8 @@
 import type { ArquivoAnexo, Evento, ItemAssinatura, PapelAgente, Pedir, RespostaUsuario } from '@browser/shared';
 import { markdownSeguro } from '../../utils/markdown';
+import { iniciarCampoPontos } from '../../utils/campo-pontos';
+
+iniciarCampoPontos(document.getElementById('campo-pontos') as HTMLCanvasElement);
 
 // ── DOM refs ──
 const chatStream = document.getElementById('chat-stream')!;
@@ -169,17 +172,6 @@ texto.addEventListener('keydown', (e) => {
     e.preventDefault();
     chatForm.requestSubmit();
   }
-});
-
-// ── Suggestion Chips ──
-document.querySelectorAll<HTMLButtonElement>('.suggestion-chip').forEach((chip) => {
-  chip.addEventListener('click', () => {
-    const prompt = chip.dataset.prompt;
-    if (prompt) {
-      texto.value = prompt;
-      chatForm.requestSubmit();
-    }
-  });
 });
 
 // ── Clear Conversation ──
