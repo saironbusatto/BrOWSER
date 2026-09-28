@@ -4,6 +4,8 @@
 
 <p align="center">Extensão para Chrome, Edge e Brave que preenche formulários da página aberta a partir de um pedido em linguagem natural, usando a <b>assinatura de IA que você já paga</b> (Google AI Pro, ChatGPT ou Claude) — sem chave de API.</p>
 
+<p align="center"><a href="https://saironbusatto.github.io/BrOWSER/">saironbusatto.github.io/BrOWSER</a></p>
+
 ---
 
 ## Como funciona
