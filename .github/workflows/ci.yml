@@ -41,9 +41,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Copy-Item packages/bridge/scripts/setup.ps1 packages/bridge/dist/
-          & packages/bridge/dist/setup.ps1 -SemIA
+          Copy-Item packages/bridge/scripts/setup.ps1, packages/bridge/scripts/uninstall.ps1, design/icone.ico packages/bridge/dist/
+          & packages/bridge/dist/setup.ps1 -Sim -SemIA
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi copiado' }
+          $app = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER'
+          if ($app.DisplayName -ne 'BrOWSER') { throw 'entrada em Aplicativos instalados ausente' }
+          $app | Select-Object DisplayName, DisplayVersion, UninstallString, EstimatedSize | Format-List
 
       - name: Conferir registro (Windows)
         if: runner.os == 'Windows'
