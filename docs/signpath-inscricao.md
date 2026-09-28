@@ -39,13 +39,31 @@ com o mínimo de trabalho manual possível e não discute política em recurso.
 `BrOWSER-windows.zip` → `bridge.exe` (ponte nativa). Só Windows; Linux e extensão não são
 assinados por este certificado.
 
-**Descrição curta do projeto** (o campo de texto livre)
-> BrOWSER is a free assistive Chrome extension that fills web forms on the user's behalf, driven
-> by AI. The user describes what they want in their own words; an AI agent reads the form fields on
-> the current page, maps the values, and fills them. It never submits: the final click is always the
-> user's, which is a hard rule in the product and in its terms of use. The agent runs through the
-> user's own existing subscription to Google, OpenAI or Anthropic — no API key ever passes through
-> the software. A small native bridge exposes the browser to the agent as MCP tools.
+**Descrição do projeto** (o campo de texto livre) — a frase que abre é a da própria interface:
+
+> **How can I help you?** That is the entire interface. BrOWSER is a free assistive tool where you
+> type what you need, in your own words, and an AI agent does it on the page in front of you —
+> "fill this form", "put my details in this checkout". It never submits a form, and it never reads
+> or stores passwords or payment details: those fields, and that last click, stay with you.
+
+Versão curta, se o campo for pequeno:
+
+> How can I help you? A free assistive tool where you say what should be filled in a web form and
+> an AI agent fills it. You always review and submit; credentials are never read or stored.
+
+Se o formulário pedir a descrição em português:
+
+> **Em que posso te ajudar?** É essa a interface inteira. O BrOWSER é uma ferramenta assistiva
+> gratuita em que você escreve o que precisa, com suas próprias palavras, e um agente de IA faz
+> isso na página à sua frente. Ele nunca envia um formulário e nunca lê nem guarda senhas ou dados
+> de pagamento.
+
+Por que essa abertura: os termos do SignPath proíbem software feito para "circumvent security
+measures of their execution environment", e a avaliação de um automatizador de navegador depende
+inteiramente de como ele é descrito. Dizer que **a pessoa pergunta** e a ferramenta obedece é o
+inverso de "software que inspeciona seu navegador": a pessoa vira o sujeito da frase. E a última
+frase encerra, antes que o avaliador precise ir procurar, tanto a cláusula de privacidade quanto a
+de ferramentas de segurança.
 
 **Por que os papéis da equipe** (os termos exigem Authors / Reviewers / Approvers)
 > Single-maintainer project. saironbusatto is the sole committer, reviewer and approver, and is
