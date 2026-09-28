@@ -78,6 +78,7 @@ export type ItemAssinatura = {
   instalado: boolean;
   conectado: boolean;
   ativo: boolean;
+  detalhe?: string; // "demorou para responder", "CLI ausente" — senão "desconectado" caluniando
 };
 
 // extensão -> ponte: consulta status das assinaturas
@@ -97,13 +98,27 @@ export type AtivarAssinatura = {
   ia: Ia;
 };
 
+// extensão -> ponte: o usuário colou o código que a página de login exibiu (fluxo sem device code)
+export type ResponderCodigo = {
+  tipo: 'login_codigo';
+  ia: Ia;
+  codigo: string;
+};
+
+// extensão -> ponte: sair de todas as contas conectadas
+export type DesconectarTodos = {
+  tipo: 'desconectar_todos';
+};
+
 export type MensagemExtensao =
   | Pedir
   | RespostaUsuario
   | TelemetriaBlueprint
   | ConsultarAssinaturas
   | ConectarAssinatura
-  | AtivarAssinatura;
+  | AtivarAssinatura
+  | ResponderCodigo
+  | DesconectarTodos;
 
 // Papéis no pipeline multiagente concorrente
 export type PapelAgente = 'scout' | 'synthesizer' | 'geral';
@@ -120,6 +135,11 @@ export type Evento =
       opcoes?: string[];
     }
   | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string }
-  | { tipo: 'status_assinaturas'; assinaturas: ItemAssinatura[]; iaAtiva: Ia };
+  | { tipo: 'status_assinaturas'; assinaturas: ItemAssinatura[]; iaAtiva: Ia }
+  // O CLI oficial do login foi escondido: a ponte manda para o painel só o que importa
+  // (link + código), e o painel devolve o código colado quando o fluxo não tem device code.
+  | { tipo: 'login_ia'; ia: Ia; nome: string; url: string; codigo?: string; pedeCodigo: boolean; expiraEmSegundos?: number }
+  | { tipo: 'login_fim'; ia: Ia; nome: string; ok: boolean; mensagem: string }
+  | { tipo: 'logout_fim'; ok: number; falhou: string[] };
 
 export * from './blueprint';
