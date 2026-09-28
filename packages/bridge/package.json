@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "install-host": "bun scripts/install-host.ts",
-    "build": "bun build --compile src/main.ts --outfile dist/bridge",
-    "build:win": "bun build --compile --target=bun-windows-x64 src/main.ts --outfile dist/bridge.exe"
+    "build": "bun scripts/build.ts",
+    "build:dev": "bun scripts/build.ts --dev",
+    "build:win": "bun scripts/build.ts --target=bun-windows-x64",
+    "build:win:dev": "bun scripts/build.ts --dev --target=bun-windows-x64"
   },
   "dependencies": {
     "@browser/shared": "workspace:*",

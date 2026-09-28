@@ -19,14 +19,27 @@ jobs:
           bun-version: 1.3.14
 
       - run: bun install --frozen-lockfile
+      - run: bun run lint
       - run: bun run typecheck
-      - run: bun test
+      - run: bun test --coverage --coverage-reporter=text
       - run: bun run --cwd packages/extension build
 
-      - name: Compilar a ponte
+      # O CI precisa do /control (o smoke e o spike usam); o release não (ver packages/bridge/src/build.ts).
+      - name: Compilar a ponte (dev)
         shell: bash
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then bun run --cwd packages/bridge build:win; else bun run --cwd packages/bridge build; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then bun run --cwd packages/bridge build:win:dev; else bun run --cwd packages/bridge build:dev; fi
+
+      # Prova comportamental, não grep: o binário de release precisa responder 404 em /control mesmo
+      # com BROWSE_DEV=1 no ambiente (foi esse o furo: um fallback de env religava a rota).
+      - name: /control só existe no build de dev
+        shell: bash
+        run: |
+          bun run --cwd packages/bridge build
+          EXE=packages/bridge/dist/bridge; [ "$RUNNER_OS" = "Windows" ] && EXE=packages/bridge/dist/bridge.exe
+          bun packages/bridge/scripts/check-control.ts "$EXE" release
+          bun run --cwd packages/bridge build:dev
+          bun packages/bridge/scripts/check-control.ts "$EXE" dev
 
       # Sem login: só confere que o codex (shim .cmd no Windows) é iniciável pela ponte.
       - name: Instalar codex
