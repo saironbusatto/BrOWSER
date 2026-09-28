@@ -12,7 +12,7 @@ export type Registro = { navegador: string; destino: string };
 function manifesto(executavel: string): string {
   return JSON.stringify({
     name: HOST_NAME,
-    description: 'bRowser bridge',
+    description: 'BrOWSER bridge',
     path: executavel,
     type: 'stdio',
     allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
@@ -55,7 +55,7 @@ const CHAVES_WINDOWS: [string, string][] = [
 ];
 
 function registrarWindows(executavel: string): Registro[] {
-  const dir = join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'bRowser');
+  const dir = join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'BrOWSER');
   mkdirSync(dir, { recursive: true });
   const arquivo = join(dir, `${HOST_NAME}.json`);
   writeFileSync(arquivo, manifesto(executavel));

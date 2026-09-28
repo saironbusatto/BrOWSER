@@ -47,7 +47,7 @@ export function abrirLoginOficial(ia: Ia): string | undefined {
   const linha = cmd.join(' ');
   let terminal: string[] | undefined;
   if (process.platform === 'win32') {
-    terminal = ['cmd', '/c', 'start', 'bRowser login', 'cmd', '/k', linha];
+    terminal = ['cmd', '/c', 'start', 'BrOWSER login', 'cmd', '/k', linha];
   } else if (process.platform === 'darwin') {
     terminal = ['osascript', '-e', `tell application "Terminal" to do script "${linha}"`];
   } else {

@@ -152,7 +152,7 @@ export function iniciarMatrixOverlay() {
 
   const title = document.createElement('span');
   title.className = 'hud-title';
-  title.textContent = 'bRowser AI';
+  title.textContent = 'BrOWSER AI';
 
   const sep = document.createElement('span');
   sep.className = 'hud-sep';
