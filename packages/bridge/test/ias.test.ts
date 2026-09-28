@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'bun:test';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Ia, SiteBlueprint } from '@browser/shared';
+import { comando, instrucoes, type Mcp, respostaFinal } from '../src/ias';
+
+const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
+const tmp = () => mkdtempSync(join(tmpdir(), 'ias-teste-'));
+
+describe('instrucoes: as garantias que a ponte promete ao prompt', () => {
+  it('declara que a IA não tem terminal nem shell (o prompt não pode sugerir o contrário)', () => {
+    const p = instrucoes('preencher o formulário');
+    expect(p).toContain('NÃO tem terminal');
+    expect(p).toContain('comandos de shell');
+  });
+
+  it('proíbe explicitamente o clique de envio final', () => {
+    const p = instrucoes('enviar a nota');
+    expect(p).toMatch(/NUNCA clique em botões de envio final/i);
+  });
+
+  it('proíbe resolver captcha (a pessoa resolve)', () => {
+    expect(instrucoes('x')).toMatch(/NUNCA tente resolver captchas/i);
+  });
+
+  it('inclui o pedido do usuário e o mapa do site quando existem', () => {
+    const bp = {
+      $schema: '',
+      dominio: 'exemplo.com',
+      versao: '1.0.0',
+      titulo: 'Exemplo',
+      atualizadoEm: '2026-01-01T00:00:00Z',
+      campos: [{ idSemantico: 'nome', rotulo: 'Nome', papel: 'textbox', seletorAcessivel: 'Nome' }],
+    } as SiteBlueprint;
+    const p = instrucoes('meu pedido', undefined, bp);
+    expect(p).toContain('meu pedido');
+    // O marcador do mapa injetado — o prompt sempre cita a palavra "MAPA" nas diretrizes, então
+    // só o cabeçalho real prova que o mapa entrou.
+    expect(p).toContain('🗺️ MAPA DO SITE CONHECIDO');
+    expect(p).toContain('Nome');
+  });
+
+  it('sem blueprint, não injeta nenhum mapa', () => {
+    expect(instrucoes('x', undefined, null)).not.toContain('🗺️ MAPA DO SITE CONHECIDO');
+  });
+
+  it('leva o arquivo anexado para a IA ler (e não o texto inteiro no argv)', () => {
+    const p = instrucoes('x', [{ nome: 'nota.xml', tipo: 'application/xml', tamanho: 10, conteudoTexto: '<nNF>1</nNF>' }], null, {
+      'nota.xml': 'anexos/0-nota.xml',
+    });
+    expect(p).toContain('anexos/0-nota.xml');
+    expect(p).toContain('nota.xml');
+  });
+});
+
+describe('comando: como cada CLI é chamado', () => {
+  const invoked = (ia: Ia) => comando(ia, 'PROMPT', MCP, {}, tmp(), []);
+
+  it('nunca usa --dangerously-skip-permissions no agy (foi assim que ele leu o token da ponte)', () => {
+    expect(invoked('agy').args.join(' ')).not.toContain('dangerously-skip-permissions');
+  });
+
+  it('agy recebe o prompt por stdin, nunca por argumento', () => {
+    const inv = invoked('agy');
+    expect(inv.args).not.toContain('PROMPT');
+    expect(inv.stdin).toContain('PROMPT');
+  });
+
+  it('claude só pode usar as ferramentas do MCP e a pasta de anexos (--allowedTools)', () => {
+    const args = invoked('claude').args.join(' ');
+    expect(args).toContain('--allowedTools');
+    expect(args).toContain('mcp__browser__ler_campos');
+    expect(args).toContain('mcp__browser__preencher');
+    expect(args).toContain('mcp__browser__clicar');
+    // Nada de Bash/Read no disco inteiro: essa é a trava contra prompt injection chegar ao shell.
+    expect(args).not.toMatch(/mcp__browser__\w+,Bash/);
+    expect(args).not.toMatch(/,\s*Bash\b/);
+  });
+
+  it('claude usa --strict-mcp-config e --no-chrome (as extensões dele não entram na aba)', () => {
+    const args = invoked('claude').args.join(' ');
+    expect(args).toContain('--strict-mcp-config');
+    expect(args).toContain('--no-chrome');
+  });
+
+  it('claude grava a config do MCP em arquivo 0600, não na linha de comando', () => {
+    const cwd = tmp();
+    const inv = comando('claude', 'PROMPT', MCP, {}, cwd, []);
+    const idx = inv.args.indexOf('--mcp-config');
+    const arquivo = inv.args[idx + 1]!;
+    expect(arquivo.startsWith(cwd)).toBe(true);
+    const cfg = JSON.parse(readFileSync(arquivo, 'utf8'));
+    expect(cfg.mcpServers.browser.url).toBe(MCP.url);
+    expect(cfg.mcpServers.browser.headers.Authorization).toBe(`Bearer ${MCP.token}`);
+  });
+
+  it('codex leva o token por variável de ambiente, não na linha de comando', () => {
+    const env: Record<string, string | undefined> = {};
+    const inv = comando('codex', 'PROMPT', MCP, env, tmp(), []);
+    expect(env.BROWSER_TOKEN).toBe(MCP.token);
+    expect(inv.args.join(' ')).not.toContain(MCP.token);
+    expect(inv.args).toContain('mcp_servers.browser.bearer_token_env_var=BROWSER_TOKEN');
+  });
+
+  it('codex nunca aprova shell: só as ferramentas do MCP', () => {
+    const args = invoked('codex').args.join(' ');
+    expect(args).toContain('mcp_servers.browser.default_tools_approval_mode=approve');
+    expect(args).toContain('approval_policy=never');
+  });
+
+  it('codex só recebe imagem como anexo por flag; PDF vai pelo caminho no prompt', () => {
+    const comImagem = comando('codex', 'P', MCP, {}, tmp(), ['anexos/0-a.png']).args;
+    expect(comImagem).toContain('-i');
+    expect(comImagem).toContain('anexos/0-a.png');
+
+    const sem = comando('codex', 'P', MCP, {}, tmp(), ['anexos/0-nota.pdf']).args;
+    expect(sem).not.toContain('anexos/0-nota.pdf');
+  });
+
+  it('o prompt vai sempre por stdin nas três CLIs (argv do Windows corta em ~32k)', () => {
+    for (const ia of ['agy', 'codex', 'claude'] as Ia[]) {
+      const inv = invoked(ia);
+      expect(inv.args).not.toContain('PROMPT');
+      expect(inv.stdin).toContain('PROMPT');
+    }
+  });
+});
+
+describe('respostaFinal: o texto que chega ao usuário', () => {
+  it('agy: pega o response do evento result', () => {
+    const saida = '{"event":"assistant","x":1}\n{"event":"result","result":{"response":"Preenchido."}}\n';
+    expect(respostaFinal('agy', saida)).toBe('Preenchido.');
+  });
+
+  it('claude: o campo result do json', () => {
+    expect(respostaFinal('claude', '{"result":"Pronto."}')).toBe('Pronto.');
+  });
+
+  it('codex: a última agent_message concluída', () => {
+    const saida = [
+      '{"type":"item.completed","item":{"type":"agent_message","text":"primeira"}}',
+      '{"type":"item.completed","item":{"type":"agent_message","text":"última"}}',
+    ].join('\n');
+    expect(respostaFinal('codex', saida)).toBe('última');
+  });
+
+  it('saída inútil vira undefined, nunca texto quebrado para o usuário', () => {
+    expect(respostaFinal('agy', 'lixo solto\nnao é json')).toBeUndefined();
+    expect(respostaFinal('claude', '{quebrado')).toBeUndefined();
+    expect(respostaFinal('codex', '')).toBeUndefined();
+  });
+});
