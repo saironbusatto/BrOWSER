@@ -689,7 +689,7 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
   box.innerHTML = `<div class="login-card">
     <div class="login-titulo">Conectando ${escapeHtml(e.nome)}</div>
     <a class="login-link" href="${escapeHtml(e.url)}" target="_blank" rel="noreferrer">Abrir login no navegador</a>
-    <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo bRowser.</div>
+    <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo BrOWSER.</div>
     ${codigo}${campo}
   </div>`;
 
