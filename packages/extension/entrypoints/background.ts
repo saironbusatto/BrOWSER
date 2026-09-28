@@ -154,7 +154,10 @@ export default defineBackground(() => {
       return;
     }
     if (msg?.tipo === 'telemetria_blueprint') {
-      porta?.postMessage(msg);
+      // Desligável no painel (chave aprendizadoPassivo; ausente = ligado).
+      chrome.storage.local.get('aprendizadoPassivo').then(({ aprendizadoPassivo }) => {
+        if (aprendizadoPassivo !== false) porta?.postMessage(msg);
+      });
       responder({ ok: true });
       return;
     }
