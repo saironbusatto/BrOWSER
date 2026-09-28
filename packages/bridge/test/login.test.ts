@@ -92,7 +92,18 @@ describe('comandoLogout: como sair de cada conta', () => {
   it('toda IA tem um caminho de logout (nenhum fica sem saída)', () => {
     for (const ia of ['agy', 'codex', 'claude'] as const) {
       expect(comandoLogout(ia)).not.toBeNull();
-      expect(Bun.which(comandoLogout(ia)![0]!)).not.toBeNull();
     }
+  });
+
+  it('as duas CLIs com logout próprio estão no PATH', () => {
+    expect(Bun.which('codex')).not.toBeNull();
+    expect(Bun.which('claude')).not.toBeNull();
+  });
+
+  it('o logout do agy depende de secret-tool, que é só Unix', () => {
+    // Não exige que exista: no Windows a ponte cai no erro "não está instalado", que é o
+    // comportamento honesto. Aqui só fixamos que essa é a dependência, para o dia em que o agy
+    // ganhar logout próprio a gente saiba o que trocar.
+    expect(comandoLogout('agy')![0]).toBe('secret-tool');
   });
 });
