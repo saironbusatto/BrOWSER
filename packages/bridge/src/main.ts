@@ -1,20 +1,35 @@
 // Ponte: host de Native Messaging (iniciado pelo Chrome) + servidor MCP HTTP em 127.0.0.1.
 // stdout é exclusivo do protocolo do Chrome: todo log vai para arquivo.
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import {
+  type Campo,
+  type Cmd,
+  type Comandos,
+  type Evento,
+  IAS,
+  type Ia,
+  type MensagemExtensao,
+  type PapelAgente,
+  type Pedir,
+  type Resposta,
+  type SiteBlueprint,
+} from '@browser/shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
-import { executar, removerIntegracaoAgy, type Execucao } from './ias';
-import { iniciarLogin, responderCodigo, fimDoLogin, obterStatusAssinaturas, encerrarLogin, desconectarTodas } from './assinaturas';
+import { desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAssinaturas, responderCodigo } from './assinaturas';
+import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
+import { CONTROLE_ATIVO } from './build';
 import { pathComIAs } from './caminhos';
-import { motivoPerguntaVaga } from './perguntas';
+import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
+import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
 import { registrarHost, removerHost } from './instalar';
-import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
+import { motivoPerguntaVaga } from './perguntas';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -40,13 +55,31 @@ const TIMEOUT_MS = 30_000;
 const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste
 
 mkdirSync(DIR, { recursive: true, mode: 0o700 });
-const log = (...a: unknown[]) => appendFileSync(join(DIR, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);
+// Log nunca derruba a ponte: stdout é exclusivo do protocolo do Chrome e o arquivo pode sumir
+// (home removido, disco cheio, limpeza de ambiente). Perder um log é aceitável; perder o processo
+// no meio de um pedido, não.
+const log = (...a: unknown[]) => {
+  try {
+    appendFileSync(join(DIR, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);
+  } catch {}
+};
 
 // ---- Native Messaging: mensagens com prefixo uint32 little-endian ----
 let seq = 0;
 const pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) => void }>();
-const perguntasPendentes = new Map<string, (r: { resposta: string; respostasCampos?: Record<string, string> }) => void>();
-let pedidoAtivo: string | undefined;
+const perguntasPendentes = new Map<
+  string,
+  {
+    resolver: (r: { resposta: string; respostasCampos?: Record<string, string> }) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+// Pedidos que o usuário mandaram parar: o processo da IA já foi morto, então o `resultado` que
+// sair em seguida é ruído e o evento certo é `parado`.
+const paradoEm = new Set<string>();
+// Qual CLI estava rodando, para o `parado` dizer "parado durante o agy". Cosmético, mas ajuda a
+// pessoa a entender por que a resposta parou no meio.
+let iaEmCurso: Ia | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
 
 function escrever(msg: object) {
@@ -59,9 +92,23 @@ function escrever(msg: object) {
 function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
   const id = ++seq;
   escrever({ id, cmd, args });
-  return new Promise((ok, falha) => {
-    pendentes.set(id, { ok: ok as (v: unknown) => void, falha });
-    setTimeout(() => pendentes.delete(id) && falha(new Error(`timeout em ${cmd}`)), TIMEOUT_MS);
+  return new Promise((resolve, reject) => {
+    // O timer é sempre limpo: sem isso cada comando deixava um setTimeout de 30s vivo e prendia
+    // o event loop (pior no timer de 5 min das perguntas).
+    const timer = setTimeout(() => {
+      if (pendentes.delete(id)) reject(new Error(`timeout em ${cmd}`));
+    }, TIMEOUT_MS);
+    timer.unref?.();
+    pendentes.set(id, {
+      ok: (v) => {
+        clearTimeout(timer);
+        resolve(v as Comandos[C]['result']);
+      },
+      falha: (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    });
   });
 }
 
@@ -76,16 +123,21 @@ async function lerStdin() {
       if ('tipo' in msg) {
         if (msg.tipo === 'pedido') {
           atenderPedido(msg);
+        } else if (msg.tipo === 'parar') {
+          encerrarPedido(msg.pedidoId, iaEmCurso);
         } else if (msg.tipo === 'resposta_usuario') {
-          const resolver = perguntasPendentes.get(msg.perguntaId);
-          if (resolver) {
+          const p = perguntasPendentes.get(msg.perguntaId);
+          if (p) {
             perguntasPendentes.delete(msg.perguntaId);
-            resolver({ resposta: msg.resposta, respostasCampos: msg.respostasCampos });
+            clearTimeout(p.timer);
+            p.resolver({ resposta: msg.resposta, respostasCampos: msg.respostasCampos });
           }
         } else if (msg.tipo === 'telemetria_blueprint') {
-          if (msg.blueprint && msg.blueprint.dominio && Array.isArray(msg.blueprint.campos)) {
+          if (msg.blueprint?.dominio && Array.isArray(msg.blueprint.campos)) {
             const atualizado = salvarOuAtualizarBlueprint(msg.blueprint);
-            log(`[telemetria] Blueprint passivo atualizado para ${atualizado.dominio} (${atualizado.campos.length} campos, ${atualizado.gatilhos?.length ?? 0} gatilhos)`);
+            log(
+              `[telemetria] Blueprint passivo atualizado para ${atualizado.dominio} (${atualizado.campos.length} campos, ${atualizado.gatilhos?.length ?? 0} gatilhos)`,
+            );
           }
         } else if (msg.tipo === 'consultar_assinaturas') {
           emitirStatusAssinaturas();
@@ -98,7 +150,7 @@ async function lerStdin() {
           desconectarTodas(iaAtivaPreferencial)
             .then((r) => {
               for (const f of r.falhou) log(`desconectar ${f.ia} falhou: ${f.erro}`);
-              return emitirStatusAssinaturas().then((lista) =>
+              return emitirStatusAssinaturas().then(() =>
                 escrever({
                   tipo: 'logout_fim',
                   ok: r.ok.length,
@@ -165,21 +217,91 @@ async function conectarAssinatura(ia: Ia) {
 // ---- Pedidos do painel lateral ----
 let mcp: { url: string; token: string } | undefined; // definido quando o HTTP sobe
 let ocupado = false;
+// `pedidoAtivo` só é sobrescrito por um pedido que realmente entrou (ver emitirResultado), então
+// dois pedidos seguidos não sequestram o id um do outro.
+let pedidoAtivo: string | undefined;
+// Mapa ref -> campo, populado a cada ler_campos. É o que permite à ponte decidir, por código, se
+// um clique é envio irreversível (src/envio.ts) sem depender de o rótulo dizer o que é.
+let camposConhecidos = new Map<number, Campo>();
 
-async function rodarPedido(p: Pedir, blueprint: SiteBlueprint | null, avisar: (t: string, agente?: PapelAgente) => void, ordem?: Ia[]): Promise<Execucao> {
+/**
+ * Encerra o pedido em andamento.
+ *
+ * Emite o `parado` AQUI, e não no fim de `atenderPedido`: o `paradoEm` lá existe justamente para
+ * suprimir o `resultado` (que viria de um processo morto e seria ruído). Sem este `escrever`, o
+ * painel ficaria preso em "Parando…" para sempre — foi o que o teste de comportamento pegou.
+ */
+function encerrarPedido(pedidoId: string, ia?: Ia): void {
+  if (pedidoAtivo !== pedidoId) return;
+  paradoEm.add(pedidoId);
+  cancelarExecucao();
+  // As perguntas pendentes ficariam esperando 5 min segurando o processador da IA. Resolve todas
+  // com a resposta de parada: sem isso a promise do `perguntar_ao_usuario` nunca resolveria.
+  for (const [perguntaId, p] of perguntasPendentes) {
+    perguntasPendentes.delete(perguntaId);
+    clearTimeout(p.timer);
+    p.resolver({ resposta: 'O pedido foi parado pelo usuário. Nada mais será feito nesta aba.' });
+  }
+  camposConhecidos = new Map();
+  log(`pedido ${pedidoId}: parado pelo usuário${ia ? ` (durante ${ia})` : ''}`);
+  escrever({
+    tipo: 'parado',
+    pedidoId,
+    ...(ia ? { ia } : {}),
+    texto: 'Você parou este pedido. Nada foi enviado e a página não foi alterada.',
+  } satisfies Evento);
+}
+
+/** Resultado de um pedido recusado sem chegar à IA (já em andamento). Não é falha da IA. */
+function emitirRecusa(pedidoId: string, texto: string) {
+  escrever({ tipo: 'parado', pedidoId, texto } satisfies Evento);
+  log(`pedido ${pedidoId}: recusado — ${texto}`);
+}
+
+async function rodarPedido(
+  p: Pedir,
+  blueprint: SiteBlueprint | null,
+  avisar: (t: string, agente?: PapelAgente) => void,
+  ordem?: Ia[],
+): Promise<Execucao> {
   if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
-    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordemFinal);
+    // Token novo a cada execução: o que o agy grava na config global dele fica inútil assim que
+    // o pedido termina. O cancelamento é registrado junto, para o botão Parar matar o processo.
+    definirCancelamento(null);
+    return await executar(p.texto, sessaoMcp(), avisar, p.arquivos, blueprint, ordemFinal, (ia) => {
+      iaEmCurso = ia;
+    });
   } finally {
+    definirCancelamento(null);
     ocupado = false;
   }
 }
 
+/** URL + token vigentes; o token gira a cada pedido. */
+function sessaoMcp(): { url: string; token: string } {
+  if (!mcp) throw new Error('MCP ainda não subiu');
+  tokenAtivo = randomBytes(32).toString('hex');
+  gravarToken();
+  return { url: mcp.url, token: tokenAtivo };
+}
+
+function emitirResultado(p: Pedir, r: Execucao) {
+  log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
+  escrever({ tipo: 'resultado', pedidoId: p.pedidoId, ...r } satisfies Evento);
+}
+
 async function atenderPedido(p: Pedir) {
+  // Só assume o pedido se não houver um em andamento. Antes, o segundo pedido sobrescrevia
+  // `pedidoAtivo` e só depois era rejeitado — os status do primeiro saíam com o id errado.
+  if (ocupado) {
+    emitirRecusa(p.pedidoId, 'Já existe um pedido em andamento.');
+    return;
+  }
   pedidoAtivo = p.pedidoId;
   const emitir = (e: Evento) => escrever(e);
   try {
@@ -211,10 +333,19 @@ async function atenderPedido(p: Pedir) {
       }
     } catch {}
 
-    const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
-      .catch((e): Execucao => ({ ok: false, texto: String(e) }));
-    log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
-    emitir({ tipo: 'resultado', pedidoId: p.pedidoId, ...r });
+    const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente })).catch(
+      (e): Execucao => ({ ok: false, texto: String(e) }),
+    );
+
+    // Pedido parado no meio: a IA foi morta, então o resultado não diz nada — quem decide a
+    // mensagem final é o evento `parado`.
+    if (paradoEm.has(p.pedidoId)) {
+      paradoEm.delete(p.pedidoId);
+      log(`pedido ${p.pedidoId}: parado`);
+      return;
+    }
+
+    emitirResultado(p, r);
 
     // Se bem-sucedido, memoriza no cache local (auto-aprendizado anônimo)
     if (r.ok && urlAba) {
@@ -228,7 +359,9 @@ async function atenderPedido(p: Pedir) {
       } catch {}
     }
   } finally {
-    pedidoAtivo = undefined;
+    if (pedidoAtivo === p.pedidoId) pedidoAtivo = undefined;
+    camposConhecidos = new Map();
+    iaEmCurso = undefined;
   }
 }
 
@@ -237,89 +370,162 @@ const texto = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.s
 
 function criarMcp() {
   const s = new McpServer({ name: 'browser', version: '0.1.0' });
-  s.registerTool('consultar_blueprint', {
-    description: 'Consulta se há um mapa estrutural conhecido (blueprint) para a URL ou domínio especificado.',
-    inputSchema: {
-      urlOuDominio: z.string().describe('URL completa ou domínio a consultar (ex: gemini.google.com ou localhost:5173)'),
+  s.registerTool(
+    'consultar_blueprint',
+    {
+      description: 'Consulta se há um mapa estrutural conhecido (blueprint) para a URL ou domínio especificado.',
+      inputSchema: {
+        urlOuDominio: z.string().describe('URL completa ou domínio a consultar (ex: gemini.google.com ou localhost:5173)'),
+      },
     },
-  }, async ({ urlOuDominio }) => {
-    const bp = await obterBlueprint(urlOuDominio);
-    return texto(bp ?? { encontrado: false, mensagem: 'Nenhum blueprint disponível para este domínio ainda.' });
-  });
-  s.registerTool('ler_campos', {
-    description: 'Lê a aba atual do navegador e lista os campos de formulário e botões: ref, papel, rótulo (nome), valor atual, se está marcado e as opções de selects. Chame antes de preencher e de novo no fim para conferir.',
-    inputSchema: {},
-  }, async () => {
-    if (pedidoAtivo) {
-      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Mapeando elementos e botões da página…', agente: 'scout' } satisfies Evento);
-    }
-    return texto(await enviar('ler_campos', {}));
-  });
-  s.registerTool('preencher', {
-    description: 'Preenche um campo pelo ref obtido em ler_campos. Datas: AAAA-MM-DD. Select: texto ou valor da opção. Checkbox/radio: "true" para marcar, "false" para desmarcar. Retorna o valor que ficou no campo.',
-    inputSchema: { ref: z.number().int().describe('ref do campo em ler_campos'), valor: z.string() },
-  }, async ({ ref, valor }) => {
-    if (pedidoAtivo) {
-      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`, agente: 'scout' } satisfies Evento);
-    }
-    return texto(await enviar('preencher', { ref, valor }));
-  });
-  s.registerTool('clicar', {
-    description: 'Clica num elemento pelo ref obtido em ler_campos. NUNCA clique em botões que enviam o formulário sem confirmação explícita do usuário.',
-    inputSchema: { ref: z.number().int() },
-  }, async ({ ref }) => {
-    if (pedidoAtivo) {
-      escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Navegando / abrindo menu na página…', agente: 'scout' } satisfies Evento);
-    }
-    return texto(await enviar('clicar', { ref }));
-  });
-  s.registerTool('perguntar_ao_usuario', {
-    description: 'Pergunta ao usuário, no painel lateral, um dado essencial que falta (CPF, telefone, uma escolha entre opções). A pergunta precisa ser entendida sem contexto: diga qual campo da página precisa do dado e, se houver, passe as opções em "opcoes". Perguntas vagas (ex.: "teste") são recusadas e não chegam ao usuário. Retorna a resposta dele.',
-    inputSchema: {
-      pergunta: z.string().describe('Pergunta completa ao usuário, citando o campo da página. Ex.: "Qual opção escolher em Primary Discovery Channel?"'),
-      campos: z.array(z.string()).optional().describe('Lista opcional de nomes dos campos específicos que o usuário deve preencher'),
-      opcoes: z.array(z.string()).optional().describe('Lista opcional de opções de escolha para o usuário clicar'),
+    async ({ urlOuDominio }) => {
+      const bp = await obterBlueprint(urlOuDominio);
+      return texto(bp ?? { encontrado: false, mensagem: 'Nenhum blueprint disponível para este domínio ainda.' });
     },
-  }, async ({ pergunta, campos, opcoes }) => {
-    if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
-    const vaga = motivoPerguntaVaga({ pergunta, campos, opcoes });
-    if (vaga) {
-      log(`pergunta vaga recusada: ${JSON.stringify(pergunta).slice(0, 80)}`);
-      return texto({ erro: vaga });
-    }
-    const perguntaId = randomUUID();
-    escrever({
-      tipo: 'pergunta',
-      pedidoId: pedidoAtivo,
-      perguntaId,
-      pergunta,
-      campos,
-      opcoes,
-    } satisfies Evento);
-    const resposta = await new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
-      perguntasPendentes.set(perguntaId, resolve);
-      setTimeout(() => {
-        if (perguntasPendentes.delete(perguntaId)) {
-          resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
-        }
-      }, 5 * 60_000);
-    });
-    return texto(resposta);
-  });
+  );
+  s.registerTool(
+    'ler_campos',
+    {
+      description:
+        'Lê a aba atual do navegador e lista os campos de formulário e botões: ref, papel, rótulo (nome), valor atual, se está marcado e as opções de selects. Chame antes de preencher e de novo no fim para conferir.',
+      inputSchema: {},
+    },
+    async () => {
+      if (pedidoAtivo) {
+        escrever({
+          tipo: 'status',
+          pedidoId: pedidoAtivo,
+          texto: 'Mapeando elementos e botões da página…',
+          agente: 'scout',
+        } satisfies Evento);
+      }
+      const leitura = (await enviar('ler_campos', {})) as { url: string; titulo: string; campos: Campo[] };
+      // Guarda do clique em envio: só dá para classificar o que foi lido nesta rodada.
+      camposConhecidos = new Map(leitura.campos.map((c) => [c.ref, c]));
+      return texto(leitura);
+    },
+  );
+  s.registerTool(
+    'preencher',
+    {
+      description:
+        'Preenche um campo pelo ref obtido em ler_campos. Datas: AAAA-MM-DD. Select: texto ou valor da opção. Checkbox/radio: "true" para marcar, "false" para desmarcar. Retorna o valor que ficou no campo.',
+      inputSchema: { ref: z.number().int().describe('ref do campo em ler_campos'), valor: z.string() },
+    },
+    async ({ ref, valor }) => {
+      if (pedidoAtivo) {
+        escrever({
+          tipo: 'status',
+          pedidoId: pedidoAtivo,
+          texto: `Preenchendo: ${valor.length > 20 ? `${valor.slice(0, 18)}…` : valor}`,
+          agente: 'scout',
+        } satisfies Evento);
+      }
+      return texto(await enviar('preencher', { ref, valor }));
+    },
+  );
+  s.registerTool(
+    'clicar',
+    {
+      description:
+        'Clica num elemento pelo ref obtido em ler_campos. NUNCA clique em botões que enviam o formulário sem confirmação explícita do usuário.',
+      inputSchema: { ref: z.number().int() },
+    },
+    async ({ ref }) => {
+      // Regra de código, não de prompt: clique em envio final é barrado antes de chegar na página.
+      const campo = camposConhecidos.get(ref);
+      if (!campo) return texto({ erro: `ref ${ref} desconhecida: chame ler_campos antes de clicar` });
+      const nome = motivoEnvioIrreversivel(campo);
+      if (nome) {
+        log(`clique em "${nome}" barrado: envio irreversível`);
+        return texto(recusaEnvio(nome));
+      }
+      if (pedidoAtivo) {
+        escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Navegando / abrindo menu na página…', agente: 'scout' } satisfies Evento);
+      }
+      return texto(await enviar('clicar', { ref }));
+    },
+  );
+  s.registerTool(
+    'perguntar_ao_usuario',
+    {
+      description:
+        'Pergunta ao usuário, no painel lateral, um dado essencial que falta (CPF, telefone, uma escolha entre opções). A pergunta precisa ser entendida sem contexto: diga qual campo da página precisa do dado e, se houver, passe as opções em "opcoes". Perguntas vagas (ex.: "teste") são recusadas e não chegam ao usuário. Retorna a resposta dele.',
+      inputSchema: {
+        pergunta: z
+          .string()
+          .describe('Pergunta completa ao usuário, citando o campo da página. Ex.: "Qual opção escolher em Primary Discovery Channel?"'),
+        campos: z.array(z.string()).optional().describe('Lista opcional de nomes dos campos específicos que o usuário deve preencher'),
+        opcoes: z.array(z.string()).optional().describe('Lista opcional de opções de escolha para o usuário clicar'),
+      },
+    },
+    async ({ pergunta, campos, opcoes }) => {
+      if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
+      const vaga = motivoPerguntaVaga({ pergunta, campos, opcoes });
+      if (vaga) {
+        log(`pergunta vaga recusada: ${JSON.stringify(pergunta).slice(0, 80)}`);
+        return texto({ erro: vaga });
+      }
+      const perguntaId = randomUUID();
+      escrever({
+        tipo: 'pergunta',
+        pedidoId: pedidoAtivo,
+        perguntaId,
+        pergunta,
+        campos,
+        opcoes,
+      } satisfies Evento);
+      const resposta = await new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
+        const timer = setTimeout(() => {
+          if (perguntasPendentes.delete(perguntaId)) {
+            resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
+          }
+        }, 5 * 60_000);
+        timer.unref?.();
+        perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
+      });
+      return texto(resposta);
+    },
+  );
   return s;
 }
 
 // ---- HTTP ----
-const token = randomBytes(32).toString('hex');
+// Token rotacionado a cada pedido (ver sessaoMcp). Guardar em `let` porque muda durante a vida do
+// processo; a comparação continua em tempo constante.
+let tokenAtivo = randomBytes(32).toString('hex');
+
 const autorizado = (req: IncomingMessage) => {
   const a = Buffer.from(req.headers.authorization ?? '');
-  const b = Buffer.from(`Bearer ${token}`);
+  const b = Buffer.from(`Bearer ${tokenAtivo}`);
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
+function gravarToken() {
+  const { port } = http.address() as { port: number };
+  writeFileSync(join(DIR, 'bridge.json'), JSON.stringify({ port, token: tokenAtivo, pid: process.pid }), { mode: 0o600 });
+}
+
+// Só quem vem do CLI legítimo (sem `Origin`, ou de localhost) fala com o /control. Uma página
+// aberta no navegador do usuário apontando para 127.0.0.1:<porta> é barrada antes do token.
+function origemConfiavel(req: IncomingMessage): boolean {
+  const origem: string | undefined = req.headers.origin;
+  if (!origem) return true; // CLI (spike, smoke) não manda Origin
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origem);
+}
+
+// Teto generoso para os payloads grandes (anexos em base64) e hard para qualquer coisa acima:
+// sem limite, um POST de 2 GB matava a ponte por exaustão de memória.
+const MAX_CORPO = 128 * 1024 * 1024;
+
 async function corpoJson(req: IncomingMessage) {
   const partes: Buffer[] = [];
-  for await (const p of req) partes.push(p as Buffer);
+  let total = 0;
+  for await (const p of req) {
+    total += (p as Buffer).length;
+    if (total > MAX_CORPO) throw new Error('corpo da requisição grande demais');
+    partes.push(p as Buffer);
+  }
   return partes.length ? JSON.parse(Buffer.concat(partes).toString()) : undefined;
 }
 
@@ -334,13 +540,16 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
     await criarMcp().connect(t);
     return t.handleRequest(req, res, body);
   }
-  if (req.url === '/control' && req.method === 'POST' && body?.cmd === 'executar') {
+
+  // /control é superfície de teste (`bun run spike`, smoke do CI): só existe em build de
+  // desenvolvimento. No binário de release estas rotas não são compiladas.
+  if (CONTROLE_ATIVO && origemConfiavel(req) && req.url === '/control' && req.method === 'POST' && body?.cmd === 'executar') {
     // Mesmo caminho do painel lateral, para o `bun run spike` testar o fluxo real.
     const pedido: Pedir = { tipo: 'pedido', pedidoId: randomUUID(), texto: String(body.args?.texto ?? ''), tabId: -1 };
     const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
     return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: r }));
   }
-  if (req.url === '/control' && req.method === 'POST') {
+  if (CONTROLE_ATIVO && origemConfiavel(req) && req.url === '/control' && req.method === 'POST') {
     if (!CONTROLE.includes(body?.cmd)) return res.writeHead(400).end('comando inválido');
     try {
       const result = await enviar(body.cmd, body.args ?? {});
@@ -352,16 +561,18 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
   res.writeHead(404).end();
 }
 
-const http = createServer((req, res) => atender(req, res).catch((e) => {
-  log('erro http', e?.stack ?? e);
-  if (!res.headersSent) res.writeHead(500).end();
-}));
+const http = createServer((req, res) =>
+  atender(req, res).catch((e) => {
+    log('erro http', e?.stack ?? e);
+    if (!res.headersSent) res.writeHead(500).end();
+  }),
+);
 http.requestTimeout = 0; // `executar` pode levar minutos
 http.listen(0, '127.0.0.1', () => {
   const { port } = http.address() as { port: number };
-  mcp = { url: `http://127.0.0.1:${port}/mcp`, token };
-  writeFileSync(join(DIR, 'bridge.json'), JSON.stringify({ port, token, pid: process.pid }), { mode: 0o600 });
-  log(`ponte ouvindo em 127.0.0.1:${port}`);
+  mcp = { url: `http://127.0.0.1:${port}/mcp`, token: tokenAtivo };
+  gravarToken();
+  log(`ponte ouvindo em 127.0.0.1:${port}${CONTROLE_ATIVO ? ' (rotas de controle ligadas)' : ''}`);
 });
 
 lerStdin();

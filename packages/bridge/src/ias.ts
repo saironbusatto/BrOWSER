@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { IAS, type ArquivoAnexo, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
-import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
+import { type ArquivoAnexo, IAS, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { formatarBlueprintParaIa } from './blueprints';
 import { comandoExecutavel } from './caminhos';
+import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 
 const TIMEOUT_MS = 5 * 60_000;
 const TOOLS = ['ler_campos', 'preencher', 'clicar', 'perguntar_ao_usuario', 'consultar_blueprint'];
@@ -13,7 +13,12 @@ const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHR
 export type Mcp = { url: string; token: string };
 export type Execucao = { ok: boolean; ia?: Ia; texto: string };
 
-export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null, caminhos: Record<string, string> = {}) {
+export function instrucoes(
+  pedido: string,
+  arquivos?: ArquivoAnexo[],
+  blueprint?: SiteBlueprint | null,
+  caminhos: Record<string, string> = {},
+) {
   const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
   return `Você é o BrOWSER AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
@@ -78,7 +83,17 @@ function escreverMcpClaude(cwd: string, mcp: Mcp): string {
 
 type Invocacao = { args: string[]; stdin: string; manterStdinAberto?: boolean };
 
-function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string, anexos: string[]): Invocacao {
+// Exportada para teste: é aqui que mora a trava de segurança do agy (sem
+// --dangerously-skip-permissions, prompt por stdin em vez de argumento) e as restrições de
+// ferramentas das outras duas.
+export function comando(
+  ia: Ia,
+  prompt: string,
+  mcp: Mcp,
+  env: Record<string, string | undefined>,
+  cwd: string,
+  anexos: string[],
+): Invocacao {
   switch (ia) {
     case 'agy': {
       let conteudo = prompt;
@@ -98,25 +113,43 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
     case 'codex':
       env.BROWSER_TOKEN = mcp.token;
       return {
-        args: ['codex', 'exec', '--json', '--skip-git-repo-check',
+        args: [
+          'codex',
+          'exec',
+          '--json',
+          '--skip-git-repo-check',
           // Valores sem aspas (o codex trata como texto o que não é TOML): nada para o cmd.exe reinterpretar.
-          '-c', `mcp_servers.browser.url=${mcp.url}`,
-          '-c', 'mcp_servers.browser.bearer_token_env_var=BROWSER_TOKEN',
+          '-c',
+          `mcp_servers.browser.url=${mcp.url}`,
+          '-c',
+          'mcp_servers.browser.bearer_token_env_var=BROWSER_TOKEN',
           // Aprova só as ferramentas do nosso MCP; comandos de shell seguem bloqueados.
-          '-c', 'mcp_servers.browser.default_tools_approval_mode=approve',
-          '-c', 'approval_policy=never',
+          '-c',
+          'mcp_servers.browser.default_tools_approval_mode=approve',
+          '-c',
+          'approval_policy=never',
           // Imagens entram como imagem de verdade; PDF o codex lê pelo caminho indicado no prompt.
           ...anexos.filter((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)).flatMap((a) => ['-i', a]),
-          '-'],
+          '-',
+        ],
         stdin: prompt,
       };
     case 'claude':
       return {
-        args: ['claude', '-p', '--output-format', 'json', '--strict-mcp-config', '--no-chrome',
+        args: [
+          'claude',
+          '-p',
+          '--output-format',
+          'json',
+          '--strict-mcp-config',
+          '--no-chrome',
           // JSON por arquivo (0600, apagado ao final), não como argumento: aspas e chaves quebram no cmd.exe.
-          '--mcp-config', escreverMcpClaude(cwd, mcp),
+          '--mcp-config',
+          escreverMcpClaude(cwd, mcp),
           // Read só da pasta de anexos (PDF/imagem); o resto do disco segue fora.
-          '--allowedTools', [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(',')],
+          '--allowedTools',
+          [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(','),
+        ],
         stdin: prompt,
       };
   }
@@ -125,6 +158,16 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
 // Libera no agy só as ferramentas do nosso MCP (aditivo: não mexe nas outras regras do usuário).
 const AGY_SETTINGS = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
 const REGRA_MCP = 'mcp(browser/*)';
+
+// Callback de cancelamento da execução em curso. Vive aqui, em ias.ts, porque é quem tem o
+// handle do processo; a ponte só precisa saber que existe algo para matar.
+let cancelarAtual: (() => void) | undefined;
+
+/** Tira da config global do agy o servidor "browser" (e o header com o token da ponte). */
+export function removerServidorMcpAgy() {
+  if (!Bun.which('agy')) return;
+  Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']), { stdout: 'ignore', stderr: 'ignore' });
+}
 
 /** Desinstalação: tira só a nossa regra e o nosso servidor MCP do agy; o resto da config dele fica. */
 export function removerIntegracaoAgy(): string[] {
@@ -174,7 +217,10 @@ export function respostaFinal(ia: Ia, saida: string): string | undefined {
   try {
     if (ia === 'agy') return eventoResultadoAgy(saida)?.response || undefined;
     if (ia === 'claude') return JSON.parse(saida).result;
-    const msgs = saida.trim().split('\n').map((l) => JSON.parse(l))
+    const msgs = saida
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
       .filter((e) => e.type === 'item.completed' && e.item?.type === 'agent_message');
     return msgs.at(-1)?.item.text;
   } catch {
@@ -189,7 +235,10 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
 
   if (ia === 'agy') {
     // agy não aceita MCP por sessão: grava (ou atualiza) o servidor "browser" na config global.
-    const add = Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url]), { env });
+    const add = Bun.spawnSync(
+      comandoExecutavel(['agy', 'mcp', 'add', '--header', `Authorization: Bearer ${mcp.token}`, 'browser', mcp.url]),
+      { env },
+    );
     if (add.exitCode !== 0) return { ok: false, ia, texto: `agy mcp add falhou: ${add.stderr}` };
     const erro = garantirPermissaoAgy();
     if (erro) return { ok: false, ia, texto: erro };
@@ -200,7 +249,11 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
   const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos));
   const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
+  // Botão Parar: a ponte guarda como matar ESTE processo, para o painel poder encerrar o pedido
+  // na hora em vez de esperar o timeout de 5 minutos. Ver `definirCancelamento`.
+  definirCancelamento(() => proc.kill());
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
+  timer.unref?.();
   proc.stdin.write(inv.stdin);
   proc.stdin.flush();
   if (!inv.manterStdinAberto) proc.stdin.end();
@@ -217,13 +270,32 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   const [saida, erros] = await Promise.all([lerSaida(), new Response(proc.stderr).text()]);
   const codigo = await proc.exited;
   clearTimeout(timer);
-  rmSync(join(cwd, ARQUIVO_PEDIDO), { force: true }); // pode conter dados de anexos do usuário
-  apagarAnexos(cwd);
-  rmSync(join(cwd, ARQUIVO_MCP_CLAUDE), { force: true }); // contém o token da ponte
+  definirCancelamento(null);
+  // O `finally` é o que garante a limpeza: um pedido parado no meio também tem que apagar os
+  // anexos e o arquivo com o token da ponte.
+  try {
+    // agy não aceita MCP por sessão, então ele fica gravado na config global dele. O servidor é
+    // removido ao fim de cada execução: o header com o token da ponte não fica em disco.
+    if (ia === 'agy') removerServidorMcpAgy();
+  } finally {
+    rmSync(join(cwd, ARQUIVO_PEDIDO), { force: true }); // pode conter dados de anexos do usuário
+    apagarAnexos(cwd);
+    rmSync(join(cwd, ARQUIVO_MCP_CLAUDE), { force: true }); // contém o token da ponte
+  }
 
   const texto = respostaFinal(ia, saida);
   if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
   return { ok: true, ia, texto };
+}
+
+/** Mata a execução em curso (botão Parar). Sem efeito se não houver nenhuma. */
+export function cancelarExecucao() {
+  cancelarAtual?.();
+}
+
+/** Registra como matar a execução em curso. `null` limpa. */
+export function definirCancelamento(f: (() => void) | null) {
+  cancelarAtual = f ?? undefined;
 }
 
 // Failover (Q8): tenta as IAs instaladas na ordem; passa para a próxima quando uma falha.
@@ -233,14 +305,18 @@ export async function executar(
   avisar: (t: string, agente?: PapelAgente) => void,
   arquivos?: ArquivoAnexo[],
   blueprint?: SiteBlueprint | null,
-  ordem: readonly Ia[] = IAS
+  ordem: readonly Ia[] = IAS,
+  /** Informa qual CLI entrou em execução (o painel mostra isso ao parar um pedido). */
+  aoConectar: (ia: Ia | undefined) => void = () => {},
 ): Promise<Execucao> {
   const instaladas = ordem.filter((ia) => Bun.which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
   const falhas: string[] = [];
   for (const ia of instaladas) {
     avisar(`Conectando ${ia}…`, 'geral');
+    aoConectar(ia);
     const r = await rodar(ia, pedido, mcp, arquivos, blueprint);
+    aoConectar(undefined);
     if (r.ok) return r;
     falhas.push(r.texto);
     avisar(`${ia} falhou; tentando a próxima IA…`, 'geral');
