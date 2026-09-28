@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'bun:test';
-import { delimiter } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
+import { HOST_NAME } from '@browser/shared';
 import { comandoExecutavel, pathComIAs } from '../src/caminhos';
+import { registrarHost, removerHost } from '../src/instalar';
 
 // Estes testes rodam no CI em Linux e em Windows, então nada aqui pode assumir `:` como separador
 // nem caminho que comece com `/`: no Windows o delimitador é `;` e o caminho absoluto é `C:\...`.
@@ -68,5 +71,65 @@ describe('pastasDasIAs: onde as ferramentas são procuradas', () => {
     const { pastasDasIAs } = await import('../src/caminhos');
     if (process.platform !== 'win32') return;
     expect(pastasDasIAs().some((p) => p.toLowerCase().includes('agy'))).toBe(true);
+  });
+});
+
+describe('removerHost: a desinstalação não pode levar o perfil do navegador junto', () => {
+  // Home de mentira, passado por parâmetro. Usar o Home real aqui apagaria o registro que a
+  // pessoa tem nos próprios navegadores, no meio de um `bun test`.
+  const FAKE = join(import.meta.dir, 'instalar-falso');
+  const chrome = () => join(FAKE, '.config', 'google-chrome');
+  const manifestos = () => join(chrome(), 'NativeMessagingHosts');
+  const manifesto = () => join(manifestos(), `${HOST_NAME}.json`);
+  const ponte = () => {
+    const p = join(FAKE, 'bin', 'bridge');
+    mkdirSync(join(FAKE, 'bin'), { recursive: true });
+    writeFileSync(p, '');
+    return p;
+  };
+
+  beforeEach(() => {
+    rmSync(FAKE, { recursive: true, force: true });
+    mkdirSync(FAKE, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(FAKE, { recursive: true, force: true });
+  });
+
+  it('registra e depois some com o manifesto', () => {
+    registrarHost(ponte(), FAKE);
+    expect(existsSync(manifesto())).toBe(true);
+    removerHost(FAKE);
+    expect(existsSync(manifesto())).toBe(false);
+  });
+
+  it('limpa a pasta NativeMessagingHosts que ficou vazia', () => {
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(manifestos())).toBe(false);
+  });
+
+  // A pasta de config do navegador guarda o perfil inteiro: histórico, cookies, senhas. Se a
+  // limpeza fosse um `rm -rf` dela, desinstalar o BrOWSER apagaria a vida da pessoa no Chrome.
+  it('preserva a pasta do navegador e o que está dentro dela', () => {
+    mkdirSync(chrome(), { recursive: true });
+    writeFileSync(join(chrome(), 'Local State'), '{}');
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(join(chrome(), 'Local State'))).toBe(true);
+  });
+
+  it('não apaga outro host registrado no mesmo lugar', () => {
+    mkdirSync(manifestos(), { recursive: true });
+    writeFileSync(join(manifestos(), 'outro.json'), '{}');
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(join(manifestos(), 'outro.json'))).toBe(true);
+  });
+
+  it('não quebra quando o navegador nunca foi registrado', () => {
+    expect(() => removerHost(FAKE)).not.toThrow();
+    expect(removerHost(FAKE)).toEqual([]);
   });
 });

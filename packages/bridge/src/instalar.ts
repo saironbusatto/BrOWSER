@@ -1,6 +1,6 @@
 // Registra a ponte como host de Native Messaging nos navegadores Chromium (Linux, macOS, Windows).
 // Usado por `bridge --install` (usuário final) e por scripts/install-host.ts (desenvolvimento).
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { HOST_NAME } from '@browser/shared';
@@ -48,10 +48,10 @@ export function pastasDeNavegador(base?: string): [string, string][] {
   ];
 }
 
-function registrarUnix(executavel: string): Registro[] {
+function registrarUnix(executavel: string, base?: string): Registro[] {
   const corpo = manifesto(executavel);
   return (
-    pastasDeNavegador()
+    pastasDeNavegador(base)
       // Registra onde o navegador existe; Chrome e Brave sempre (podem ser instalados depois).
       .filter(([nome, pasta]) => existsSync(pasta) || nome === 'Chrome' || nome === 'Brave')
       .map(([navegador, pasta]) => {
@@ -84,24 +84,29 @@ function registrarWindows(executavel: string): Registro[] {
   });
 }
 
-export function registrarHost(executavel: string): Registro[] {
-  return process.platform === 'win32' ? registrarWindows(executavel) : registrarUnix(executavel);
+export function registrarHost(executavel: string, base?: string): Registro[] {
+  return process.platform === 'win32' ? registrarWindows(executavel) : registrarUnix(executavel, base);
 }
 
 /** Desfaz registrarHost: tira o host de todos os navegadores (o que não existir é ignorado). */
-export function removerHost(): string[] {
+export function removerHost(base?: string): string[] {
   if (process.platform === 'win32') {
     const removidos = CHAVES_WINDOWS.filter(
-      ([, base]) => Bun.spawnSync(['reg', 'delete', `${base}\\${HOST_NAME}`, '/f']).exitCode === 0,
+      ([, chave]) => Bun.spawnSync(['reg', 'delete', `${chave}\\${HOST_NAME}`, '/f']).exitCode === 0,
     ).map(([navegador]) => navegador);
     rmSync(join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'BrOWSER', `${HOST_NAME}.json`), { force: true });
     return removidos;
   }
-  return pastasDeNavegador()
+  return pastasDeNavegador(base)
     .map(([navegador, pasta]) => [navegador, join(pasta, 'NativeMessagingHosts', `${HOST_NAME}.json`)] as const)
     .filter(([, arquivo]) => existsSync(arquivo))
     .map(([navegador, arquivo]) => {
       rmSync(arquivo, { force: true });
+      // Tira a pasta `NativeMessagingHosts` se ela esvaziou, senão a desinstalação deixa
+      // pastas fantasma no perfil. Só ela: apagar a pasta do navegador (ex.: `~/.config/
+      // google-chrome`) levaria junto o perfil inteiro da pessoa.
+      const dir = join(arquivo, '..');
+      if (existsSync(dir) && readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
       return navegador;
     });
 }
