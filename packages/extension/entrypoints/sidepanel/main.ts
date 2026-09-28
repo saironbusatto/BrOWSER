@@ -887,3 +887,13 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
 
 // Consulta status inicial das assinaturas
 chrome.runtime.sendMessage({ tipo: 'consultar_assinaturas' }).catch(() => {});
+
+// ── Aprendizado passivo (liga/desliga; o background respeita a mesma chave) ──
+const toggleAprendizado = document.getElementById('toggle-aprendizado') as HTMLInputElement;
+chrome.storage.local.get('aprendizadoPassivo').then(({ aprendizadoPassivo }) => {
+  toggleAprendizado.checked = aprendizadoPassivo !== false;
+});
+toggleAprendizado.addEventListener('change', () => {
+  chrome.storage.local.set({ aprendizadoPassivo: toggleAprendizado.checked });
+  showToast(toggleAprendizado.checked ? 'Aprendizado de formulários ligado' : 'Aprendizado de formulários desligado');
+});

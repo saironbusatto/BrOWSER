@@ -1524,3 +1524,16 @@ textarea#texto::placeholder {
   .plan-switch, .plan-switch::after { transition: none; }
   .plan-switch[aria-busy='true']::after { animation: none; }
 }
+
+/* Liga/desliga do aprendizado passivo (política de privacidade / SignPath) */
+.sheet-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 16px 0;
+  font-size: 12.5px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
+.sheet-toggle small { display: block; color: var(--fg-tertiary); }

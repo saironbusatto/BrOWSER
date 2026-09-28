@@ -1,7 +1,7 @@
 // Ponte: host de Native Messaging (iniciado pelo Chrome) + servidor MCP HTTP em 127.0.0.1.
 // stdout é exclusivo do protocolo do Chrome: todo log vai para arquivo.
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -9,10 +9,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
-import { executar, type Execucao } from './ias';
+import { executar, removerIntegracaoAgy, type Execucao } from './ias';
 import { iniciarLogin, responderCodigo, fimDoLogin, obterStatusAssinaturas, encerrarLogin, desconectarTodas } from './assinaturas';
 import { pathComIAs } from './caminhos';
-import { registrarHost } from './instalar';
+import { registrarHost, removerHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
@@ -21,6 +21,16 @@ process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi abert
 if (process.argv.includes('--install')) {
   for (const r of registrarHost(process.execPath)) console.log(`✓ ${r.navegador}: ${r.destino}`);
   console.log('Pronto. Reinicie o navegador para ativar a ponte.');
+  process.exit(0);
+}
+
+// `bridge --uninstall`: desfaz tudo o que o --install e o uso da ponte criaram fora da pasta dela.
+if (process.argv.includes('--uninstall')) {
+  for (const n of removerHost()) console.log(`✓ removido do ${n}`);
+  for (const f of removerIntegracaoAgy()) console.log(`✓ ${f}`);
+  rmSync(join(homedir(), '.config', 'browser-bridge'), { recursive: true, force: true });
+  console.log('✓ dados do BrOWSER apagados (estado, log e cache de blueprints)');
+  console.log('Pronto. Remova também a extensão BrOWSER do navegador.');
   process.exit(0);
 }
 
