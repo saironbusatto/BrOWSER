@@ -57,27 +57,38 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
-            'makensis ausente no runner; instalando' | Out-Host
+          # O PATH NÃO é caminho para o makensis: o choco instala em C:\Program Files (x86)\NSIS
+          # e a sessão do PowerShell já em execução continua sem enxergar o diretório novo. A
+          # primeira versão deste passo falhou exatamente nisso, com "makensis is not recognized"
+          # logo depois de o choco ter reportado sucesso.
+          $makensis = (Get-ChildItem 'C:\Program Files*\NSIS\makensis.exe' -ErrorAction SilentlyContinue |
+                       Select-Object -First 1).FullName
+          if (-not $makensis) {
+            'makensis não encontrado; instalando com o choco' | Out-Host
             choco install nsis --no-progress -y
+            $makensis = (Get-ChildItem 'C:\Program Files*\NSIS\makensis.exe' -ErrorAction SilentlyContinue |
+                         Select-Object -First 1).FullName
           }
+          if (-not $makensis) { throw 'makensis continua ausente depois do choco install nsis' }
+          "makensis: $makensis"
+          & $makensis -VERSION
           New-Item -ItemType Directory -Force -Path dist-instalador/extensao | Out-Null
           Copy-Item packages/bridge/dist/bridge.exe, design/icone.ico dist-instalador/
           Copy-Item packages/extension/.output/chrome-mv3/* dist-instalador/extensao/ -Recurse
           Copy-Item packages/bridge/scripts/instalar.nsi dist-instalador/
           Push-Location dist-instalador
           # O nome do arquivo de idioma do NSIS é BrazilianPortuguese na instalação do Windows.
-          makensis -DVERSAO=0.0.0-dev instalar.nsi
+          & $makensis -DVERSAO=0.0.0 instalar.nsi
           Pop-Location
-          if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0-dev.exe)) { throw 'o instalador não foi gerado' }
-          $cabecalho = (Get-Content dist-instalador/BrOWSER-Setup-0.0.0-dev.exe -AsByteStream -TotalCount 2) -join ','
+          if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0.exe)) { throw 'o instalador não foi gerado' }
+          $cabecalho = (Get-Content dist-instalador/BrOWSER-Setup-0.0.0.exe -AsByteStream -TotalCount 2) -join ','
           if ($cabecalho -ne '77,90') { throw "o instalador não é um PE (cabeçalho: $cabecalho)" }
 
       - name: Instalar (o .exe, em silêncio, como quem clica)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $p = Start-Process dist-instalador/BrOWSER-Setup-0.0.0-dev.exe -ArgumentList '/S' -Wait -PassThru
+          $p = Start-Process dist-instalador/BrOWSER-Setup-0.0.0.exe -ArgumentList '/S' -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "o instalador saiu com $($p.ExitCode)" }
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi instalado' }
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\extensao\manifest.json")) { throw 'a extensão não foi instalada' }
