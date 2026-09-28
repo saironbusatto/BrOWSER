@@ -60,10 +60,12 @@ jobs:
           cp packages/bridge/dist/bridge.exe design/icone.ico /tmp/nsis/
           cp -r packages/extension/.output/chrome-mv3/. /tmp/nsis/extensao/
           cp packages/bridge/scripts/instalar.nsi /tmp/nsis/
-          # O NSIS nomeia o arquivo de idioma diferente em cada plataforma: BrazilianPortuguese no
-          # Windows, PortugueseBR no pacote Linux. O script tem esse nome como define justamente
-          # para não travar o build em um dos dois.
-          (cd /tmp/nsis && makensis -DVERSAO="$VERSAO" -DIDIOMA=PortugueseBR instalar.nsi)
+          # A versão e o idioma vão por arquivo, e não por -D na linha de comando: no Windows o
+          # makensis reparte o argumento com ponto e sobraria um pedaço como nome de script. O
+          # idioma é PortugueseBR no pacote Linux (BrazilianPortuguese na instalação do Windows),
+          # e o nome errado aborta o build em vez de gerar um instalador em inglês.
+          printf '!define VERSAO "%s"\n!define IDIOMA "PortugueseBR"\n' "$VERSAO" > /tmp/nsis/instalar-versao.nsh
+          (cd /tmp/nsis && makensis instalar.nsi)
           cp "/tmp/nsis/BrOWSER-Setup-$VERSAO.exe" "pacotes/BrOWSER-Setup-$VERSAO.exe"
           # MZ = Portable Executable. Um ELF aqui seria o build de Linux com o nome de Windows.
           head -c2 "pacotes/BrOWSER-Setup-$VERSAO.exe" | grep -q 'MZ' || { echo 'o instalador não é um PE'; exit 1; }

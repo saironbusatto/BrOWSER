@@ -25,8 +25,15 @@ Unicode true
 !include "LogicLib.nsh"
 !include /NONFATAL "FileFunc.nsh"
 
+; A versao e o idioma chegam por um arquivo gerado pelo build, e nao por -D na linha de
+; comando. No Linux o -D funciona; no Windows o makensis reparte o argumento com ponto e sobra
+; um pedaco como nome de script ("VERSAO=0" e um script chamado ".0.0"). Um arquivo nao depende
+; de como o shell repassa argumento, e ainda deixa o build das duas plataformas igual.
+!include "instalar-versao.nsh"
+; Defaults para quem compilar direto, sem passar pelo build. O VIProductVersion aborta o build se
+; a versao nao for numerica de verdade, entao o fallback tem de ser.
 !ifndef VERSAO
-  !define VERSAO "0.5.0"
+  !define VERSAO "0.0.0"
 !endif
 !ifndef IDIOMA
   !define IDIOMA "BrazilianPortuguese"

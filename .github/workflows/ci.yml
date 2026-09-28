@@ -75,10 +75,15 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist-instalador/extensao | Out-Null
           Copy-Item packages/bridge/dist/bridge.exe, design/icone.ico dist-instalador/
           Copy-Item packages/extension/.output/chrome-mv3/* dist-instalador/extensao/ -Recurse
-          Copy-Item packages/bridge/scripts/instalar.nsi dist-instalador/
+          Copy-Item packages/bridge/scripts/instalar.nsi, packages/bridge/scripts/instalar-versao.nsh dist-instalador/
           Push-Location dist-instalador
-          # O nome do arquivo de idioma do NSIS é BrazilianPortuguese na instalação do Windows.
-          & $makensis -DVERSAO=0.0.0 instalar.nsi
+          # A versão vai por arquivo, não por -D: no Windows o makensis reparte o argumento com
+          # ponto e sobraria um pedaço como nome de script. O idioma é BrazilianPortuguese na
+          # instalação do Windows (no pacote Linux é PortugueseBR).
+          $defs = @('!define VERSAO "0.0.0"', '!define IDIOMA "BrazilianPortuguese"')
+          Set-Content -Encoding ASCII -Path instalar-versao.nsh -Value $defs
+          Get-Content instalar-versao.nsh
+          & $makensis instalar.nsi
           Pop-Location
           if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0.exe)) { throw 'o instalador não foi gerado' }
           $cabecalho = (Get-Content dist-instalador/BrOWSER-Setup-0.0.0.exe -AsByteStream -TotalCount 2) -join ','
