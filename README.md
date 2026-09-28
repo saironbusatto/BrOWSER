@@ -19,7 +19,10 @@ Painel lateral (extensão) ──► Ponte local (bridge) ──► Ferramenta o
 
 - A **extensão** lê e preenche a página (via `chrome.debugger`, com plano B pelo DOM).
 - A **ponte** é um programa pequeno instalado no seu computador que liga a extensão à ferramenta oficial da IA, logada com a sua assinatura. Uma extensão sozinha não pode executar programas — por isso a ponte existe.
-- A IA **nunca envia o formulário**: ela preenche e para; quem clica em Enviar é você.
+- A IA **nunca envia o formulário**: ela preenche e para; quem clica em Enviar é você. Isso não é só
+  instrução no prompt — a ponte **recusa, por código**, o clique em botão de envio final e devolve a
+  decisão para você.
+- O painel tem **botão Parar**: derruba a IA no instante, sem esperar. Soberania sua, não da máquina.
 
 ## Instalar (Windows)
 
@@ -37,19 +40,26 @@ Painel lateral (extensão) ──► Ponte local (bridge) ──► Ferramenta o
 ## Privacidade
 
 - O BrOWSER **não envia dados para os autores do projeto**. Não há servidor nosso.
-- O conteúdo da página vai para a IA que **você** conectou (Google, OpenAI ou Anthropic) **somente quando você faz um pedido** no painel.
+- O conteúdo da página vai para a IA que **você** conectou (Google, OpenAI ou Anthropic) **somente quando você faz um pedido** no painel. Campo de senha nunca é lido: a extensão sabe que o campo existe (para poder preenchê-lo) mas não lê o que está dentro.
 - A ponte baixa do GitHub um índice público de mapas de sites e, se houver, o mapa do site aberto — sem enviar dados seus.
-- O "aprendizado de formulários" guarda **só a estrutura** das páginas (rótulos e botões, sem valores e com dados pessoais mascarados), no seu computador. Pode ser desligado em Assinaturas.
+- O "aprendizado de formulários" é **desligado por padrão** e guarda **só a estrutura** das páginas
+  (rótulos e botões, sem valores e com dados pessoais mascarados), no seu computador. Mesmo ligado, ele
+  **nunca** aprende páginas de login ou de pagamento, e campo de senha nunca entra no mapa. Liga em
+  Assinaturas → Aprendizado de formulários.
 - Política completa: [docs/termos-e-privacidade.md](docs/termos-e-privacidade.md).
 
 ## Desenvolvimento
 
 ```bash
 bun install
-bun run typecheck && bun test
+bun run verificar          # lint + typecheck + testes
+bun run test:coverage      # relatório de cobertura
+bun run lint:fix           # corrige o que dá
 bun run --cwd packages/extension build          # extensão em packages/extension/.output/chrome-mv3
-bun run --cwd packages/bridge install-host       # registra a ponte (Linux/macOS, a partir do código)
-bun run spike <agy|codex|claude>                 # teste de ponta a ponta no formulário de exemplo
+bun run --cwd packages/bridge build:dev         # ponte de desenvolvimento (mantém o /control do spike)
+bun run --cwd packages/bridge build             # ponte de release (/control inalcançável)
+bun run --cwd packages/bridge install-host      # registra a ponte (Linux/macOS, a partir do código)
+bun run spike <agy|codex|claude>                # teste de ponta a ponta no formulário de exemplo
 ```
 
 Decisões do projeto: [docs/decisoes.md](docs/decisoes.md).

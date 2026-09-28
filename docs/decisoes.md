@@ -28,8 +28,29 @@ Painel lateral → Native Messaging → PONTE (executável único, Bun)
 - Formulário de teste: texto, e-mail, data, select, radio, checkbox, campo em iframe, campo React controlado.
 - **Aprovado** = pelo menos 2 das 3 ferramentas preenchem tudo a partir de uma frase, param antes de enviar e usam a assinatura.
 
+## Decisões tomadas na revisão de segurança (28/09/2026)
+
+Estas cinco não são mais intenção: estão no código e em teste.
+
+1. **Envio final é bloqueio de código, não de prompt.** A ponte classifica o elemento pelo nome
+   acessível e pelo papel, e recusa o clique antes de ele chegar à página (`src/envio.ts`). A
+   navegação intermediária ("Próximo", "Avançar", "Continuar") fica livre — engessá-la mataria o
+   produto. Quem fecha a garantia continua sendo a pessoa, clicando na página.
+2. **Senha nunca é lida.** O campo é identificado e continua preenchível, mas o valor não sai:
+   fora da leitura do CDP, fora do plano B, fora do retorno do `preencher` e fora de qualquer mapa.
+3. **Blueprint comunitário é conteúdo de terceiros.** Todo arquivo remoto passa por
+   `validarBlueprint` (forma, tamanho, domínio) e é neutralizado antes de entrar no prompt, com o
+   bloco marcado como dado, não instrução. Sem isso, um PR no repositório virava injeção num agente
+   que tem `clicar` e `preencher`.
+4. **Botão Parar.** Derruba o processo da IA na hora, desliga a matriz e libera a aba.
+5. **`/control` é inalcançável no binário de release.** A marca é resolvida em tempo de compilação
+   (`src/build.ts`) e **sem fallback de ambiente** — com fallback, `BROWSE_DEV=1` religaria a rota
+   no executável do usuário. `scripts/check-control.ts` prova por comportamento: release responde
+   404 e dev responde, ambos com `BROWSE_DEV=1` no ambiente. O CI roda os dois lados.
+
 ## Pendências para depois (deliberadas)
-- ⚠️ **Permissões da IA**: no teste ela roda com as permissões padrão de cada ferramenta (risco de prompt injection chegar ao shell). **Restringir às ferramentas do MCP antes de distribuir.**
-- Perfis, CSV/planilha, Firefox.
+- Perfis reutilizáveis, CSV/planilha, Firefox, artefato de macOS no release.
+- A classificação de envio é por nome: um botão final rotulado "Continuar" num wizard ainda passa.
+  Fechar isso de vez exige sinal estrutural do próprio site, não heurística do lado do BrOWSER.
 - **Termos de uso e privacidade**: consolidados em [`docs/termos-e-privacidade.md`](termos-e-privacidade.md) com garantia de Zero PII (LGPD/GDPR), BYOS sem chave de API, parada obrigatória pré-submissão e isenção de responsabilidade.
 

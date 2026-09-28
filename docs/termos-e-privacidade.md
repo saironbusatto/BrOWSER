@@ -20,7 +20,7 @@ CASO NÃO CONCORDE COM QUALQUER DISPOSIÇÃO DESTES TERMOS, VOCÊ DEVE IMEDIATAM
 
 Para os fins destes Termos, os seguintes termos em maiúsculas ou itálico terão os significados a eles atribuídos abaixo:
 
-* **"BrOWSER":** O conjunto de programas de computador composto por uma extensão de navegador (Client Side Panel) e uma aplicação servidora local (Desktop Bridge) que opera via protocolo Model Context Protocol (MCP) e WebSockets autenticados.
+* **"BrOWSER":** O conjunto de programas de computador composto por uma extensão de navegador (Client Side Panel) e uma aplicação servidora local (Desktop Bridge) que opera via protocolo Model Context Protocol (MCP) sobre HTTP em interface de loopback local, com autenticação por Bearer Token.
 * **"Desktop Bridge" (Ponte Local):** O processo binário ou script que executa localmente no sistema operacional do Usuário (Linux, Windows ou macOS), encarregado de intermediar comandos entre a extensão web e as ferramentas de IA instaladas no dispositivo.
 * **"Provedor Terceirizado de IA" (LLM Provider):** As empresas detentoras de modelos de inteligência artificial de ponta, incluindo, mas não se limitando a: **Google LLC** (Google AI Pro, Gemini Ultra/Advanced), **OpenAI OpCo, LLC** (ChatGPT Plus, ChatGPT Pro, Codex) e **Anthropic, PBC** (Claude Pro, Claude Enterprise).
 * **"BYOS" (Bring Your Own Subscription):** O modelo arquitetural adotado pelo BrOWSER, segundo o qual o Usuário utiliza seus próprios planos de assinatura já contratados diretamente perante os Provedores Terceirizados de IA, sem a necessidade de chaves de API pagas por token nem a intermediação financeira do BrOWSER.
@@ -43,7 +43,7 @@ O BrOWSER foi desenhado para eliminar a dependência de créditos avulsos de des
 ### 2.2. Autenticação Oficial e Não-Retenção de Senhas
 1. Qualquer processo de autenticação perante os Provedores de IA é conduzido de forma canônica, direta e transparente, por meio das interfaces de login e fluxos autorizados mantidos pelas respectivas empresas em seus portais e ferramentas oficiais;
 2. O BrOWSER **NUNCA solicita, intercepta, captura, descriptografa ou armazena senhas mestras, códigos de segundo fator (2FA/MFA), cookies de sessão privada ou dados de cartão de crédito** do Usuário vinculados aos Provedores de IA;
-3. O tráfego entre a extensão do navegador e a ponte desktop é protegido por tokens de autorização criptográficos locais (gerados em tempo de execução e armazenados em memória volátil) via Bearer Token sobre loopback local (`localhost` ou `127.0.0.1`), sem exposição à rede externa ou a terceiros.
+3. O tráfego entre a extensão do navegador e a ponte desktop é protegido por Bearer Token sobre loopback local (`127.0.0.1`), sem exposição à rede externa ou a terceiros. O token é criptograficamente aleatório, tem 32 bytes, **é rotacionado a cada pedido** (de modo que um valor capturado fica invalidado assim que a tarefa termina) e é gravado apenas no arquivo local `~/.config/browser-bridge/bridge.json` com permissão `0600`, acessível somente ao próprio Usuário.
 
 ### 2.3. Cumprimento dos Termos dos Provedores Terceirizados
 O Usuário compromete-se a utilizar o BrOWSER em estrita conformidade com os Termos de Uso, Políticas de Uso Comercial e Códigos de Conduta dos Provedores Terceirizados dos quais é assinante. O BrOWSER opera como uma interface cliente assistida no ambiente do próprio Usuário, não empregando mecanismos de engenharia reversa ilícita, burla de *rate limits* ou quebra de restrições de segurança impostas pelos Provedores de IA.
@@ -80,7 +80,7 @@ A catalogação de páginas da web destina-se exclusivamente a criar mapas estru
 ### 4.2. O que é ESTRITAMENTE VEDADO e NUNCA Coletado ou Transmitido
 O BrOWSER possui filtros de sanitização ativos no código-fonte que bloqueiam:
 1. **Valores Digitados pelo Usuário (`input.value` e `textarea.value`):** Nenhum valor preenchido em tempo de execução, seja digitado manualmente ou populado por autofill, é incluído em relatórios ou Blueprints compartilhados;
-2. **Credenciais e Segredos:** É vedada a leitura de campos `type="password"`, chaves criptográficas, assinaturas digitais, certificados locais e tokens anti-CSRF;
+2. **Credenciais e Segredos:** É vedada a leitura do conteúdo de campos de senha. A extensão identifica o campo (para poder preenchê-lo, se a pessoa pedir), **mas nunca lê o valor**: o campo `input[type=password]` é omitido da leitura pela árvore de acessibilidade e do DOM, o valor não é devolvido em nenhuma resposta, e o campo nunca entra em Blueprint ou telemetria. O mesmo vale para chaves criptográficas, assinaturas digitais, certificados locais e tokens anti-CSRF. Nenhuma senha, chave ou código de autenticação é transmitido a Provedor de IA algum — a única exceção é o código de autorização do próprio login do CLI oficial, que viaja da aba para a ponte e do processo da ponte para o stdin do CLI, sem passar por registro, log ou armazenamento;
 3. **Dados Financeiros e de Pagamento:** É vedada a captura de números de cartões de pagamento (PAN), códigos de segurança (CVV/CVC), senhas bancárias ou chaves PIX de uso pessoal;
 4. **Dados Pessoais Sensíveis (Art. 5º, II da LGPD):** Nenhuma informação relativa a origem racial ou étnica, convicção religiosa, opinião política, filiação a sindicato ou a organização de caráter religioso, filosófico ou político, dado referente à saúde ou à vida sexual, dado genético ou biométrico é extraída para fins de blueprints;
 5. **Sanitização de URLs e Parâmetros de Navegação:** Qualquer endereço de página analisado passa por expurgo automatizado obrigatório na origem, descartando imediatamente parâmetros de consulta (*query parameters*, ex.: `?token=...`, `?auth=...`, `?user_id=...`, `?session=...`), mantendo apenas a rota canônica e estrutural do domínio.
@@ -96,11 +96,11 @@ O repositório de Blueprints do BrOWSER funciona como uma base compartilhada de 
 Nos termos do Art. 12 da LGPD e do Considerando 26 da GDPR, os dados anonimizados não são considerados dados pessoais para os fins da lei. Como os Blueprints registram unicamente a anatomia estática do HTML sem vinculação a identificadores de sessão, endereços IP de usuários ou valores de formulários, o Usuário concorda que os referidos arquivos de mapeamento estrutural não possuem natureza de dado pessoal.
 
 ### 5.3. Licença de Contribuição de Metadados
-Ao habilitar e utilizar o BrOWSER, o Usuário concede ao projeto BrOWSER e à sua comunidade uma licença perpétua, mundial, irrevogável, não-exclusiva e livre de royalties para hospedar, distribuir, indexar, modificar e disponibilizar publicamente os Blueprints anônimos gerados em repositórios abertos (como GitHub e CDN distribuída).
+**O BrOWSER NÃO envia Blueprints para nenhum servidor seu.** O mapa é gerado no computador do Usuário e permanece nele; o software apenas **lê** mapas publicados por terceiros no repositório público do projeto, para acelerar o preenchimento. Não existe, no código, nenhuma rotina de upload de Blueprints. Caso o projeto passe a oferecer publicação, ela exigirá consentimento explícito, aviso prévio e Termos atualizados.
 
 ### 5.4. Controle Local e Limpeza de Cache
 O Usuário possui a prerrogativa e a capacidade técnica de, a qualquer momento:
-1. Desativar a sincronização de blueprints nas configurações do software;
+1. Desativar o **Aprendizado Passivo de Formulários** no painel lateral (por padrão, **desligado**). Enquanto desligado, a extensão não cataloga a estrutura de formulários de página alguma e nada é enviado à ponte. Independentemente do estado da chave, páginas de **login** e de **pagamento** (bancos, corréios e carteiras) nunca são aprendidos, e campos de senha nunca entram no mapa;
 2. Auditar, inspecionar e deletar manualmente todo e qualquer blueprint ou arquivo de cache armazenado localmente em seu disco rígido nos diretórios canônicos:
    * **Linux / macOS:** `~/.config/browser-bridge/`
    * **Windows:** `%LOCALAPPDATA%\BrOWSER\`
@@ -116,7 +116,7 @@ Quando o Usuário anexa documentos ao painel do BrOWSER — tais como arquivos X
 O BrOWSER **não realiza upload de documentos do Usuário para servidores em nuvem próprios ou centrais de processamento**. Os dados extraídos dos documentos são convertidos em texto contextual e transmitidos estritamente ao processo do Provedor de IA autenticado e selecionado pelo Usuário na sessão corrente.
 
 ### 6.3. Descarte Efêmero de Arquivos Temporários
-Quaisquer arquivos auxiliares criados temporariamente para a viabilização de chamadas do sistema operacional são mantidos com permissões restritivas (modo `0700` ou `0600`) em diretórios temporários do sistema operacional (`tmpdir`), sendo imediatamente destruídos e sobrescritos ao término da execução do comando.
+Quaisquer arquivos auxiliares criados temporariamente para a viabilização de chamadas do sistema operacional são mantidos com permissões restritivas (modo `0700` ou `0600`) em diretórios temporários do sistema operacional (`tmpdir`) e **removidos ao término da execução do comando**, inclusive quando o pedido é interrompido pelo Usuário ou falha. O software não sobrescreve o conteúdo dos arquivos antes de apagá-los; a remoção é um `unlink` no sistema de arquivos.
 
 ---
 
@@ -124,15 +124,17 @@ Quaisquer arquivos auxiliares criados temporariamente para a viabilização de c
 
 ### 7.1. Cláusula de Bloqueio de Ações Finais Irrevogáveis
 Como salvaguarda essencial contra prejuízos patrimoniais, operacionais ou jurídicos:
-1. O BROWSER É EXPRESSAMENTE CONFIGURADO E CODIFICADO PARA **NÃO EXECUTAR CLIQUES AUTÔNOMOS EM BOTÕES DE ENVIO FINAL OU TRANSMISSÃO IRREVOGÁVEL DE DADOS** (TAIS COMO: *"SUBMIT"*, *"ENVIAR"*, *"CONFIRMAR PAGAMENTO"*, *"TRANSMITIR NOTA FISCAL"*, *"FINALIZAR PEDIDO"* OU SIMILARES);
-2. A inteligência artificial auxilia no preenchimento de campos de texto, caixas de seleção e botões de etapas intermediárias de formulários com base nas instruções do Usuário, mas **obrigatoriamente encerra sua rotina antes da submissão final**, solicitando a verificação manual na interface.
+1. A recusa a clicar em ação final **é imposta pelo código da ponte**, e não apenas por instrução no prompt. Antes de executar qualquer clique, a ponte classifica o elemento a partir do nome acessível e do papel obtidos na leitura da página; se ele designar envio ou transmissão irreversível (*"Enviar"*, *"Submit"*, *"Finalizar"*, *"Concluir"*, *"Pagar"*, *"Confirmar pagamento"*, *"Efetuar"*, *"Transmitir"*, *"Assinar"*, *"Cadastrar-se"*, *"Place order"*, *"Pay now"*, *"Checkout"* e equivalentes), **o clique é bloqueado antes de chegar à página** e a IA é instruída a perguntar ao Usuário;
+2. Essa verificação **não é burla por autorização**: ainda que a IA ou o Usuário a instrua explicitamente a enviar, o bloqueio se mantém. O BrOWSER não transmite nada em nome de ninguém;
+3. A navegação intermediária permanece livre. Botões como *"Próximo"*, *"Avançar"*, *"Continuar"*, *"Salvar rascunho"*, *"Filtrar"* e *"Calcular"* **não** são bloqueados — barrá-los tornaria o produto inutilizável, que é justamente o que a IA precisa fazer;
+4. O que fecha a garantia por completo é o Princípio Human-in-the-Loop da seção 7.2: **quem aperta o botão de envio é a pessoa, com a própria mão, na página.** A classificação por nome estreita a janela; ela não a elimina.
 
 ### 7.2. Dever Indispensável de Verificação Humana
 O USUÁRIO É O ÚNICO E EXCLUSIVO RESPONSÁVEL POR REVISAR E AUDITAR VISUALMENTE TODOS OS VALORES, DATAS, ALÍQUOTAS, NOMES, DESTINATÁRIOS E DADOS NUMÉRICOS INSERIDOS PELA IA ANTES DE DECIDIR, POR ATO PRÓPRIO E HUMANO, CLICAR NO BOTÃO DE ENVIO OU PROTOCOLO.
 
 ### 7.3. Interrupção Instantânea e Soberania do Usuário
 O Usuário mantém soberania total sobre sua máquina a todo momento. O Usuário pode, a qualquer fração de segundo:
-1. Clicar no botão de parada ("Stop" / Cancelar) na interface do painel lateral;
+1. Clicar no botão de parada (quadrado vermelho) na interface do painel lateral. Ele substitui o botão de enviar enquanto houver pedido em andamento, desabilita-se assim que é acionado (para não acumular cliques) e **derruba o processo da IA imediatamente** — não se espera o tempo limite de cinco minutos. A extensão, no mesmo instante, desliga a sobreposição de efeito visual e libera a aba;
 2. Fechar a aba ou janela do navegador;
 3. Interromper o processo da ponte desktop via terminal ou gerenciador de tarefas;
 4. Digitar sobre ou corrigir manualmente qualquer campo que o modelo de IA tenha preenchido incorretamente.
