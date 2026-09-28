@@ -60,11 +60,12 @@ jobs:
           cp packages/bridge/dist/bridge.exe design/icone.ico /tmp/nsis/
           cp -r packages/extension/.output/chrome-mv3/. /tmp/nsis/extensao/
           cp packages/bridge/scripts/instalar.nsi /tmp/nsis/
-          # A versão e o idioma vão por arquivo, e não por -D na linha de comando: no Windows o
-          # makensis reparte o argumento com ponto e sobraria um pedaço como nome de script. O
-          # idioma é PortugueseBR no pacote Linux (BrazilianPortuguese na instalação do Windows),
-          # e o nome errado aborta o build em vez de gerar um instalador em inglês.
-          printf '!define VERSAO "%s"\n!define IDIOMA "PortugueseBR"\n' "$VERSAO" > /tmp/nsis/instalar-versao.nsh
+          # A versão vai por arquivo, e não por -D: no Windows o makensis reparte o argumento
+          # com ponto e sobraria um pedaço como nome de script. O idioma é PortugueseBR nas duas
+          # plataformas (BrazilianPortuguese é nome do Inno Setup e não existe no NSIS).
+          printf '!define VERSAO "%s"\n' "$VERSAO" > /tmp/nsis/instalar-versao.nsh
+          test -f /usr/share/nsis/Contrib/Language\ files/PortugueseBR.nlf || {
+            echo 'PortugueseBR.nlf não está neste pacote do NSIS:'; ls /usr/share/nsis/Contrib/Language\ files/ | head -40; exit 1; }
           (cd /tmp/nsis && makensis instalar.nsi)
           cp "/tmp/nsis/BrOWSER-Setup-$VERSAO.exe" "pacotes/BrOWSER-Setup-$VERSAO.exe"
           # MZ = Portable Executable. Um ELF aqui seria o build de Linux com o nome de Windows.

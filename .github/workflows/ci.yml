@@ -78,11 +78,21 @@ jobs:
           Copy-Item packages/bridge/scripts/instalar.nsi, packages/bridge/scripts/instalar-versao.nsh dist-instalador/
           Push-Location dist-instalador
           # A versão vai por arquivo, não por -D: no Windows o makensis reparte o argumento com
-          # ponto e sobraria um pedaço como nome de script. O idioma é BrazilianPortuguese na
-          # instalação do Windows (no pacote Linux é PortugueseBR).
-          $defs = @('!define VERSAO "0.0.0"', '!define IDIOMA "BrazilianPortuguese"')
+          # ponto e sobraria um pedaço como nome de script. O idioma é PortugueseBR nas duas
+          # plataformas (BrazilianPortuguese é nome do Inno Setup e não existe no NSIS).
+          $defs = @('!define VERSAO "0.0.0"')
           Set-Content -Encoding ASCII -Path instalar-versao.nsh -Value $defs
           Get-Content instalar-versao.nsh
+          # Se o arquivo de idioma não existir, o makensis aborta com um erro que não diz quais
+          # nomes ele aceita. Conferir antes e dizer a lista no log evita a caça ao tesouro.
+          $nlf = Get-ChildItem (Split-Path $makensis) -Recurse -Filter 'PortugueseBR.nlf' -ErrorAction SilentlyContinue
+          if (-not $nlf) {
+            'PortugueseBR.nlf não encontrado. Idiomas disponíveis:' | Out-Host
+            Get-ChildItem (Join-Path (Split-Path $makensis) 'Contrib') -Recurse -Filter '*.nlf' -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty Name | Out-Host
+            throw 'o instalador não pode ser compilado sem o arquivo de idioma'
+          }
+          "idioma: $($nlf.FullName)"
           & $makensis instalar.nsi
           Pop-Location
           if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0.exe)) { throw 'o instalador não foi gerado' }

@@ -1,4 +1,4 @@
-; Instalador do BrOWSER para Windows, em NSIS.
+﻿; Instalador do BrOWSER para Windows, em NSIS.
 ;
 ; Por que um instalador de verdade, e nao um .cmd chamando o PowerShell: o duplo clique em .ps1
 ; nao e confiavel (o Windows pode abrir no Bloco de Notas em vez de executar), a ExecutionPolicy
@@ -14,11 +14,14 @@
 ; deve dar) para instalar em Arquivos de Programas sem elevate.
 ;
 ;   Compilar (roda no Linux tambem, o que importa porque o release acontece em ubuntu-latest):
-;     makensis -DVERSAO=0.5.0 -DIDIOMA=PortugueseBR instalar.nsi
+;     printf '!define VERSAO "0.5.0"\n' > instalar-versao.nsh
+;     makensis instalar.nsi
 ;
-; O -DIDIOMA existe porque o NSIS nomeia o arquivo de idioma diferente em cada plataforma:
-; "BrazilianPortuguese.nlf" na instalacao do Windows, "PortugueseBR.nlf" no pacote Linux. Se o
-; nome estiver errado, o NSIS aborta o build em vez de sair um instalador em ingles silencioso.
+; A versao vem de um arquivo porque o -D na linha de comando se quebra no Windows: o makensis de
+; la reparte "-DVERSAO=0.0.0" em "VERSAO=0" e um pedaco ".0.0" que ele tenta abrir como script.
+; O idioma e PortugueseBR nas duas plataformas: "BrazilianPortuguese" e o nome do Inno Setup, e
+; nao existe no NSIS. Nome errado aqui aborta o build, o que e melhor do que subir um instalador
+; em ingles sem ninguem ter visto.
 Unicode true
 
 !include "MUI2.nsh"
@@ -30,13 +33,10 @@ Unicode true
 ; um pedaco como nome de script ("VERSAO=0" e um script chamado ".0.0"). Um arquivo nao depende
 ; de como o shell repassa argumento, e ainda deixa o build das duas plataformas igual.
 !include "instalar-versao.nsh"
-; Defaults para quem compilar direto, sem passar pelo build. O VIProductVersion aborta o build se
+; Fallback para quem compilar direto, sem passar pelo build. O VIProductVersion aborta o build se
 ; a versao nao for numerica de verdade, entao o fallback tem de ser.
 !ifndef VERSAO
   !define VERSAO "0.0.0"
-!endif
-!ifndef IDIOMA
-  !define IDIOMA "BrazilianPortuguese"
 !endif
 !define NOME "BrOWSER"
 !define EDITOR "BrOWSER (open source)"
@@ -76,7 +76,7 @@ VIAddVersionKey "LegalCopyright" "${NOME} - codigo aberto"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
-!insertmacro MUI_LANGUAGE "${IDIOMA}"
+!insertmacro MUI_LANGUAGE "PortugueseBR"
 
 Var DIAGNOSTICO
 
@@ -244,3 +244,15 @@ Section "Desinstalar" UnSecMain
 
   MessageBox MB_ICONINFORMATION|MB_OK "BrOWSER removido deste computador.$\r$\n$\r$\nFalta um passo que nenhum programa pode fazer por você: remova a extensão em chrome://extensions.$\r$\n$\r$\nSem isso o ícone continua aparecendo e avisa “Ponte não conectada”. Se a extensão continuar carregada, use “Remover” na própria tela do chrome://extensions."
 SectionEnd
+
+; ---------------------------------------------------------------------------------------
+; Este arquivo precisa estar em UTF-8 COM BOM.
+;
+; O makensis do Windows le o script na pagina de codigo do sistema (ACP, 1252 no runner) quando
+; nao ha BOM, e ai todo acento desta interface - que existe justamente para a pessoa confiar no
+; que esta lendo antes de instalar - vira lixo. O BOM e o que faz o makensis assumir UTF-8.
+;
+; Nao da para provar isso no build do Linux: o pacote Debian do NSIS le UTF-8 sempre. A prova de
+; verdade e o INSTALADO.txt, que o instalador escreve em tempo de execucao e que o CI do Windows
+; le conferindo palavra acentuada por palavra acentuada.
+; ---------------------------------------------------------------------------------------
