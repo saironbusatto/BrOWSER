@@ -70,7 +70,8 @@ jobs:
           makensis -DVERSAO=0.0.0-dev instalar.nsi
           Pop-Location
           if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0-dev.exe)) { throw 'o instalador não foi gerado' }
-          if ((Get-Content dist-instalador/BrOWSER-Setup-0.0.0-dev.exe -AsByteStream -TotalCount 2) -join ',') -ne '77,90') { throw 'o instalador não é um PE' }
+          $cabecalho = (Get-Content dist-instalador/BrOWSER-Setup-0.0.0-dev.exe -AsByteStream -TotalCount 2) -join ','
+          if ($cabecalho -ne '77,90') { throw "o instalador não é um PE (cabeçalho: $cabecalho)" }
 
       - name: Instalar (o .exe, em silêncio, como quem clica)
         if: runner.os == 'Windows'
