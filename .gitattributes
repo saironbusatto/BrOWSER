@@ -1,0 +1,15 @@
+# Fim de linha canônico do repositório: LF em tudo.
+#
+# Sem isto, o runner do Windows faz checkout com CRLF (o autocrlf=true padrão dele) e o Biome
+# acusa 58 arquivos de formatação errada — sendo que o problema é o checkout, não o código. Foi o
+# que aconteceu no CI do Windows: passava no Linux, falhava no Windows, e o `lint` local não via
+# nada, porque aqui já é LF.
+* text=auto eol=lf
+
+# Binários: nunca tocados pela normalização de texto.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.zip binary
+*.gz binary
