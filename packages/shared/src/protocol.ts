@@ -73,8 +73,7 @@ export type TelemetriaBlueprint = {
 
 export type ItemAssinatura = {
   ia: Ia;
-  nome: string; // "Google AI Pro", "ChatGPT Plus / Pro", "Claude Pro"
-  subtitulo: string;
+  nome: string; // "Google AI Pro", "ChatGPT Plus / Pro", "Claude Pro" — o que a pessoa reconhece
   instalado: boolean;
   conectado: boolean;
   ativo: boolean;
