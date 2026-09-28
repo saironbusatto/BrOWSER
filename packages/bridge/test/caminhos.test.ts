@@ -74,7 +74,10 @@ describe('pastasDasIAs: onde as ferramentas são procuradas', () => {
   });
 });
 
-describe('removerHost: a desinstalação não pode levar o perfil do navegador junto', () => {
+// Só no Unix. No Windows o registro do host nativo fica no HKCU e não existe pasta de perfil
+// para o `removerHost` tocar: a garantia que estes testes protegem simplesmente não tem onde
+// falhar: um `rm -rf` de diretório de perfil seria um código que roda apenas no Unix.
+describe.skipIf(process.platform === 'win32')('removerHost: a desinstalação não pode levar o perfil do navegador junto', () => {
   // Home de mentira, passado por parâmetro. Usar o Home real aqui apagaria o registro que a
   // pessoa tem nos próprios navegadores, no meio de um `bun test`.
   const FAKE = join(import.meta.dir, 'instalar-falso');
