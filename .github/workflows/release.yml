@@ -1,0 +1,54 @@
+name: Release
+
+# git tag v0.1.0 && git push origin v0.1.0  →  pré-release com os pacotes para download.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun test
+
+      - name: Versão da tag = versão da extensão
+        run: |
+          VERSAO="${GITHUB_REF_NAME#v}"
+          EXT=$(bun -e 'console.log(require("./packages/extension/package.json").version)')
+          [ "$VERSAO" = "$EXT" ] || { echo "tag $VERSAO ≠ extensão $EXT"; exit 1; }
+          echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
+
+      - name: Compilar
+        run: |
+          bun run --cwd packages/extension build
+          bun run --cwd packages/bridge build
+          bun run --cwd packages/bridge build:win
+
+      - name: Empacotar
+        run: |
+          mkdir -p pacotes/windows pacotes/linux
+          cp packages/bridge/dist/bridge.exe packages/bridge/scripts/uninstall.ps1 design/icone.ico LICENSE pacotes/windows/
+          # O instalador leva a versão do release.
+          sed "s/\[string\]\$Versao = '[^']*'/[string]\$Versao = '$VERSAO'/" packages/bridge/scripts/setup.ps1 > pacotes/windows/setup.ps1
+          (cd pacotes/windows && zip -q -r ../BrOWSER-windows.zip .)
+          (cd packages/extension/.output/chrome-mv3 && zip -q -r "$GITHUB_WORKSPACE/pacotes/BrOWSER-extensao.zip" .)
+          cp packages/bridge/dist/bridge LICENSE pacotes/linux/
+          tar -czf pacotes/BrOWSER-linux.tar.gz -C pacotes/linux .
+          ls -la pacotes
+
+      - name: Publicar pré-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --prerelease --generate-notes --title "BrOWSER $VERSAO" \
+            pacotes/BrOWSER-windows.zip pacotes/BrOWSER-extensao.zip pacotes/BrOWSER-linux.tar.gz

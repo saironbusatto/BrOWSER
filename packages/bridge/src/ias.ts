@@ -16,7 +16,7 @@ export type Execucao = { ok: boolean; ia?: Ia; texto: string };
 export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null, caminhos: Record<string, string> = {}) {
   const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
-  return `Você é o bRowser AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
+  return `Você é o BrOWSER AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
 Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario, consultar_blueprint).
 Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comandos de shell nem acesso a arquivos do computador: qualquer tentativa é bloqueada e encerra o atendimento. Tudo o que precisa já está neste texto; a única exceção são arquivos que este texto mandar ler explicitamente (anexos/ no diretório de trabalho).
 
@@ -124,6 +124,25 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
 // Libera no agy só as ferramentas do nosso MCP (aditivo: não mexe nas outras regras do usuário).
 const AGY_SETTINGS = join(homedir(), '.gemini', 'antigravity-cli', 'settings.json');
 const REGRA_MCP = 'mcp(browser/*)';
+
+/** Desinstalação: tira só a nossa regra e o nosso servidor MCP do agy; o resto da config dele fica. */
+export function removerIntegracaoAgy(): string[] {
+  const feito: string[] = [];
+  if (Bun.which('agy')) {
+    const r = Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']));
+    if (r.exitCode === 0) feito.push('servidor MCP "browser" removido do agy');
+  }
+  try {
+    if (!existsSync(AGY_SETTINGS)) return feito;
+    const cfg = JSON.parse(readFileSync(AGY_SETTINGS, 'utf8'));
+    const allow: string[] = cfg.permissions?.allow ?? [];
+    if (!allow.includes(REGRA_MCP)) return feito;
+    const novo = { ...cfg, permissions: { ...cfg.permissions, allow: allow.filter((r) => r !== REGRA_MCP) } };
+    writeFileSync(AGY_SETTINGS, JSON.stringify(novo, null, 2));
+    feito.push(`regra ${REGRA_MCP} removida de ${AGY_SETTINGS}`);
+  } catch {}
+  return feito;
+}
 
 function garantirPermissaoAgy(): string | undefined {
   try {

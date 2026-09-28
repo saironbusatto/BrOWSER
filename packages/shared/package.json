@@ -1,6 +1,9 @@
 {
   "name": "@browser/shared",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
-  "exports": { ".": "./src/protocol.ts" }
+  "exports": {
+    ".": "./src/protocol.ts"
+  }
 }

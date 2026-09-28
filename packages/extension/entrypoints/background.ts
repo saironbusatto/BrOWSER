@@ -138,7 +138,7 @@ export default defineBackground(() => {
   chrome.runtime.onMessage.addListener((msg: MensagemExtensao, _remetente, responder) => {
     if (msg?.tipo === 'pedido') {
       if (!porta) {
-        responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do bRowser.' });
+        responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do BrOWSER.' });
         return;
       }
       alvo = msg.tabId;
@@ -154,7 +154,10 @@ export default defineBackground(() => {
       return;
     }
     if (msg?.tipo === 'telemetria_blueprint') {
-      porta?.postMessage(msg);
+      // Desligável no painel (chave aprendizadoPassivo; ausente = ligado).
+      chrome.storage.local.get('aprendizadoPassivo').then(({ aprendizadoPassivo }) => {
+        if (aprendizadoPassivo !== false) porta?.postMessage(msg);
+      });
       responder({ ok: true });
       return;
     }

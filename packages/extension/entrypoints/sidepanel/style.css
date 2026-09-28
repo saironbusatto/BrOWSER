@@ -126,13 +126,13 @@ body {
   width: 26px;
   height: 26px;
   border-radius: var(--radius-sm);
-  background: var(--accent);
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.logo-icon svg { width: 15px; height: 15px; }
+.logo-icon img { width: 100%; height: 100%; display: block; }
 
 .brand-title {
   font-size: 16px;
@@ -140,7 +140,7 @@ body {
   letter-spacing: -0.3px;
 }
 
-.brand-title span { color: var(--accent); }
+.brand-title span { color: #2FA84A; } /* verde do "B" do ícone */
 
 .header-actions {
   display: flex;
@@ -1524,3 +1524,16 @@ textarea#texto::placeholder {
   .plan-switch, .plan-switch::after { transition: none; }
   .plan-switch[aria-busy='true']::after { animation: none; }
 }
+
+/* Liga/desliga do aprendizado passivo (política de privacidade / SignPath) */
+.sheet-toggle {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 16px 0;
+  font-size: 12.5px;
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
+.sheet-toggle small { display: block; color: var(--fg-tertiary); }
