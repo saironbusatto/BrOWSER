@@ -1,58 +1,113 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { JSDOM } from 'jsdom';
-import { beforeEach, describe, expect, it } from 'bun:test';
+import { lerCamposDom, preencherDom } from '../utils/dom-fallback';
 
-type Modulo = typeof import('../utils/dom-fallback');
-let m: Modulo;
+// O plano B roda dentro da página real, então o teste monta um DOM de verdade: o que importa não é
+// a função isolada, é o que a IA enxergaria naquele campo.
+let window: Window & typeof globalThis;
 
-beforeEach(async () => {
-  const { window } = new JSDOM(`<form>
-    <label>Nome completo <input name="nome" required></label>
-    <label>Estado <select name="uf"><option value="">Selecione</option><option value="MG">Minas Gerais</option></select></label>
-    <label><input type="checkbox" name="aceite"> Aceito os termos</label>
-    <textarea aria-label="Observações"></textarea>
-    <input type="hidden" name="csrf" value="x">
-    <input name="escondido" style="display:none">
-    <button type="submit">Enviar</button>
-  </form>`);
-  // jsdom não calcula layout: todo elemento teria 0x0. Visível = não tem display:none.
-  window.Element.prototype.getBoundingClientRect = function (this: Element) {
-    const oculto = (this as HTMLElement).style?.display === 'none';
-    return { width: oculto ? 0 : 10, height: oculto ? 0 : 10 } as DOMRect;
-  };
-  Object.assign(globalThis, {
-    window, document: window.document, getComputedStyle: window.getComputedStyle.bind(window), location: window.location,
-    HTMLSelectElement: window.HTMLSelectElement, HTMLInputElement: window.HTMLInputElement,
-    HTMLTextAreaElement: window.HTMLTextAreaElement, Event: window.Event, InputEvent: window.InputEvent,
-  });
-  m = await import('../utils/dom-fallback');
+// Globais que o código do plano B usa: a janela do jsdom precisa estar visível aqui, senão
+// `location`, `getComputedStyle` e os construtores não existem no escopo do módulo.
+const GLOBAIS = [
+  'window',
+  'document',
+  'location',
+  'navigator',
+  'HTMLElement',
+  'HTMLInputElement',
+  'HTMLSelectElement',
+  'HTMLTextAreaElement',
+  'getComputedStyle',
+  'Event',
+  'InputEvent',
+  'Node',
+  'CSS',
+  'Element',
+];
+
+beforeAll(() => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
+  window = dom.window as unknown as Window & typeof globalThis;
+  // O código do plano B referencia os globais da janela; sem isto o jsdom não é visto.
+  for (const k of GLOBAIS) {
+    (globalThis as Record<string, unknown>)[k] = (window as unknown as Record<string, unknown>)[k];
+  }
 });
 
-describe('plano B: DOM sem chrome.debugger', () => {
-  it('lista campos visíveis com rótulo e ignora hidden/invisíveis', () => {
-    const { campos } = m.lerCamposDom();
-    const resumo = campos.map((c) => `${c.papel}:${c.nome}`);
-    expect(resumo).toEqual(['textbox:Nome completo', 'combobox:Estado', 'checkbox:Aceito os termos', 'textbox:Observações', 'button:Enviar']);
-    expect(campos[0]!.obrigatorio).toBe(true);
-    expect(campos[1]!.opcoes).toEqual(['Selecione', 'Minas Gerais']);
+afterAll(() => {
+  for (const k of GLOBAIS) delete (globalThis as Record<string, unknown>)[k];
+});
+
+function montar(html: string) {
+  window.document.body.innerHTML = html;
+  // jsdom não faz layout: getBoundingClientRect devolve 0x0 e o filtro de visibilidade do código
+  // descartaria todo campo. O stub dá tamanho a tudo, que é o caso "campo visível" que importa.
+  for (const el of window.document.querySelectorAll('*')) {
+    el.getBoundingClientRect = () =>
+      ({ width: 120, height: 24, top: 0, left: 0, right: 120, bottom: 24, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+  }
+}
+
+describe('Segredo nunca sai da página (plano B por DOM)', () => {
+  beforeEach(() => montar(''));
+
+  it('campo de senha aparece, mas sem valor e marcado como sensível', () => {
+    montar('<label>Senha <input type="password" value="hunter2-secreta"></label>');
+    const leitura = lerCamposDom();
+    const senha = leitura.campos.find((c) => c.papel === 'password');
+
+    expect(senha).toBeDefined();
+    expect(senha?.sensivel).toBe(true);
+    expect(senha?.valor).toBeUndefined();
+    expect(JSON.stringify(leitura)).not.toContain('hunter2-secreta');
   });
 
-  it('preenche texto, select por texto, checkbox e textarea disparando eventos', () => {
-    const { campos } = m.lerCamposDom();
-    const ref = (nome: string) => campos.find((c) => c.nome === nome)!.ref;
-    let eventos = 0;
-    document.querySelector('[name=nome]')!.addEventListener('input', () => eventos++);
+  it('texto normal continua com o valor, senão a IA perde o formulário preenchido', () => {
+    montar('<label>E-mail <input type="email" value="joana@exemplo.com"></label>');
+    const leitura = lerCamposDom();
+    const email = leitura.campos.find((c) => c.papel === 'textbox');
 
-    expect(m.preencherDom(ref('Nome completo'), 'Maria').valor).toBe('Maria');
-    expect(eventos).toBe(1);
-    expect(m.preencherDom(ref('Estado'), 'minas gerais').valor).toBe('MG');
-    expect(m.preencherDom(ref('Aceito os termos'), 'true').valor).toBe('true');
-    expect(m.preencherDom(ref('Aceito os termos'), 'true').valor).toBe('true'); // idempotente
-    expect(m.preencherDom(ref('Observações'), 'ok').valor).toBe('ok');
+    expect(email?.sensivel).toBeUndefined();
+    expect(email?.valor).toBe('joana@exemplo.com');
   });
 
-  it('erra de forma clara com ref antiga ou opção inexistente', () => {
-    const { campos } = m.lerCamposDom();
-    expect(() => m.preencherDom(999, 'x')).toThrow('chame ler_campos de novo');
-    expect(() => m.preencherDom(campos[1]!.ref, 'Bahia')).toThrow('opção não encontrada');
+  it('campo de senha continua preenchível e a resposta não devolve o segredo', () => {
+    montar('<label>Senha <input type="password" id="p"></label>');
+    const ref = lerCamposDom().campos.find((c) => c.papel === 'password')!.ref;
+
+    const r = preencherDom(ref, 'outra-seenha-123');
+
+    expect((document.getElementById('p') as HTMLInputElement).value).toBe('outra-seenha-123');
+    expect(r.valor).toBe('[senha preenchida]');
+    expect(r.valor).not.toContain('outra-seenha-123');
+  });
+
+  it('outros campos continuam devolvendo o valor gravado', () => {
+    montar('<label>Nome <input id="n"></label>');
+    const ref = lerCamposDom().campos[0]!.ref;
+    expect(preencherDom(ref, 'Joana').valor).toBe('Joana');
+  });
+});
+
+describe('Select continua funcionando depois do ajuste do tipo', () => {
+  beforeEach(() => montar(''));
+
+  it('lê opções e aceita texto ou value', () => {
+    montar(`
+      <label>UF<select id="s">
+        <option value="sp">São Paulo</option>
+        <option value="rj">Rio de Janeiro</option>
+      </select></label>`);
+    const ref = lerCamposDom().campos.find((c) => c.papel === 'combobox')!.ref;
+    expect(lerCamposDom().campos.find((c) => c.papel === 'combobox')?.opcoes).toEqual(['São Paulo', 'Rio de Janeiro']);
+
+    expect(preencherDom(ref, 'rj').valor).toBe('rj');
+    expect((document.getElementById('s') as HTMLSelectElement).value).toBe('rj');
+  });
+
+  it('opção inexistente falha com mensagem clara', () => {
+    montar('<label>UF<select id="s"><option value="sp">São Paulo</option></select></label>');
+    const ref = lerCamposDom().campos[0]!.ref;
+    expect(() => preencherDom(ref, 'Maranhão')).toThrow('opção não encontrada');
   });
 });

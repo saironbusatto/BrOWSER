@@ -1,14 +1,14 @@
-import { HOST_NAME, type Campo, type Comandos, type Evento, type MensagemExtensao, type Pedido, type Pedir, type Resposta, type RespostaUsuario } from '@browser/shared';
-import { iniciarMatrixOverlay, gerarScriptUpdate, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
-import { clicarDom, lerCamposDom, preencherDom, type LeituraDom } from '../utils/dom-fallback';
+import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
+import { clicarDom, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
+import { gerarScriptUpdate, iniciarMatrixOverlay, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
 // refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
 const REF_BASE_DOM = 1_000_000;
 const BLOQUEIO_DEBUGGER = /cannot access|cannot attach|another debugger|already attached|not allowed|chrome-extension:\/\//i;
-const abasSemDebugger = new Set<number>();
-let refsDom = new Map<number, { frameId: number; refLocal: number }>();
+let abasSemDebugger = new Set<number>(); // espelho de SESSAO_SEM_DEBUGGER
+let refsDom = new Map<number, { frameId: number; refLocal: number }>(); // espelho de SESSAO_REFS
 
 // Iframe http(s) de OUTRA origem (formulário HubSpot, Typeform, pagamento…) roda em outro processo:
 // a sessão do chrome.debugger na aba não enxerga dentro dele. Esses frames vão pelo DOM; o resto, CDP.
@@ -53,32 +53,49 @@ const ehCaptcha = (url: string) => {
 async function lerIframesDeOutraOrigem(tabId: number, urlTopo: string): Promise<Campo[]> {
   const frames = (await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null)) ?? [];
   const origemTopo = new URL(urlTopo).origin;
-  const ids = frames
-    .filter((f) => f.frameId !== 0 && ehOutraOrigem(f.url, origemTopo) && !ehCaptcha(f.url))
-    .map((f) => f.frameId);
+  const ids = frames.filter((f) => f.frameId !== 0 && ehOutraOrigem(f.url, origemTopo) && !ehCaptcha(f.url)).map((f) => f.frameId);
   if (!ids.length) return [];
   return (await lerViaDom(tabId, ids).catch(() => ({ campos: [] as Campo[] }))).campos;
 }
 
+/** refs marcadas como sensíveis na última leitura: impede ecoar a senha no HUD e no retorno. */
+let sensiveis = new Set<number>();
+
+/** Registra quais refs são sensíveis e devolve a lista de campos, já sem o valor de senha. */
+function registrarCampos(campos: Campo[]): Campo[] {
+  sensiveis = new Set(campos.filter((c) => c.sensivel).map((c) => c.ref));
+  // Defence in depth: mesmo que um caminho futuro esqueça a checagem, o valor não é devolvido.
+  return campos.map((c) => (c.sensivel ? { ...c, valor: undefined } : c));
+}
+
 async function lerCamposComPlanoB() {
   const tabId = await abaAlvo();
+  await reidratarRefs();
   refsDom = new Map();
   if (!abasSemDebugger.has(tabId)) {
     try {
       const leitura = await lerCampos();
       const deOutraOrigem = await lerIframesDeOutraOrigem(tabId, leitura.url);
-      return deOutraOrigem.length ? { ...leitura, campos: [...leitura.campos, ...deOutraOrigem] } : leitura;
+      return registrarCampos(deOutraOrigem.length ? { ...leitura, campos: [...leitura.campos, ...deOutraOrigem] } : leitura);
     } catch (e) {
       if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
       abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
+      await salvarRefs();
     }
   }
   const { principal, campos } = await lerViaDom(tabId);
-  return { url: principal?.url ?? '', titulo: principal?.titulo ?? '', campos, modo: 'dom' };
+  await salvarRefs();
+  return { ...registrarCampos(campos), url: principal?.url ?? '', titulo: principal?.titulo ?? '', modo: 'dom' };
 }
 
 async function naPaginaDom<A extends unknown[], R>(ref: number, func: (refLocal: number, ...args: A) => R, args: A): Promise<R> {
-  const alvoRef = refsDom.get(ref);
+  // O service worker do MV3 é encerrado pelo Chrome quando ocioso; refsDom volta vazio depois
+  // disso. A busca já é assíncrona, então recarrega do storage antes de desistir.
+  let alvoRef = refsDom.get(ref);
+  if (!alvoRef) {
+    await reidratarRefs();
+    alvoRef = refsDom.get(ref);
+  }
   if (!alvoRef) throw new Error(`ref ${ref} desconhecida: chame ler_campos de novo`);
   const [r] = await chrome.scripting.executeScript({
     target: { tabId: await abaAlvo(), frameIds: [alvoRef.frameId] },
@@ -90,19 +107,78 @@ async function naPaginaDom<A extends unknown[], R>(ref: number, func: (refLocal:
 
 // Papéis da árvore de acessibilidade que o LLM pode preencher ou clicar.
 const PAPEIS = new Set([
-  'textbox', 'searchbox', 'combobox', 'listbox', 'checkbox', 'radio', 'switch',
-  'spinbutton', 'slider', 'button', 'date', 'DateTime', 'InputTime',
-  'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'link', 'option', 'treeitem',
+  'textbox',
+  'searchbox',
+  'combobox',
+  'listbox',
+  'checkbox',
+  'radio',
+  'switch',
+  'spinbutton',
+  'slider',
+  'button',
+  'date',
+  'DateTime',
+  'InputTime',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'tab',
+  'link',
+  'option',
+  'treeitem',
 ]);
-const RECONEXAO_MS = 2000;
 
-let alvo: number | undefined; // aba em que a IA está trabalhando
+// Estado do service worker.
+//
+// O MV3 encerra o worker ocioso (~30 s). Tudo que precisa sobreviver a isso mora em
+// chrome.storage.session (some quando o navegador fecha, não quando o worker morre):
+// `alvo` (aba em que a IA trabalha), `refsDom` (mapa ref -> frame+ref local do plano B) e
+// `vigias` (login OAuth em andamento). Sem isso, um pedido que passa do meio minuto morria com
+// "ref desconhecida" e a captura do código de autenticação se perdia silenciosamente.
+// Mesma chave do painel lateral: o content script liga/desliga o aprendizado de formulário e este
+// lado decide se o blueprint chega à ponte.
+const CHAVE_APRENDIZADO = 'aprendizadoPassivo';
+
+const SESSAO_ALVO = 'alvo';
+const SESSAO_REFS = 'refsDom';
+const SESSAO_VIGIAS = 'vigias';
+const SESSAO_SEM_DEBUGGER = 'abasSemDebugger';
+
+const lerSessao = <T>(chave: string, padrao: T): Promise<T> => chrome.storage.session.get(chave).then((r) => (r[chave] as T) ?? padrao);
+const gravarSessao = (objeto: Record<string, unknown>): Promise<void> => chrome.storage.session.set(objeto).catch(() => {});
+
+let alvo: number | undefined; // aba em que a IA está trabalhando (espelho em memória do storage)
 const anexadas = new Set<number>();
 // Comandos em fila: a IA pode chamar ferramentas em paralelo (o Claude faz isso), e
 // foco + seleção + digitação de dois campos ao mesmo tempo se misturam.
 let fila: Promise<unknown> = Promise.resolve();
 
 let porta: chrome.runtime.Port | undefined;
+
+/** Recarrega do storage o que o worker perdeu. Barato: só quando o espelho está vazio. */
+async function reidratarRefs(): Promise<void> {
+  if (refsDom.size) return;
+  const [refs, semDebugger] = await Promise.all([
+    lerSessao<[number, { frameId: number; refLocal: number }][]>(SESSAO_REFS, []),
+    lerSessao<number[]>(SESSAO_SEM_DEBUGGER, []),
+  ]);
+  refsDom = new Map(refs.map(([r, v]) => [r, v]));
+  abasSemDebugger = new Set(semDebugger);
+}
+
+function salvarRefs() {
+  return gravarSessao({
+    [SESSAO_REFS]: [...refsDom],
+    [SESSAO_SEM_DEBUGGER]: [...abasSemDebugger],
+  });
+}
+
+async function definirAlvo(tabId: number | undefined): Promise<void> {
+  alvo = tabId;
+  if (tabId === undefined) await chrome.storage.session.remove(SESSAO_ALVO).catch(() => {});
+  else await gravarSessao({ [SESSAO_ALVO]: tabId });
+}
 
 // ---- Login oficial sem terminal: a aba de callback entrega o código sozinha ----
 //
@@ -111,7 +187,17 @@ let porta: chrome.runtime.Port | undefined;
 // o authorization code que o CLI espera no stdin. Em vez de pedir pra pessoa copiar e colar, a
 // extensão lê essa aba e entrega o código na ponte. É a aba dela, na sessão dela, na máquina dela.
 
-const vigias = new Map<string, string>(); // redirect_uri -> ia
+// redirect_uri -> ia. Vive no storage.session porque o login OAuth leva mais de 30 s com certeza:
+// se ficasse só em memória, o worker morreria no meio da autenticação e o código nunca chegaria
+// à ponte.
+const vigias = new Map<string, string>();
+
+const salvarVigias = () => gravarSessao({ [SESSAO_VIGIAS]: [...vigias] });
+async function carregarVigias() {
+  if (vigias.size) return;
+  const guardado = await lerSessao<[string, string][]>(SESSAO_VIGIAS, []);
+  for (const [redirect, ia] of guardado) vigias.set(redirect, ia);
+}
 
 /** Lê o código de autorização na página de callback. Roda dentro da aba. */
 function rasparCodigo(): string | null {
@@ -135,6 +221,7 @@ function armarVigia(ia: string, urlAuth: string, pedeCodigo: boolean) {
   const redirect = redirectDe(urlAuth);
   if (!redirect) return;
   vigias.set(redirect, ia);
+  salvarVigias();
 }
 
 async function entregarCodigo(tabId: number, base: string, ia: string) {
@@ -149,6 +236,7 @@ async function entregarCodigo(tabId: number, base: string, ia: string) {
     if (codigo) break;
   }
   vigias.delete(base);
+  await salvarVigias();
   if (!codigo) return;
   // O código não é logado nem gravado: só viaja aba -> ponte -> stdin do CLI.
   porta?.postMessage({ tipo: 'login_codigo', ia, codigo } as MensagemExtensao);
@@ -160,6 +248,19 @@ export default defineBackground(() => {
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     const url = tab?.pendingUrl || info.url || '';
     if (info.status !== 'complete' || !url) return;
+    if (!vigias.size) {
+      // Só paga o custo do storage quando há vigia; e recarrega antes de desistir.
+      carregarVigias()
+        .then(() => {
+          for (const [redirect, ia] of vigias) {
+            if (!url.startsWith(redirect.split('?')[0]!)) continue;
+            entregarCodigo(tabId, redirect, ia).catch(console.warn);
+            return;
+          }
+        })
+        .catch(() => {});
+      return;
+    }
     for (const [redirect, ia] of vigias) {
       if (!url.startsWith(redirect.split('?')[0]!)) continue;
       entregarCodigo(tabId, redirect, ia).catch(console.warn);
@@ -181,9 +282,26 @@ export default defineBackground(() => {
         responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do BrOWSER.' });
         return;
       }
-      alvo = msg.tabId;
-      ligarMatrix(alvo, 'IA conectada. Assumindo controle…');
-      porta.postMessage(msg);
+      // Não pode ser `async`: o Chrome não aceita Promise como resposta síncrona do listener.
+      // Persistir o alvo antes de seguir garante que a aba não se perca se o worker morrer agora.
+      definirAlvo(msg.tabId)
+        .then(() => {
+          ligarMatrix(msg.tabId, 'IA conectada. Assumindo controle…').catch(() => {});
+          porta?.postMessage(msg);
+        })
+        .catch(() => {});
+      responder({ ok: true });
+      return;
+    }
+    if (msg?.tipo === 'parar') {
+      // Parar é soberania do usuário (docs §7.3): a ponte mata o processo da IA, e aqui sai a
+      // matriz da tela imediatamente — a pessoa não fica olhando "assumindo controle" para sempre.
+      if (alvo !== undefined) {
+        desligarMatrix(alvo).catch(() => {});
+        chrome.debugger.detach({ tabId: alvo }).catch(() => {});
+        anexadas.delete(alvo);
+      }
+      porta?.postMessage(msg);
       responder({ ok: true });
       return;
     }
@@ -194,9 +312,10 @@ export default defineBackground(() => {
       return;
     }
     if (msg?.tipo === 'telemetria_blueprint') {
-      // Desligável no painel (chave aprendizadoPassivo; ausente = ligado).
-      chrome.storage.local.get('aprendizadoPassivo').then(({ aprendizadoPassivo }) => {
-        if (aprendizadoPassivo !== false) porta?.postMessage(msg);
+      // Opt-in: só repassa para a ponte se a pessoa tiver ligado no painel. A chave precisa ser
+      // `=== true` (e não `!== false`), senão um valor ausente valida como ligado.
+      chrome.storage.local.get(CHAVE_APRENDIZADO).then(({ aprendizadoPassivo }) => {
+        if (aprendizadoPassivo === true) porta?.postMessage(msg);
       });
       responder({ ok: true });
       return;
@@ -232,10 +351,10 @@ async function garantirAnexado(tabId: number) {
 async function ligarMatrix(tabId: number, status?: string) {
   try {
     await garantirAnexado(tabId);
-    const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    const r = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
       expression: `(${iniciarMatrixOverlay.toString()})()`,
       returnByValue: true,
-    }) as any;
+    })) as any;
     if (r?.exceptionDetails) {
       console.warn('Erro ao avaliar iniciarMatrixOverlay:', r.exceptionDetails);
     }
@@ -267,9 +386,19 @@ async function desligarMatrix(tabId: number) {
   } catch {}
 }
 
+// Reconexão com folga exponencial e teto. Antes era um `setTimeout(conectar, 2000)` que nunca
+// desistia: sem a ponte instalada, a extensão ficava acordando a cada 2 s para sempre.
+const RECONEXAO_MS = 2_000;
+const RECONEXAO_MAX_MS = 60_000;
+let tentativa = 0;
+let reconexaoTimer: ReturnType<typeof setTimeout> | undefined;
+
 function conectar() {
   porta = chrome.runtime.connectNative(HOST_NAME);
   porta.onMessage.addListener(async (p: Pedido | Evento) => {
+    // A ponte respondeu: a folga volta ao início, senão uma queda isolada deixaria a extensão
+    // esperando 60 s para reconectar nas próximas.
+    if (tentativa > 0) tentativa = 0;
     if ('tipo' in p) {
       // Evento da ponte -> painel (se o painel estiver fechado, ninguém recebe; tudo bem).
       if (p.tipo === 'login_ia') armarVigia(p.ia, p.url, p.pedeCodigo);
@@ -291,7 +420,7 @@ function conectar() {
       fila = vez.catch(() => {});
       r = { id: p.id, ok: true, result: await vez };
     } catch (e) {
-      const frames = alvo === undefined ? [] : (await chrome.webNavigation.getAllFrames({ tabId: alvo }).catch(() => null)) ?? [];
+      const frames = alvo === undefined ? [] : ((await chrome.webNavigation.getAllFrames({ tabId: alvo }).catch(() => null)) ?? []);
       const aba = alvo === undefined ? 'nenhuma' : `${alvo} frames=${frames.map((f) => f.url).join(' , ')}`;
       r = { id: p.id, ok: false, error: `${e instanceof Error ? e.message : String(e)} [aba alvo: ${aba}]` };
     }
@@ -300,40 +429,87 @@ function conectar() {
   porta.onDisconnect.addListener(() => {
     console.warn('ponte desconectada:', chrome.runtime.lastError?.message);
     porta = undefined;
-    setTimeout(conectar, RECONEXAO_MS);
+    // Folga exponencial: 2s, 4s, 8s… até 60s. A primeira mensagem recebida zera a contador.
+    const espera = Math.min(RECONEXAO_MS * 2 ** tentativa, RECONEXAO_MAX_MS);
+    tentativa++;
+    reconexaoTimer = setTimeout(conectar, espera);
+    reconexaoTimer.unref?.();
   });
 }
 
 async function executar(p: Pedido): Promise<unknown> {
   switch (p.cmd) {
-    case 'abrir': return abrir((p.args as Comandos['abrir']['args']).url);
-    case 'ler_campos': return lerCamposComPlanoB();
-    case 'preencher': { const a = p.args as Comandos['preencher']['args']; return a.ref >= REF_BASE_DOM ? naPaginaDom(a.ref, preencherDom, [a.valor]) : preencher(a.ref, a.valor); }
-    case 'clicar': { const ref = (p.args as Comandos['clicar']['args']).ref; return ref >= REF_BASE_DOM ? naPaginaDom(ref, clicarDom, []) : clicar(ref); }
-    case 'avaliar': return avaliar((p.args as Comandos['avaliar']['args']).expr);
-    case 'recarregar': setTimeout(() => chrome.runtime.reload(), 100); return { ok: true };
-    case 'forcar_modo_dom': abasSemDebugger.add(await abaAlvo()); return { ok: true };
-    default: throw new Error(`comando desconhecido: ${p.cmd}`);
+    case 'abrir':
+      return abrir((p.args as Comandos['abrir']['args']).url);
+    case 'ler_campos':
+      return lerCamposComPlanoB();
+    case 'preencher': {
+      const a = p.args as Comandos['preencher']['args'];
+      return a.ref >= REF_BASE_DOM ? naPaginaDom(a.ref, preencherDom, [a.valor]) : preencher(a.ref, a.valor, sensiveis.has(a.ref));
+    }
+    case 'clicar': {
+      const ref = (p.args as Comandos['clicar']['args']).ref;
+      return ref >= REF_BASE_DOM ? naPaginaDom(ref, clicarDom, []) : clicar(ref);
+    }
+    case 'avaliar':
+      return avaliar((p.args as Comandos['avaliar']['args']).expr);
+    case 'recarregar':
+      setTimeout(() => chrome.runtime.reload(), 100);
+      return { ok: true };
+    case 'forcar_modo_dom':
+      abasSemDebugger.add(await abaAlvo());
+      await salvarRefs();
+      return { ok: true };
+    default:
+      throw new Error(`comando desconhecido: ${p.cmd}`);
   }
+}
+
+const TIMEOUT_NAVEGACAO_MS = 30_000;
+
+/** Espera a aba carregar. O listener sempre sai: se nunca completar, um timer encerra. */
+function esperarAbaCarregar(tabId: number): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const sair = () => {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(ouvir);
+    };
+    const ouvir = (id: number, info: chrome.tabs.OnUpdatedInfo) => {
+      if (id !== tabId || info.status !== 'complete') return;
+      sair();
+      resolve();
+    };
+    // Sem teto, uma aba que nunca carrega deixava o listener registrado para sempre — e cada
+    // `abrir` empilhava mais um.
+    const timer = setTimeout(() => {
+      sair();
+      resolve();
+    }, TIMEOUT_NAVEGACAO_MS);
+    timer.unref?.();
+    chrome.tabs.onUpdated.addListener(ouvir);
+  });
 }
 
 async function abrir(url: string) {
   const tab = await chrome.tabs.create({ url, active: true });
-  await new Promise<void>((ok) => {
-    const ouvir = (id: number, info: chrome.tabs.OnUpdatedInfo) => {
-      if (id === tab.id && info.status === 'complete') { chrome.tabs.onUpdated.removeListener(ouvir); ok(); }
-    };
-    chrome.tabs.onUpdated.addListener(ouvir);
-  });
-  alvo = tab.id!;
-  return { tabId: alvo };
+  await esperarAbaCarregar(tab.id!);
+  await definirAlvo(tab.id!);
+  return { tabId: tab.id! };
 }
 
 async function abaAlvo(): Promise<number> {
   if (alvo !== undefined) return alvo;
+  // O worker pode ter morrido com `alvo` só na memória; o storage.session sabe qual era.
+  const guardado = await lerSessao<number | undefined>(SESSAO_ALVO, undefined);
+  if (guardado !== undefined) {
+    alvo = guardado;
+    return guardado;
+  }
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) throw new Error('nenhuma aba ativa');
-  return (alvo = tab.id);
+  alvo = tab.id;
+  await definirAlvo(tab.id);
+  return tab.id;
 }
 
 async function cdp<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -369,8 +545,12 @@ function varrerDom(root: any, origemTopo: string) {
       const tipo = attrs[attrs.indexOf('type') + 1] ?? '';
       if (attrs.includes('type') && WIDGETS.includes(tipo)) widgets.push({ ref: n.backendNodeId, tipo });
     }
-    n.children?.forEach((c: any) => andar(c, interno));
-    n.shadowRoots?.forEach((s: any) => andar(s, interno || s.shadowRootType === 'user-agent'));
+    n.children?.forEach((c: any) => {
+      andar(c, interno);
+    });
+    n.shadowRoots?.forEach((s: any) => {
+      andar(s, interno || s.shadowRootType === 'user-agent');
+    });
     if (n.contentDocument && !ehOutraOrigem(n.contentDocument.documentURL, origemTopo)) andar(n.contentDocument, interno);
   };
   andar(root, false);
@@ -398,41 +578,68 @@ async function lerCampos() {
     const { nodes } = await cdp('Accessibility.getFullAXTree', { frameId }).catch(() => ({ nodes: [] }));
     for (const n of nodes) {
       const papel = n.role?.value;
+      // `password` sai da lista junto com os papéis de ação: o campo continua encontrável pelo
+      // DOM (o plano B e o preenchimento funcionam), mas a árvore de acessibilidade, que expõe o
+      // valor, não é consultada para ele. É a linha que impede a senha de chegar à IA pelo CDP.
+      if (papel === 'password') continue;
       if (n.ignored || !PAPEIS.has(papel) || !n.backendDOMNodeId || internos.has(n.backendDOMNodeId)) continue;
       const prop = (k: string) => n.properties?.find((p: any) => p.name === k)?.value?.value;
       const campo: Campo = { ref: n.backendDOMNodeId, papel, nome: n.name?.value ?? '' };
-      if (n.value?.value !== undefined) campo.valor = String(n.value.value);
+      // `protected` cobre o caso de um campo marcado sensível fora do papel `password`. O valor é
+      // omitido; o campo continua preenchível (docs/termos-e-privacidade.md §4.2.2).
+      if (prop('protected') === true) campo.sensivel = true;
+      else if (n.value?.value !== undefined) campo.valor = String(n.value.value);
       if (prop('checked') !== undefined) campo.marcado = prop('checked') === 'true' || prop('checked') === true;
       if (prop('required')) campo.obrigatorio = true;
       if (papel === 'combobox' || papel === 'listbox') {
-        campo.opcoes = await noElemento<string[]>(n.backendDOMNodeId, 'function(){return this.options?Array.from(this.options).map(o=>o.text):[]}');
+        campo.opcoes = await noElemento<string[]>(
+          n.backendDOMNodeId,
+          'function(){return this.options?Array.from(this.options).map(o=>o.text):[]}',
+        );
       }
       campos.push(campo);
     }
   }
   for (const w of widgets) {
     if (campos.some((c) => c.ref === w.ref)) continue;
-    const info = await noElemento<{ nome: string; valor: string; obrigatorio: boolean }>(w.ref,
-      'function(){return {nome: (this.labels?.[0]?.innerText || this.getAttribute("aria-label") || this.name || "").trim(), valor: this.value, obrigatorio: this.required}}');
-    campos.push({ ref: w.ref, papel: w.tipo, nome: info.nome, valor: info.valor, ...(info.obrigatorio && { obrigatorio: true }) });
+    const info = await noElemento<{ nome: string; valor: string; obrigatorio: boolean }>(
+      w.ref,
+      'function(){return {nome: (this.labels?.[0]?.innerText || this.getAttribute("aria-label") || this.name || "").trim(), valor: this.value, obrigatorio: this.required}}',
+    );
+    campos.push({
+      ref: w.ref,
+      papel: w.tipo,
+      nome: info.nome,
+      ...(info.valor && { valor: info.valor }),
+      ...(info.obrigatorio && { obrigatorio: true }),
+    });
   }
   const { result } = await cdp('Runtime.evaluate', { expression: '({url: location.href, titulo: document.title})', returnByValue: true });
   return { ...result.value, campos };
 }
 
-async function preencher(ref: number, valor: string) {
-  if (alvo) atualizarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`);
+/** `valor` com a senha trocada por um marcador: nunca ecoa o segredo no HUD da página. */
+function mascararSecreto(valor: string, sensivel: boolean): string {
+  return sensivel ? '[senha]' : valor.length > 20 ? `${valor.slice(0, 18)}…` : valor;
+}
+
+async function preencher(ref: number, valor: string, sensivel = false) {
+  if (alvo) atualizarMatrix(alvo, `Preenchendo: ${mascararSecreto(valor, sensivel)}`);
   const tipo = await noElemento<string>(ref, 'function(){return this.tagName==="SELECT"?"select":(this.type||"text")}');
 
   if (tipo === 'select') {
-    await noElemento(ref, `function(v){
+    await noElemento(
+      ref,
+      `function(v){
       const alvo = v.trim().toLowerCase();
       const o = Array.from(this.options).find(o => o.value.toLowerCase() === alvo || o.text.trim().toLowerCase() === alvo);
       if (!o) throw new Error('opção não encontrada: ' + v);
       this.value = o.value;
       this.dispatchEvent(new Event('input', {bubbles: true}));
       this.dispatchEvent(new Event('change', {bubbles: true}));
-    }`, [valor]);
+    }`,
+      [valor],
+    );
   } else if (tipo === 'checkbox' || tipo === 'radio') {
     const querido = !/^(false|não|nao|0|off|desmarcar)$/i.test(valor.trim());
     const marcado = () => noElemento<boolean>(ref, 'function(){return this.checked}');
@@ -442,11 +649,15 @@ async function preencher(ref: number, valor: string) {
     if ((await marcado()) !== querido) await noElemento(ref, 'function(){this.click()}');
   } else if (['date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(tipo)) {
     // Inputs com widget nativo não aceitam Input.insertText: setter nativo + eventos.
-    await noElemento(ref, `function(v){
+    await noElemento(
+      ref,
+      `function(v){
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(this, v);
       this.dispatchEvent(new Event('input', {bubbles: true}));
       this.dispatchEvent(new Event('change', {bubbles: true}));
-    }`, [valor]);
+    }`,
+      [valor],
+    );
   } else {
     // Texto: foco + seleciona tudo + digitação "real" (funciona com React controlado).
     await cdp('DOM.focus', { backendNodeId: ref });
@@ -454,7 +665,12 @@ async function preencher(ref: number, valor: string) {
     await cdp('Input.insertText', { text: valor });
     await noElemento(ref, 'function(){this.dispatchEvent(new Event("change",{bubbles:true}))}');
   }
-  return { valor: await noElemento<string>(ref, 'function(){return this.type==="checkbox"||this.type==="radio"?String(this.checked):this.value}') };
+  // Campo sensível: confirma que gravou, sem devolver o texto. A IA precisa da confirmação, não
+  // do segredo — e o retorno também é registrado no log da ponte.
+  if (sensivel) return { valor: '[senha preenchida]' };
+  return {
+    valor: await noElemento<string>(ref, 'function(){return this.type==="checkbox"||this.type==="radio"?String(this.checked):this.value}'),
+  };
 }
 
 async function clicar(ref: number) {

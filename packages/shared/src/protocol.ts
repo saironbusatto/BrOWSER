@@ -10,6 +10,9 @@ export type Campo = {
   marcado?: boolean;
   obrigatorio?: boolean;
   opcoes?: string[]; // só para <select>
+  // `type=password` (ou outro campo de segredo). O valor NUNCA é lido: o campo continua
+  // preenchível, mas `valor` fica de fora e a ponte sabe que é sensível ao Mostrar.
+  sensivel?: boolean;
 };
 
 export type Comandos = {
@@ -29,9 +32,7 @@ export type Cmd = keyof Comandos;
 
 export type Pedido<C extends Cmd = Cmd> = { id: number; cmd: C; args: Comandos[C]['args'] };
 
-export type Resposta =
-  | { id: number; ok: true; result: unknown }
-  | { id: number; ok: false; error: string };
+export type Resposta = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 
 // ---- Eventos (têm `tipo`; os comandos acima têm `cmd`) ----
 
@@ -45,6 +46,12 @@ export type ArquivoAnexo = {
   tamanho: number;
   conteudoTexto?: string; // para XML, JSON, CSV, TXT
   dadosBase64?: string; // para PDF, imagens binárias
+};
+
+// extensão -> ponte: o usuário pediu para PARAR o pedido em andamento
+export type Parar = {
+  tipo: 'parar';
+  pedidoId: string;
 };
 
 // extensão -> ponte: o usuário escreveu um pedido no painel lateral
@@ -112,6 +119,7 @@ export type DesconectarTodos = {
 export type MensagemExtensao =
   | Pedir
   | RespostaUsuario
+  | Parar
   | TelemetriaBlueprint
   | ConsultarAssinaturas
   | ConectarAssinatura
@@ -134,6 +142,8 @@ export type Evento =
       opcoes?: string[];
     }
   | { tipo: 'resultado'; pedidoId: string; ok: boolean; ia?: Ia; texto: string }
+  // A pessoa apertou Parar: não é falha da IA, é a soberania do usuário (Termos §7.3).
+  | { tipo: 'parado'; pedidoId: string; ia?: Ia; texto: string }
   | { tipo: 'status_assinaturas'; assinaturas: ItemAssinatura[]; iaAtiva: Ia }
   // O CLI oficial do login foi escondido: a ponte manda para o painel só o que importa
   // (link + código), e o painel devolve o código colado quando o fluxo não tem device code.
