@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+  <canvas id="campo-pontos" class="campo-pontos" aria-hidden="true"></canvas>
   <div class="app-container">
     <!-- Subscriptions Sheet Modal (Apple Design) -->
     <div id="subscriptions-modal" class="sheet-modal-backdrop" aria-hidden="true">
@@ -247,20 +248,8 @@
     <!-- Conversation Stream -->
     <main id="chat-stream" class="chat-stream">
       <div id="welcome-card" class="welcome-card">
-        <div class="welcome-badge">🌐</div>
-        <h2 class="welcome-title">Como posso ajudar na sua página?</h2>
-        <p class="welcome-desc">Posso preencher formulários com arquivos (XML, PDF), responder dúvidas ou navegar na aba aberta.</p>
-        <div class="suggestions-list">
-          <button class="suggestion-chip" data-prompt="Preencha os campos deste formulário nesta página">
-            <span>📝</span> Preencher formulário nesta página
-          </button>
-          <button class="suggestion-chip" data-prompt="Crie um prompt detalhado e criativo para gerar uma logo futurista para o BrOWSER">
-            <span>🎨</span> Prompt para logo futurista do BrOWSER
-          </button>
-          <button class="suggestion-chip" data-prompt="Leia esta página e explique resumidamente o que ela contém">
-            <span>🔍</span> Analisar e resumir esta página
-          </button>
-        </div>
+        <img class="welcome-logo" src="/icon/128.png" alt="BrOWSER" width="72" height="72">
+        <p class="welcome-hint">Diga o que preencher nesta página.</p>
       </div>
     </main>
 
