@@ -24,18 +24,55 @@ Painel lateral (extensão) ──► Ponte local (bridge) ──► Ferramenta o
   decisão para você.
 - O painel tem **botão Parar**: derruba a IA no instante, sem esperar. Soberania sua, não da máquina.
 
-## Instalar (Windows)
+## Instalar
 
-1. Baixe o pacote `BrOWSER-windows` em [Releases](https://github.com/saironbusatto/BrOWSER/releases) e extraia.
+Um pacote por plataforma, com a ponte **e** a extensão dentro. Nenhum passo exige
+`root`, administrador, Node, Bun ou `npm install`.
+
+**Antes de instalar**, o binário diz se esta máquina tem o que o BrOWSER precisa:
+
+```bash
+./bridge --doctor
+```
+
+Ele confere navegador, registro da ponte e as ferramentas de IA instaladas e logadas.
+Sai com código 1 enquanto faltar algo, e diz o que fazer.
+
+### Windows
+
+1. Baixe `BrOWSER-windows.zip` em [Releases](https://github.com/saironbusatto/BrOWSER/releases) e extraia.
 2. Rode `powershell -ExecutionPolicy Bypass -File setup.ps1`. Ele mostra tudo o que vai fazer e pede confirmação; não precisa de administrador.
-3. Instale a extensão (pacote `BrOWSER-extensao` do mesmo release → `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação).
-4. No painel do BrOWSER: **Assinaturas → Conectar**.
+3. **Reinicie o navegador** e instale a extensão de dentro do pacote em `extensao/`: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação.
+
+### Linux
+
+1. Baixe `BrOWSER-linux.tar.gz` em [Releases](https://github.com/saironbusatto/BrOWSER/releases) e extraia.
+2. Rode `./install.sh`. Sem `root`: a ponte vai para `~/.local/share/BrOWSER` e o registro para `~/.config`.
+3. **Reinicie o navegador** e instale a extensão de dentro do pacote em `~/.local/share/BrOWSER/extensao`: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação.
+4. Confira com `~/.local/share/BrOWSER/bridge --doctor`.
+
+**Passo 4 é sempre manual e é por decisão do Chrome**, não limitação nossa: um navegador
+comum não deixa nenhum programa instalar extensão sem a sua confirmação. Só em ambiente
+gerenciado (empresa, escola, kiosk) dá para distribuir a extensão já instalada.
+
+### macOS
+
+Ainda não há binário publicado para macOS. O código funciona, mas o release não traz
+executável: até lá, o caminho é compilar a ponte a partir do código.
+
+### A ferramenta de IA
+
+O BrOWSER usa **a sua assinatura**, nunca uma chave de API: `agy` (Google AI Pro),
+`codex` (ChatGPT) ou `claude` (Claude Pro/Max), conforme o plano que você conectar no
+painel. Cada uma tem instalador oficial próprio e **o BrOWSER não instala nenhuma** —
+escolher qual usar é seu. O `--doctor` diz o que falta. Python 3 só é necessário para o
+login do Google AI Pro, que exige terminal interativo.
 
 ## Desinstalar
 
 - **Windows:** Configurações → Aplicativos instalados → BrOWSER → Desinstalar (ou rode `uninstall.ps1`). Remove a ponte, os registros nos navegadores, a integração com o Antigravity CLI e os dados locais.
-- **Linux/macOS:** `bridge --uninstall`.
-- Depois, remova a extensão do navegador.
+- **Linux:** `~/.local/share/BrOWSER/install.sh --desinstalar` (ou `bridge --uninstall` para só tirar o registro e os dados locais).
+- **Depois, remova a extensão do navegador** — em nenhum dos casos isso é automatizável.
 
 ## Privacidade
 

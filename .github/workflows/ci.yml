@@ -72,6 +72,43 @@ jobs:
           }
           Get-Content $manifesto
 
+      # Instalador do Linux, caminho completo em HOME de mentira. Um release que ninguém instalou
+      # em máquina limpa é um release que ninguém sabe se funciona.
+      - name: Instalador (install.sh) e diagnóstico
+        if: runner.os == 'Linux'
+        run: |
+          set -e
+          rm -rf /tmp/pacote && mkdir -p /tmp/pacote/extensao
+          cp packages/bridge/dist/bridge /tmp/pacote/bridge
+          cp -r packages/extension/.output/chrome-mv3/. /tmp/pacote/extensao/
+          cp packages/bridge/scripts/install.sh packages/bridge/scripts/leia-me.md /tmp/pacote/
+          chmod +x /tmp/pacote/bridge /tmp/pacote/install.sh
+
+          export HOME=/tmp/home-instalador
+          rm -rf "$HOME" && mkdir -p "$HOME"
+
+          # Antes de instalar, o diagnóstico aponta o que falta. Aqui tem navegador e falta a ponte.
+          /tmp/pacote/bridge --doctor || true
+
+          /tmp/pacote/install.sh --sim
+          test -x "$HOME/.local/share/BrOWSER/bridge" || { echo 'ponte não copiada'; exit 1; }
+          test -f "$HOME/.local/share/BrOWSER/extensao/manifest.json" || { echo 'extensão não copiada'; exit 1; }
+          test -x "$HOME/.local/share/BrOWSER/install.sh" || { echo 'instalador não copiado: sem como desinstalar'; exit 1; }
+          cat "$HOME/.config/google-chrome/NativeMessagingHosts/com.browser.bridge.json"
+
+          # Depois de instalar, o diagnóstico tem que relatar a ponte registrada no Chrome.
+          # Não pode exigir saída 0: no CI o codex está instalado mas sem login (o passo acima só
+          # instala), e o doctor saía com 1 de propósito — a pessoa ainda tem o que fazer.
+          "$HOME/.local/share/BrOWSER/bridge" --doctor | tee /tmp/doctor.txt || true
+          grep -q 'Chrome: ponte registrada' /tmp/doctor.txt || { echo 'doctor não viu a ponte registrada'; cat /tmp/doctor.txt; exit 1; }
+
+          # E a desinstalação tem de desfazer tudo (exigência da SignPath).
+          "$HOME/.local/share/BrOWSER/install.sh" --sim --desinstalar
+          test ! -e "$HOME/.local/share/BrOWSER" || { echo 'pasta do BrOWSER não foi removida'; exit 1; }
+          test ! -e "$HOME/.config/google-chrome/NativeMessagingHosts/com.browser.bridge.json" || { echo 'registro não removido'; exit 1; }
+          test ! -e "$HOME/.config/browser-bridge" || { echo 'dados locais não removidos'; exit 1; }
+          echo 'instalação e desinstalação completas'
+
       - name: Conferir registro (Linux)
         if: runner.os == 'Linux'
         run: cat ~/.config/google-chrome/NativeMessagingHosts/com.browser.bridge.json

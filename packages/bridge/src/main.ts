@@ -26,6 +26,7 @@ import { desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAssinaturas, res
 import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
 import { CONTROLE_ATIVO } from './build';
 import { pathComIAs } from './caminhos';
+import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
 import { registrarHost, removerHost } from './instalar';
@@ -38,6 +39,11 @@ if (process.argv.includes('--install')) {
   for (const r of registrarHost(process.execPath)) console.log(`✓ ${r.navegador}: ${r.destino}`);
   console.log('Pronto. Reinicie o navegador para ativar a ponte.');
   process.exit(0);
+}
+
+// `bridge --doctor`: a pergunta "isso funciona na minha máquina?", respondida antes de instalar.
+if (process.argv.includes('--doctor')) {
+  process.exit(await rodarDiagnostico());
 }
 
 // `bridge --uninstall`: desfaz tudo o que o --install e o uso da ponte criaram fora da pasta dela.
