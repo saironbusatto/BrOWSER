@@ -66,7 +66,7 @@ VIAddVersionKey "LegalCopyright" "${NOME} - codigo aberto"
 !define MUI_ICON "icone.ico"
 !define MUI_UNICON "icone.ico"
 !define MUI_FINISHPAGE_RUN "$INSTDIR\bridge.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Conferir agora se esta tudo pronto (abre o diagnóstico)"
+!define MUI_FINISHPAGE_RUN_TEXT "Conferir agora se está tudo pronto (abre o --doctor, desmarcado por padrão)"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 
 !insertmacro MUI_PAGE_WELCOME
@@ -77,8 +77,6 @@ VIAddVersionKey "LegalCopyright" "${NOME} - codigo aberto"
 !insertmacro MUI_UNPAGE_INSTFILES
 
 !insertmacro MUI_LANGUAGE "PortugueseBR"
-
-Var DIAGNOSTICO
 
 ; ---------------------------------------------------------------------------------------
 ; Texto. A pessoa le o que vai mudar no computador dela antes de instalar, e o que NAO vai
@@ -188,23 +186,11 @@ Section "Instalar" SecMain
   CreateShortCut "$SMPROGRAMS\${NOME}\Desinstalar BrOWSER.lnk" "$INSTDIR\Uninstall ${NOME}.exe"
   CreateShortCut "$DESKTOP\BrOWSER.lnk" "$INSTDIR\Uninstall ${NOME}.exe"
 
-  ; O diagnostico e a resposta para "isso funciona na minha maquina?". Rodar aqui e o melhor
-  ; momento: a pessoa ainda esta olhando para a tela do instalador.
-  DetailPrint "Rodando o diagnóstico"
-  ExecWait '"$INSTDIR\bridge.exe" --doctor' $0
-  ${If} $0 == "0"
-    StrCpy $DIAGNOSTICO 1
-    DetailPrint "Diagnóstico: tudo pronto."
-  ${Else}
-    DetailPrint "Diagnóstico: ainda falta algo."
-  ${EndIf}
-
   ; O tamanho da pasta, agora que a extensao esta dentro, para o Painel de Controle mostrar o
   ; numero certo. GetSize devolve tres: tamanho em KB, em bytes, e quantos arquivos.
   ${GetSize} "$INSTDIR" "/S=1K" $0 $1 $2
   IntFmt $0 "0x%08X" $0
   WriteRegDWORD HKCU "${CHAVE_UNINSTALL}" "EstimatedSize" "$0"
-  WriteRegStr HKCU "${CHAVE_SOFTWARE}" "DiagnosticoOk" "$DIAGNOSTICO"
 
   ; Um arquivo solto na pasta instalada, com o resumo. Serve a pessoa que abrir a pasta procurando
   ; o que fazer, e serve ao CI para conferir o que o instalador de fato fez — inclusive se os
@@ -212,8 +198,7 @@ Section "Instalar" SecMain
   FileOpen $9 "$INSTDIR\INSTALADO.txt" w
   FileWrite $9 "BrOWSER ${VERSAO} instalado.$\r$\n"
   FileWrite $9 "Instalado em: $INSTDIR$\r$\n$\r$\n"
-  FileWrite $9 "Diagnóstico na instalação: $DIAGNOSTICO (0 = tudo pronto, 1 = falta algo).$\r$\n"
-  FileWrite $9 "Rode bridge.exe --doctor para ver o que falta.$\r$\n$\r$\n"
+  FileWrite $9 "Para conferir se está tudo pronto, rode: bridge.exe --doctor$\r$\n"
   FileWrite $9 "Falta um passo manual, porque o Chrome não deixa um programa instalar extensão$\r$\n"
   FileWrite $9 "sem a sua confirmação:$\r$\n"
   FileWrite $9 "  1. Feche e abra de novo o navegador.$\r$\n"

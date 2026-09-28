@@ -85,21 +85,64 @@ const CATALOGO: Record<Ia, Entrada> = {
   },
 };
 
+/**
+ * Mata o processo e tudo que ele gerou.
+ *
+ * No Windows, `codex` e `claude` instalados por npm são shims `.cmd`, e o comandoExecutavel os
+ * chama por `cmd.exe`. O `cmd.exe` roda a linha e o node vira um processo NETO que herda a saída
+ * padrão. Matar só o pai deixa o neto vivo segurando o pipe, então a leitura abaixo não termina
+ * nunca. `/T` mata a árvore; no Unix, o kill direto basta.
+ */
+function matarArvore(proc: { pid: number; kill: () => void }): void {
+  if (process.platform === 'win32') {
+    Bun.spawnSync(['taskkill', '/pid', String(proc.pid), '/T', '/F'], { stdout: 'ignore', stderr: 'ignore' });
+    return;
+  }
+  proc.kill();
+}
+
+/**
+ * Lê a saída de um processo com prazo fechado, matando a árvore se ele não terminar.
+ *
+ * Existe porque matar o processo não basta para liberar a leitura: enquanto um processo neto
+ * estiver com a saída padrão aberta, o pipe não fecha e a espera não resolve. Sem o prazo, uma
+ * CLI travada deixava o `--doctor` e o painel sem resposta nenhuma — o que foi exatamente o que
+ * aconteceu no Windows, onde toda CLI de npm é um shim.
+ */
+export async function lerComPrazo(
+  proc: { stdout: ReadableStream<Uint8Array>; exited: Promise<number>; kill: () => void; pid: number },
+  ms: number,
+): Promise<{ saida: string; codigo: number; expirou: boolean }> {
+  let expirou = false;
+  const relogio = setTimeout(() => {
+    expirou = true;
+    matarArvore(proc);
+  }, ms);
+  // A espera pela saída tem prazo próprio, maior que o do kill: se o processo já morreu mas o
+  // neto ainda segura o pipe, é a leitura que precisa desistir, não o kill.
+  const Desistir = new Promise<null>((r) => setTimeout(() => r(null), ms + 2_000));
+  // Consome os trechos conforme chegam, em vez de esperar o texto inteiro: um processo que trava
+  // no meio não pode levar junto o que já respondeu, que é a diferença entre "demorou para
+  // responder" e "respondeu algo, mas não terminou".
+  const dec = new TextDecoder();
+  let saida = '';
+  const consumir = (async () => {
+    const leitor = proc.stdout.getReader();
+    for (;;) {
+      const { done, value } = await leitor.read();
+      if (done) break;
+      saida += dec.decode(value, { stream: true });
+    }
+  })().catch(() => {});
+  await Promise.race([consumir, Desistir]);
+  const codigo = await Promise.race([proc.exited, Desistir.then(() => -1)]);
+  clearTimeout(relogio);
+  return { saida, codigo: codigo ?? -1, expirou };
+}
+
 async function estaLogado(ia: Ia): Promise<{ conectado: boolean; detalhe?: string }> {
   const proc = Bun.spawn(comandoExecutavel(CATALOGO[ia].status), { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
-  let expirou = false;
-  const timer = setTimeout(() => {
-    expirou = true;
-    proc.kill();
-  }, TIMEOUT_STATUS_MS);
-  let saida = '';
-  try {
-    saida = await new Response(proc.stdout).text();
-  } catch {
-    // o kill() cortou o pipe; `expirou` distingue isso de "a CLI respondeu que não tem sessão"
-  }
-  const codigo = await proc.exited;
-  clearTimeout(timer);
+  const { saida, codigo, expirou } = await lerComPrazo(proc, TIMEOUT_STATUS_MS);
   if (expirou) return { conectado: false, detalhe: 'demorou para responder' };
   if (codigo !== 0) return { conectado: false };
   const parser = CATALOGO[ia].lerStatus;

@@ -113,11 +113,22 @@ jobs:
           if ($app.DisplayName -ne 'BrOWSER') { throw 'entrada em Aplicativos instalados ausente' }
           if ($app.UninstallString -notmatch 'Uninstall BrOWSER.exe') { throw 'o desinstalador registrado não é o do instalador' }
 
-          # O diagnóstico roda dentro do instalador. Aqui não dá para exigir que ele diga "tudo
-          # pronto", porque o codex do CI está instalado e sem login — e aí ele está certo em
-          # reclamar. O que não pode é o instalador ter abortado por isso.
-          $diag = (Get-ItemProperty 'HKCU:\Software\BrOWSER' -ErrorAction SilentlyContinue).DiagnosticoOk
-          "DiagnosticoOk=$diag"
+          # O --doctor é executado aqui, e o ponto do teste é que ele TERMINA. No Windows toda CLI
+          # de npm é um shim .cmd: o cmd.exe vira um processo neto que segura a saída padrão, e a
+          # leitura do status ficava esperando para sempre. Foi esse passo que travou a primeira
+          # versão do instalador no runner.
+          #
+          # Não dá para exigir saída 0: o codex do CI está instalado e sem login, e aí o doctor
+          # está certo em reclamar. O que não pode é não voltar.
+          # WaitForExit(ms) e não Wait-Process -Timeout: o segundo devolve $null mesmo quando o
+          # processo já terminou, então a verificação passaria a reprovar sempre. O primeiro
+          # devolve $true/$false de verdade, o que é o que o teste precisa saber.
+          $doctor = Start-Process "$env:LOCALAPPDATA\BrOWSER\bridge.exe" -ArgumentList '--doctor' -NoNewWindow -PassThru
+          if (-not $doctor.WaitForExit(90000)) {
+            $doctor | Stop-Process -Force
+            throw 'o --doctor não voltou em 90s: uma CLI de IA travou o diagnóstico'
+          }
+          "o --doctor voltou com código $($doctor.ExitCode) (1 é o esperado aqui: codex sem login)"
 
           # O arquivo que o instalador escreve é a prova de que os acentos sobreviveram à página de
           # código do Windows até o arquivo em disco. Acentuação perdida aqui é defeito visível na

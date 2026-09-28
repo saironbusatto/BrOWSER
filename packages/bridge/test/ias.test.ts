@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, SiteBlueprint } from '@browser/shared';
+import { lerComPrazo } from '../src/assinaturas';
 import { comando, instrucoes, type Mcp, respostaFinal } from '../src/ias';
 
 const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
@@ -150,4 +151,46 @@ describe('respostaFinal: o texto que chega ao usuário', () => {
     expect(respostaFinal('claude', '{quebrado')).toBeUndefined();
     expect(respostaFinal('codex', '')).toBeUndefined();
   });
+});
+
+describe('lerComPrazo: uma CLI travada não pode travar o diagnóstico', () => {
+  // Este é o defeito que o job do Windows encontrou. No Windows, codex e claude instalados por
+  // npm são shims .cmd: o comandoExecutavel os chama por cmd.exe, o cmd.exe roda a linha e o node
+  // fica como processo NETO com a saída padrão herdada. Matar o pai não fecha o pipe, então a
+  // leitura ficava esperando para sempre e o --doctor não voltava.
+  const sh = 'sh';
+
+  it('devolve a saída quando o processo responde a tempo', async () => {
+    const proc = Bun.spawn([sh, '-c', 'printf \'{"loggedIn":true}\'; exit 0'], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+    const r = await lerComPrazo(proc, 5_000);
+    expect(r.expirou).toBe(false);
+    expect(r.saida).toContain('loggedIn');
+    expect(r.codigo).toBe(0);
+  });
+
+  // Ignorar o TERM é o que o shim .cmd faz: o processo direto não morre, e um neto que segura o
+  // pipe é o que impedia a leitura de terminar. Aqui o prazo é a única garantia.
+  it('desiste no prazo mesmo com um processo que ignora o kill e segura o pipe', async () => {
+    const proc = Bun.spawn([sh, '-c', 'trap "" TERM; printf "parcial"; sleep 120'], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+    const inicio = Date.now();
+    const r = await lerComPrazo(proc, 700);
+    const decorrido = Date.now() - inicio;
+
+    expect(r.expirou).toBe(true);
+    // O prazo tem de valer: sem ele esta espera seria de dois minutos, e era isso que travava o
+    // painel de quem tem uma CLI empacada.
+    expect(decorrido).toBeLessThan(15_000);
+    expect(r.saida).toContain('parcial');
+  }, 20_000);
+
+  it('não vaza o processo pendurado para a próxima verificação', async () => {
+    const primeiro = Bun.spawn([sh, '-c', 'trap "" TERM; sleep 60'], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+    await lerComPrazo(primeiro, 400);
+    // A segunda leitura tem que ser normal: se o prazo se aplicasse só à primeira, o diagnóstico
+    // ficaria contaminado para sempre depois do primeiro travamento.
+    const segundo = Bun.spawn([sh, '-c', 'printf \'{"loggedIn":false}\'; exit 0'], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
+    const r = await lerComPrazo(segundo, 5_000);
+    expect(r.expirou).toBe(false);
+    expect(r.saida).toContain('loggedIn');
+  }, 20_000);
 });
