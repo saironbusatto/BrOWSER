@@ -13,16 +13,39 @@ const paginaDeBusca: SiteBlueprint = {
     { idSemantico: 'x', rotulo: 'Google Apps', papel: 'button', seletorAcessivel: 'Google Apps' },
     { idSemantico: 'x', rotulo: 'Pesquisar', papel: 'combobox', seletorAcessivel: 'Pesquisar' },
     { idSemantico: 'x', rotulo: 'Pesquisar por voz', papel: 'button', seletorAcessivel: 'Pesquisar por voz' },
-    { idSemantico: 'x', rotulo: 'Conta do Google: Fulano Teste (fulano.teste@example.com)', papel: 'button', seletorAcessivel: 'Conta do Google: Fulano Teste (fulano.teste@example.com)' },
-    { idSemantico: 'x', rotulo: '01310-100 - Bela Vista, São Paulo - SP - Com base nos seus lugares (Casa)', papel: 'button', seletorAcessivel: '01310-100 - Bela Vista' },
-    { idSemantico: 'x', rotulo: 'Nobara Linux | O Projeto Nobara Nobara Linux https://nobaraproject.org', papel: 'link', seletorAcessivel: 'Nobara' },
-    { idSemantico: 'x', rotulo: 'The BEST Tweaks for Gaming and Multimedia Performance YouTube · Canal Qualquer Mais de 10 mil visualizações', papel: 'link', seletorAcessivel: 'The BEST' },
+    {
+      idSemantico: 'x',
+      rotulo: 'Conta do Google: Fulano Teste (fulano.teste@example.com)',
+      papel: 'button',
+      seletorAcessivel: 'Conta do Google: Fulano Teste (fulano.teste@example.com)',
+    },
+    {
+      idSemantico: 'x',
+      rotulo: '01310-100 - Bela Vista, São Paulo - SP - Com base nos seus lugares (Casa)',
+      papel: 'button',
+      seletorAcessivel: '01310-100 - Bela Vista',
+    },
+    {
+      idSemantico: 'x',
+      rotulo: 'Nobara Linux | O Projeto Nobara Nobara Linux https://nobaraproject.org',
+      papel: 'link',
+      seletorAcessivel: 'Nobara',
+    },
+    {
+      idSemantico: 'x',
+      rotulo: 'The BEST Tweaks for Gaming and Multimedia Performance YouTube · Canal Qualquer Mais de 10 mil visualizações',
+      papel: 'link',
+      seletorAcessivel: 'The BEST',
+    },
     { idSemantico: 'x', rotulo: 'Traduzir esta página', papel: 'link', seletorAcessivel: 'Traduzir esta página' },
     { idSemantico: 'x', rotulo: 'Traduzir esta página', papel: 'link', seletorAcessivel: 'Traduzir esta página' },
     { idSemantico: 'x', rotulo: 'Page 2', papel: 'link', seletorAcessivel: 'Page 2' },
     { idSemantico: 'x', rotulo: 'Page 3', papel: 'link', seletorAcessivel: 'Page 3' },
     {
-      idSemantico: 'x', rotulo: 'Endereço de entrega', papel: 'combobox', seletorAcessivel: 'Endereço de entrega',
+      idSemantico: 'x',
+      rotulo: 'Endereço de entrega',
+      papel: 'combobox',
+      seletorAcessivel: 'Endereço de entrega',
       opcoes: ['Selecione', 'Rua Exemplo, 123 - CEP 01310-100', 'fulano.teste@example.com', 'Retirar na loja'],
     },
   ],
@@ -33,7 +56,16 @@ describe('Sanitizador de blueprints (estrutura sim, dado do usuário não)', () 
   const json = JSON.stringify(r);
 
   it('não deixa passar e-mail, nome da conta, CEP, bairro, URL nem a busca do usuário', () => {
-    for (const vazamento of ['fulano.teste@example.com', 'Fulano Teste', '01310-100', 'Bela Vista', 'https://', 'Nobara', 'Tweaks', 'nobara wallpaper']) {
+    for (const vazamento of [
+      'fulano.teste@example.com',
+      'Fulano Teste',
+      '01310-100',
+      'Bela Vista',
+      'https://',
+      'Nobara',
+      'Tweaks',
+      'nobara wallpaper',
+    ]) {
       expect(json).not.toContain(vazamento);
     }
   });

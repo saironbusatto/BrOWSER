@@ -10,13 +10,17 @@ export const EXTENSION_ID = 'kofljccjbobcbcfnnolfgbobkckmiboe'; // derivado da k
 export type Registro = { navegador: string; destino: string };
 
 function manifesto(executavel: string): string {
-  return JSON.stringify({
-    name: HOST_NAME,
-    description: 'BrOWSER bridge',
-    path: executavel,
-    type: 'stdio',
-    allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
-  }, null, 2);
+  return JSON.stringify(
+    {
+      name: HOST_NAME,
+      description: 'BrOWSER bridge',
+      path: executavel,
+      type: 'stdio',
+      allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+    },
+    null,
+    2,
+  );
 }
 
 // Pasta de config de cada navegador; o manifesto vai em <pasta>/NativeMessagingHosts.
@@ -24,27 +28,38 @@ function pastasUnix(): [string, string][] {
   const home = homedir();
   if (process.platform === 'darwin') {
     const base = join(home, 'Library', 'Application Support');
-    return [['Chrome', join(base, 'Google', 'Chrome')], ['Brave', join(base, 'BraveSoftware', 'Brave-Browser')],
-      ['Edge', join(base, 'Microsoft Edge')], ['Chromium', join(base, 'Chromium')]];
+    return [
+      ['Chrome', join(base, 'Google', 'Chrome')],
+      ['Brave', join(base, 'BraveSoftware', 'Brave-Browser')],
+      ['Edge', join(base, 'Microsoft Edge')],
+      ['Chromium', join(base, 'Chromium')],
+    ];
   }
   const base = join(home, '.config');
-  return [['Chrome', join(base, 'google-chrome')], ['Brave', join(base, 'BraveSoftware', 'Brave-Browser')],
-    ['Edge', join(base, 'microsoft-edge')], ['Chromium', join(base, 'chromium')],
-    ['Vivaldi', join(base, 'vivaldi')], ['Opera', join(base, 'opera')]];
+  return [
+    ['Chrome', join(base, 'google-chrome')],
+    ['Brave', join(base, 'BraveSoftware', 'Brave-Browser')],
+    ['Edge', join(base, 'microsoft-edge')],
+    ['Chromium', join(base, 'chromium')],
+    ['Vivaldi', join(base, 'vivaldi')],
+    ['Opera', join(base, 'opera')],
+  ];
 }
 
 function registrarUnix(executavel: string): Registro[] {
   const corpo = manifesto(executavel);
-  return pastasUnix()
-    // Registra onde o navegador existe; Chrome e Brave sempre (podem ser instalados depois).
-    .filter(([nome, pasta]) => existsSync(pasta) || nome === 'Chrome' || nome === 'Brave')
-    .map(([navegador, pasta]) => {
-      const dir = join(pasta, 'NativeMessagingHosts');
-      mkdirSync(dir, { recursive: true });
-      const destino = join(dir, `${HOST_NAME}.json`);
-      writeFileSync(destino, corpo);
-      return { navegador, destino };
-    });
+  return (
+    pastasUnix()
+      // Registra onde o navegador existe; Chrome e Brave sempre (podem ser instalados depois).
+      .filter(([nome, pasta]) => existsSync(pasta) || nome === 'Chrome' || nome === 'Brave')
+      .map(([navegador, pasta]) => {
+        const dir = join(pasta, 'NativeMessagingHosts');
+        mkdirSync(dir, { recursive: true });
+        const destino = join(dir, `${HOST_NAME}.json`);
+        writeFileSync(destino, corpo);
+        return { navegador, destino };
+      })
+  );
 }
 
 const CHAVES_WINDOWS: [string, string][] = [
@@ -74,9 +89,9 @@ export function registrarHost(executavel: string): Registro[] {
 /** Desfaz registrarHost: tira o host de todos os navegadores (o que não existir é ignorado). */
 export function removerHost(): string[] {
   if (process.platform === 'win32') {
-    const removidos = CHAVES_WINDOWS
-      .filter(([, base]) => Bun.spawnSync(['reg', 'delete', `${base}\\${HOST_NAME}`, '/f']).exitCode === 0)
-      .map(([navegador]) => navegador);
+    const removidos = CHAVES_WINDOWS.filter(
+      ([, base]) => Bun.spawnSync(['reg', 'delete', `${base}\\${HOST_NAME}`, '/f']).exitCode === 0,
+    ).map(([navegador]) => navegador);
     rmSync(join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'BrOWSER', `${HOST_NAME}.json`), { force: true });
     return removidos;
   }

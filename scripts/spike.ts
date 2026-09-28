@@ -26,7 +26,9 @@ try {
 
 async function controle(cmd: string, args: object = {}) {
   const r = await fetch(`http://127.0.0.1:${ponte.port}/control`, {
-    method: 'POST', headers: { Authorization: `Bearer ${ponte.token}` }, body: JSON.stringify({ cmd, args }),
+    method: 'POST',
+    headers: { Authorization: `Bearer ${ponte.token}` },
+    body: JSON.stringify({ cmd, args }),
     timeout: false, // `executar` pode passar de 5 min; o limite real fica na ponte
   } as RequestInit);
   const j = (await r.json().catch(() => null)) as { ok: boolean; result?: any; error?: string } | null;
@@ -35,9 +37,24 @@ async function controle(cmd: string, args: object = {}) {
 }
 
 async function garantirFormulario() {
-  if (await fetch(FORM_URL).then((r) => r.ok, () => false)) return undefined;
+  if (
+    await fetch(FORM_URL).then(
+      (r) => r.ok,
+      () => false,
+    )
+  )
+    return undefined;
   const p = Bun.spawn(['bun', 'run', 'form'], { cwd: raiz, stdout: 'ignore', stderr: 'ignore' });
-  for (let i = 0; i < 20 && !(await fetch(FORM_URL).then((r) => r.ok, () => false)); i++) await Bun.sleep(250);
+  for (
+    let i = 0;
+    i < 20 &&
+    !(await fetch(FORM_URL).then(
+      (r) => r.ok,
+      () => false,
+    ));
+    i++
+  )
+    await Bun.sleep(250);
   return p;
 }
 
@@ -55,7 +72,7 @@ if (!(await controle('avaliar', { expr: '!!document.querySelector("[name=telefon
 
 console.log(`▶ ${ia}: preenchendo…`);
 const inicio = performance.now();
-const execucao = await controle('executar', { texto: pedido, ia }) as { ok: boolean; ia?: Ia; texto: string };
+const execucao = (await controle('executar', { texto: pedido, ia })) as { ok: boolean; ia?: Ia; texto: string };
 const duracaoS = Math.round((performance.now() - inicio) / 1000);
 
 let valores: Record<string, unknown> = {};

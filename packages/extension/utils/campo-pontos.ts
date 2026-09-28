@@ -107,7 +107,9 @@ export function iniciarCampoPontos(canvas: HTMLCanvasElement): () => void {
   window.addEventListener('pointermove', aoMover, { passive: true });
   document.documentElement.addEventListener('pointerleave', aoSair);
   const temas = ['(prefers-color-scheme: dark)', '(prefers-contrast: more)'].map((q) => matchMedia(q));
-  temas.forEach((m) => m.addEventListener('change', aoMudarTema));
+  temas.forEach((m) => {
+    m.addEventListener('change', aoMudarTema);
+  });
   movimentoReduzido.addEventListener('change', agendar);
 
   return () => {
@@ -115,7 +117,9 @@ export function iniciarCampoPontos(canvas: HTMLCanvasElement): () => void {
     dprAtual?.removeEventListener('change', aoMudarDpr);
     window.removeEventListener('pointermove', aoMover);
     document.documentElement.removeEventListener('pointerleave', aoSair);
-    temas.forEach((m) => m.removeEventListener('change', aoMudarTema));
+    temas.forEach((m) => {
+      m.removeEventListener('change', aoMudarTema);
+    });
     movimentoReduzido.removeEventListener('change', agendar);
   };
 }

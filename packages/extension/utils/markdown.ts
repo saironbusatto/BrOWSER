@@ -1,5 +1,5 @@
-import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 
 marked.setOptions({ gfm: true, breaks: true });
 

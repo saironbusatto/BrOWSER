@@ -197,7 +197,10 @@ describe('Índice público de blueprints', () => {
     const { readdirSync, readFileSync } = require('node:fs') as typeof import('node:fs');
     const { join } = require('node:path') as typeof import('node:path');
     const pasta = join(import.meta.dir, '../../../blueprints');
-    const arquivos = readdirSync(pasta).filter((f) => f.endsWith('.json') && f !== 'index.json').map((f) => f.replace(/\.json$/, '')).sort();
+    const arquivos = readdirSync(pasta)
+      .filter((f) => f.endsWith('.json') && f !== 'index.json')
+      .map((f) => f.replace(/\.json$/, ''))
+      .sort();
     const indice = (JSON.parse(readFileSync(join(pasta, 'index.json'), 'utf8')).dominios as string[]).slice().sort();
     expect(indice).toEqual(arquivos);
   });

@@ -1,0 +1,14 @@
+[test]
+# Cobertura mínima do que tem teste. Os arquivos sem teste (ponte/background/content são ponto de
+# entrada com APIs de navegador) entram no relatório mas não contam para o piso: o número que
+# importa é o do código com regra de negócio, que é onde um teste ausente esconde bug.
+coverageThreshold = { lines = 0.7, functions = 0.7 }
+coveragePathIgnorePatterns = [
+  "**/node_modules/**",
+  "**/.wxt/**",
+  "**/.output/**",
+  "packages/extension/entrypoints/**",
+  "packages/bridge/src/main.ts",
+  "packages/bridge/src/instalar.ts",
+  "packages/bridge/src/assinaturas.ts",
+]

@@ -10,7 +10,8 @@ export function iniciarMatrixOverlay() {
   if (!host) {
     host = document.createElement('div');
     host.id = ID;
-    host.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647;transition:opacity 0.4s ease;opacity:0;';
+    host.style.cssText =
+      'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483647;transition:opacity 0.4s ease;opacity:0;';
     document.documentElement.appendChild(host);
   }
 
@@ -140,7 +141,7 @@ export function iniciarMatrixOverlay() {
   const corners = ['corner-tl', 'corner-tr', 'corner-bl', 'corner-br'];
   for (const c of corners) {
     const corner = document.createElement('div');
-    corner.className = 'corner ' + c;
+    corner.className = `corner ${c}`;
     container.appendChild(corner);
   }
 
@@ -200,7 +201,7 @@ export function iniciarMatrixOverlay() {
     ctx!.fillStyle = 'rgba(0, 0, 0, 0.12)';
     ctx!.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx!.font = fontSize + 'px monospace';
+    ctx!.font = `${fontSize}px monospace`;
 
     for (let i = 0; i < drops.length; i++) {
       const char = chars[Math.floor(Math.random() * chars.length)] ?? '';
@@ -254,7 +255,7 @@ export function iniciarMatrixOverlay() {
         host.remove();
         delete (window as any).__bRowserMatrix;
       }, 450);
-    }
+    },
   };
 
   (window as any).__bRowserMatrix.start();

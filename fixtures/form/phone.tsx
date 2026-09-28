@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 declare global {
-  interface Window { __telefoneReact?: string }
+  interface Window {
+    __telefoneReact?: string;
+  }
 }
 
 // Controlado: só muda via onChange do React. Setar `input.value` direto sem

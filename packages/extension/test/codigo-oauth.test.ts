@@ -25,9 +25,7 @@ describe('redirectDe: qual aba a extensão precisa vigiar', () => {
 
 describe('codigoDaUrl', () => {
   it('lê o code da query da página de callback', () => {
-    expect(codigoDaUrl('https://antigravity.google/oauth-callback?code=4/0Aean-abc_DEF&state=xy')).toBe(
-      '4/0Aean-abc_DEF',
-    );
+    expect(codigoDaUrl('https://antigravity.google/oauth-callback?code=4/0Aean-abc_DEF&state=xy')).toBe('4/0Aean-abc_DEF');
   });
   it('null quando não tem code', () => {
     expect(codigoDaUrl('https://antigravity.google/oauth-callback?state=xy')).toBeNull();

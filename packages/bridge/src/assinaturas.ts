@@ -4,10 +4,11 @@
 // oficiais exige janela: `codex login --device-auth` imprime link + código e `claude auth
 // login` imprime o link e lê uma linha do stdin. A ponte esconde o processo e repassa só a
 // parte útil pro painel. A assinatura nunca passa por nós (ver docs/decisoes.md).
-import type { Ia, ItemAssinatura } from '@browser/shared';
+
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { Ia, ItemAssinatura } from '@browser/shared';
 import { comandoExecutavel } from './caminhos';
 
 const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
@@ -19,7 +20,9 @@ const log = (...a: unknown[]) => {
 
 const TIMEOUT_STATUS_MS = 15_000;
 const TIMEOUT_LOGOUT_MS = 20_000;
-const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g;
+// Sequências ANSI dos CLIs. O `\u001B` está escrito como escape (e não como o caractere cru) porque
+// um byte de controle no meio do source é invisível e quebra com o encoding do editor.
+const ANSI = /\u001B\[[0-9;?]*[a-zA-Z]/g;
 
 type Entrada = {
   nome: string;
@@ -110,12 +113,15 @@ async function estaLogado(ia: Ia): Promise<{ conectado: boolean; detalhe?: strin
 
 export async function obterStatusAssinaturas(preferida?: Ia): Promise<ItemAssinatura[]> {
   const ias = Object.keys(CATALOGO) as Ia[];
-  const lista = await Promise.all(ias.map(async (ia): Promise<ItemAssinatura> => {
-    const instalado = Boolean(Bun.which(ia));
-    if (!instalado) return { ia, nome: CATALOGO[ia].nome, instalado, conectado: false, ativo: false, detalhe: 'ferramenta local não encontrada' };
-    const st = await estaLogado(ia);
-    return { ia, nome: CATALOGO[ia].nome, instalado, conectado: st.conectado, ativo: false, ...(st.detalhe && { detalhe: st.detalhe }) };
-  }));
+  const lista = await Promise.all(
+    ias.map(async (ia): Promise<ItemAssinatura> => {
+      const instalado = Boolean(Bun.which(ia));
+      if (!instalado)
+        return { ia, nome: CATALOGO[ia].nome, instalado, conectado: false, ativo: false, detalhe: 'ferramenta local não encontrada' };
+      const st = await estaLogado(ia);
+      return { ia, nome: CATALOGO[ia].nome, instalado, conectado: st.conectado, ativo: false, ...(st.detalhe && { detalhe: st.detalhe }) };
+    }),
+  );
   const ativa = lista.find((i) => i.ia === preferida && i.conectado) ?? lista.find((i) => i.conectado);
   return lista.map((i) => ({ ...i, ativo: i === ativa }));
 }
@@ -132,7 +138,12 @@ export function extrairLogin(ia: Ia, texto: string): DescobertaLogin | null {
   if (!entrada.extrair) return null;
   const achado = entrada.extrair(texto.replace(ANSI, ''));
   if (!achado.url) return null;
-  return { url: achado.url, codigo: achado.codigo, pedeCodigo: !!entrada.pedeCodigo, ...(achado.expiraEmSegundos && { expiraEmSegundos: achado.expiraEmSegundos }) };
+  return {
+    url: achado.url,
+    codigo: achado.codigo,
+    pedeCodigo: !!entrada.pedeCodigo,
+    ...(achado.expiraEmSegundos && { expiraEmSegundos: achado.expiraEmSegundos }),
+  };
 }
 
 /**
@@ -160,7 +171,8 @@ function scriptPty(): string | undefined {
     // do shell e o Python nunca roda.
     const atual = existsSync(destino) ? readFileSync(destino, 'utf8') : '';
     if (!atual.startsWith('#!')) writeFileSync(destino, FONTE_PTY, { mode: 0o700 });
-    return (caminhoPty = destino);
+    caminhoPty = destino;
+    return destino;
   } catch (e) {
     log(`não consegui preparar o pty: ${e}`);
     return undefined;
@@ -276,9 +288,7 @@ export async function desconectarTodas(preferida?: Ia): Promise<ResultadoLogout>
   );
 
   const ok = resultados.filter((r) => r.ok).map((r) => r.ia);
-  const falhou = resultados
-    .filter((r) => !r.ok)
-    .map((r) => ({ ia: r.ia, nome: lista.find((a) => a.ia === r.ia)!.nome, erro: r.erro }));
+  const falhou = resultados.filter((r) => !r.ok).map((r) => ({ ia: r.ia, nome: lista.find((a) => a.ia === r.ia)!.nome, erro: r.erro }));
   log(`desconectar: ${ok.length} ok, ${falhou.length} falharam`);
   return { ok, falhou };
 }

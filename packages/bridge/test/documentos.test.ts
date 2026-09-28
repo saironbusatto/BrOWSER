@@ -39,7 +39,7 @@ describe('Módulo de Extração de Documentos', () => {
     });
 
     expect(extraido.camposIdentificados['Número da Nota']).toBe('123456');
-    expect(extraido.camposIdentificados['CNPJ']).toBe('12345678000199');
+    expect(extraido.camposIdentificados.CNPJ).toBe('12345678000199');
     expect(extraido.camposIdentificados['Razão Social / Nome']).toBe('Empresa Tech LTDA');
     expect(extraido.camposIdentificados['Valor Total da Nota']).toBe('1500.50');
     expect(extraido.camposIdentificados['Data de Vencimento']).toBe('2026-10-27');
@@ -100,13 +100,15 @@ describe('Anexos binários e texto longo', () => {
     expect(rel).not.toContain('..');
     expect(readdirSync(join(dir, 'anexos'))).toHaveLength(1);
     expect(readFileSync(join(dir, rel), 'latin1')).toBe('%PDF');
-    expect(formatarContextoArquivos([{ nome: '../../.ssh/authorized_keys', tipo: 'application/pdf', tamanho: 4, dadosBase64: 'x' }], caminhos)).toContain(rel);
+    expect(
+      formatarContextoArquivos([{ nome: '../../.ssh/authorized_keys', tipo: 'application/pdf', tamanho: 4, dadosBase64: 'x' }], caminhos),
+    ).toContain(rel);
     apagarAnexos(dir);
     expect(existsSync(join(dir, 'anexos'))).toBe(false);
   });
 
   it('não corta dado no fim de texto longo (antes cortava em 1.500)', () => {
-    const conteudoTexto = 'enchimento\n'.repeat(2000) + 'CLIENTE: Joana Final';
+    const conteudoTexto = `${'enchimento\n'.repeat(2000)}CLIENTE: Joana Final`;
     const md = formatarContextoArquivos([{ nome: 'r.txt', tipo: 'text/plain', tamanho: conteudoTexto.length, conteudoTexto }]);
     expect(md).toContain('Joana Final');
   });

@@ -78,14 +78,15 @@ function extrairXml(xml: string, campos: Record<string, string>): string {
   let encontradas = 0;
   for (const [tag, label] of Object.entries(tagsNfe)) {
     const regex = new RegExp(`<${tag}>([^<]+)<\\/${tag}>`, 'g');
-    let match: RegExpExecArray | null;
+    let match = regex.exec(xml);
     let idx = 0;
-    while ((match = regex.exec(xml)) !== null) {
+    while (match !== null) {
       const val = match[1].trim();
       const key = idx === 0 ? label : `${label} (${idx + 1})`;
       campos[key] = val;
       encontradas++;
       idx++;
+      match = regex.exec(xml);
       if (idx > 3) break; // limite de repetições
     }
   }
@@ -95,29 +96,30 @@ function extrairXml(xml: string, campos: Record<string, string>): string {
   }
 
   // XML Genérico: extrai nós principais
-  const genericoRegex = /<([a-zA-Z0-9_\-]+)>([^<]+)<\/\1>/g;
-  let m: RegExpExecArray | null;
+  const genericoRegex = /<([a-zA-Z0-9_-]+)>([^<]+)<\/\1>/g;
+  let m = genericoRegex.exec(xml);
   let count = 0;
-  while ((m = genericoRegex.exec(xml)) !== null && count < 25) {
+  while (m !== null && count < 25) {
     const val = m[2].trim();
     if (val && !val.includes('\n')) {
       campos[m[1]] = val;
       count++;
     }
+    m = genericoRegex.exec(xml);
   }
 
   return `XML estruturado com ${count} nós principais extraídos.`;
 }
 
 function extrairCsv(csv: string, campos: Record<string, string>): string {
-  const linhas = csv.split('\n').filter(l => l.trim().length > 0);
+  const linhas = csv.split('\n').filter((l) => l.trim().length > 0);
   if (linhas.length === 0) return 'CSV vazio';
 
   const sep = linhas[0].includes(';') ? ';' : ',';
-  const cabecalhos = linhas[0].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+  const cabecalhos = linhas[0].split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ''));
 
   if (linhas.length > 1) {
-    const primeiraLinha = linhas[1].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+    const primeiraLinha = linhas[1].split(sep).map((c) => c.trim().replace(/^["']|["']$/g, ''));
     cabecalhos.forEach((col, i) => {
       if (primeiraLinha[i]) {
         campos[col] = primeiraLinha[i];
@@ -157,7 +159,11 @@ export function salvarAnexosBinarios(dirTrabalho: string, arquivos?: ArquivoAnex
   mkdirSync(join(dirTrabalho, DIR_ANEXOS), { recursive: true, mode: 0o700 });
   binarios.forEach((a, i) => {
     // Nome vem do usuário/página: nada de "../" nem separadores de caminho.
-    const seguro = a.nome.replace(/[^\w.\- ]+/g, '_').replace(/\.{2,}/g, '_').replace(/^\.+/, '') || 'anexo';
+    const seguro =
+      a.nome
+        .replace(/[^\w.\- ]+/g, '_')
+        .replace(/\.{2,}/g, '_')
+        .replace(/^\.+/, '') || 'anexo';
     const relativo = `${DIR_ANEXOS}/${i}-${seguro}`;
     const base64 = a.dadosBase64!.replace(/^data:[^,]*,/, '');
     writeFileSync(join(dirTrabalho, relativo), Buffer.from(base64, 'base64'), { mode: 0o600 });
@@ -177,7 +183,7 @@ export function apagarAnexos(dirTrabalho: string): void {
 export function formatarContextoArquivos(arquivos?: ArquivoAnexo[], caminhos: Record<string, string> = {}): string {
   if (!arquivos || arquivos.length === 0) return '';
 
-  const secoes = arquivos.map(arq => {
+  const secoes = arquivos.map((arq) => {
     const extraido = extrairDadosDocumento(arq);
     let texto = `#### 📎 Arquivo: ${arq.nome} (${arq.tipo}, ${(arq.tamanho / 1024).toFixed(1)} KB)\n`;
     texto += `*Status da extração:* ${extraido.resumo}\n`;

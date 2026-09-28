@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { extrairLogin, iniciarLogin, responderCodigo, fimDoLogin, comandoLogout } from '../src/assinaturas';
+import { comandoLogout, extrairLogin, fimDoLogin, responderCodigo } from '../src/assinaturas';
 
 // Saída real capturada de `codex login --device-auth`, com os ANSI que ele emite (27/09/2026).
 const SAIDA_CODEX = `
@@ -84,9 +84,7 @@ describe('comandoLogout: como sair de cada conta', () => {
 
   it('agy não tem flag de logout: limpa a chave do keyring', () => {
     // ponytail: se um dia o agy ganhar `agy logout`, é só trocar esta linha.
-    expect(comandoLogout('agy')).toEqual([
-      'secret-tool', 'clear', 'service', 'gemini', 'username', 'antigravity',
-    ]);
+    expect(comandoLogout('agy')).toEqual(['secret-tool', 'clear', 'service', 'gemini', 'username', 'antigravity']);
   });
 
   it('toda IA tem um caminho de logout (nenhum fica sem saída)', () => {
