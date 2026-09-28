@@ -378,7 +378,9 @@ function varrerDom(root: any, origemTopo: string) {
 }
 
 async function lerCampos() {
-  if (alvo) ligarMatrix(alvo, 'Mapeando campos do formulário…').catch(() => {});
+  // Só atualiza o texto: ligar/desligar o efeito é do ciclo do pedido. Religar aqui deixava o
+  // Matrix preso depois do fim (a ponte lê a página de novo para salvar o blueprint).
+  if (alvo) atualizarMatrix(alvo, 'Mapeando campos do formulário…');
   const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true }); // pierce: inclui iframes
   const { frameTree } = await cdp('Page.getFrameTree');
   const origemTopo = new URL(frameTree.frame.url).origin;
@@ -419,7 +421,7 @@ async function lerCampos() {
 }
 
 async function preencher(ref: number, valor: string) {
-  if (alvo) ligarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`).catch(() => {});
+  if (alvo) atualizarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`);
   const tipo = await noElemento<string>(ref, 'function(){return this.tagName==="SELECT"?"select":(this.type||"text")}');
 
   if (tipo === 'select') {
@@ -456,7 +458,7 @@ async function preencher(ref: number, valor: string) {
 }
 
 async function clicar(ref: number) {
-  if (alvo) ligarMatrix(alvo, 'Clicando no elemento…').catch(() => {});
+  if (alvo) atualizarMatrix(alvo, 'Clicando no elemento…');
   try {
     await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
     const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });

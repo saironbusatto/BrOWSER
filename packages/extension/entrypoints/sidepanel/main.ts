@@ -543,6 +543,12 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
     return;
   }
   if (e.pedidoId !== pedidoAtual || !cardAtivo) return;
+  // A conversa pode ter sido limpa (lixeira) com o pedido em andamento: o cartão saiu da tela e a
+  // resposta ia para um elemento invisível — só o aviso de "Pronto" aparecia. Recria o cartão.
+  if (!cardAtivo.isConnected) {
+    welcomeCard.style.display = 'none';
+    cardAtivo = appendAssistantMessage();
+  }
 
   if (e.tipo === 'status') {
     const etapa = inferirEtapa(e.texto);
@@ -569,11 +575,13 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
       }
 
       // Render Rich Markdown
+      // Sempre deixa um texto no chat: a IA às vezes termina sem resposta escrita.
+      const resumo = e.texto.trim() || 'Pronto. Confira a página e envie quando quiser.';
       const contentEl = cardAtivo.querySelector('.markdown-content')!;
       try {
-        contentEl.innerHTML = markdownSeguro(e.texto);
+        contentEl.innerHTML = markdownSeguro(resumo);
       } catch {
-        contentEl.textContent = e.texto;
+        contentEl.textContent = resumo;
       }
 
       // Add Copy Button to Assistant Card
@@ -588,7 +596,7 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
         <span>Copiar</span>
       `;
       copyBtn.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(e.texto);
+        await navigator.clipboard.writeText(resumo);
         showToast('Resposta copiada para a área de transferência!');
       });
       header.appendChild(copyBtn);
