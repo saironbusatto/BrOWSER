@@ -4,7 +4,7 @@
 # Não pede administrador: tudo vai para o perfil do usuário (%LOCALAPPDATA% e HKCU).
 #   -Sim    não pede confirmação (CI)
 #   -SemIA  não oferece instalar o Gemini (CI)
-param([switch]$Sim, [switch]$SemIA, [string]$Versao = '0.1.0')
+param([switch]$Sim, [switch]$SemIA, [string]$Versao = '0.2.0')
 $ErrorActionPreference = 'Stop'
 
 $destino = Join-Path $env:LOCALAPPDATA 'BrOWSER'
