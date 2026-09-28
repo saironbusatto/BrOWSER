@@ -137,9 +137,20 @@ describe('Rastro: cresce, e dissolve a partir de onde nasceu', () => {
 
   it('a cabeça de via tem brilho próprio, desenhado à parte do glifo', () => {
     iniciar();
-    const c = medir();
+    const vias = configTeia(1920, 1080, 2).vias;
+    // Uma via que acabou de renascer tem a trilha recomeçada vazia, e sem cabeça não há brilho
+    // naquele quadro. O que precisa valer é o regime: com a trilha formada, todo fio brilha.
+    // A primeira versão media um único quadro fixo, então dependia do sorteio da posição e da
+    // velocidade de cada via — foi o que reprovou no CI com 4 de 5, tendo passado antes em
+    // qualquer máquina.
+    let preenchimentos = 0;
+    for (let quadro = 0; quadro < 40 && preenchimentos < vias; quadro++) {
+      m.zerar();
+      m.avancar(34);
+      preenchimentos = m.ctx().chamadas.fill;
+    }
     // Um `fill` por cabeça de via (o gradiente radial), além dos fills do fundo.
-    expect(c.fill).toBeGreaterThanOrEqual(configTeia(1920, 1080, 2).vias);
+    expect(preenchimentos).toBeGreaterThanOrEqual(vias);
   });
 });
 
