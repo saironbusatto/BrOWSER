@@ -12,6 +12,7 @@ import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type Me
 import { executar, removerIntegracaoAgy, type Execucao } from './ias';
 import { iniciarLogin, responderCodigo, fimDoLogin, obterStatusAssinaturas, encerrarLogin, desconectarTodas } from './assinaturas';
 import { pathComIAs } from './caminhos';
+import { motivoPerguntaVaga } from './perguntas';
 import { registrarHost, removerHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 
@@ -273,14 +274,19 @@ function criarMcp() {
     return texto(await enviar('clicar', { ref }));
   });
   s.registerTool('perguntar_ao_usuario', {
-    description: 'Use para perguntar dados essenciais faltantes (como CPF, telefone, data de nascimento, ou opções de escolha) diretamente ao usuário no painel lateral. Retorna a resposta fornecida pelo usuário.',
+    description: 'Pergunta ao usuário, no painel lateral, um dado essencial que falta (CPF, telefone, uma escolha entre opções). A pergunta precisa ser entendida sem contexto: diga qual campo da página precisa do dado e, se houver, passe as opções em "opcoes". Perguntas vagas (ex.: "teste") são recusadas e não chegam ao usuário. Retorna a resposta dele.',
     inputSchema: {
-      pergunta: z.string().describe('Mensagem explicativa e amigável para o usuário sobre o que você precisa que ele informe'),
+      pergunta: z.string().describe('Pergunta completa ao usuário, citando o campo da página. Ex.: "Qual opção escolher em Primary Discovery Channel?"'),
       campos: z.array(z.string()).optional().describe('Lista opcional de nomes dos campos específicos que o usuário deve preencher'),
       opcoes: z.array(z.string()).optional().describe('Lista opcional de opções de escolha para o usuário clicar'),
     },
   }, async ({ pergunta, campos, opcoes }) => {
     if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
+    const vaga = motivoPerguntaVaga({ pergunta, campos, opcoes });
+    if (vaga) {
+      log(`pergunta vaga recusada: ${JSON.stringify(pergunta).slice(0, 80)}`);
+      return texto({ erro: vaga });
+    }
     const perguntaId = randomUUID();
     escrever({
       tipo: 'pergunta',
