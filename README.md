@@ -40,9 +40,11 @@ Sai com código 1 enquanto faltar algo, e diz o que fazer.
 
 ### Windows
 
-1. Baixe `BrOWSER-windows.zip` em [Releases](https://github.com/saironbusatto/BrOWSER/releases) e extraia.
-2. Rode `powershell -ExecutionPolicy Bypass -File setup.ps1`. Ele mostra tudo o que vai fazer e pede confirmação; não precisa de administrador.
-3. **Reinicie o navegador** e instale a extensão de dentro do pacote em `extensao/`: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação.
+1. Baixe `BrOWSER-Setup-<versão>.exe` em [Releases](https://github.com/saironbusatto/BrOWSER/releases).
+2. **Clique duas vezes no .exe.** É um instalador de verdade: mostra o que vai mudar no seu computador e onde os seus dados vão, pede confirmação e cria o atalho. Não precisa de administrador, nem de Node, Bun, Python ou npm.
+3. **Reinicie o navegador** e carregue a extensão de dentro da pasta instalada: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação → `%LOCALAPPDATA%\BrOWSER\extensao`.
+
+Por que um `.exe` e não um script: o duplo clique em `.ps1` ora abre no Bloco de Notas, ora é barrado pela `ExecutionPolicy` padrão do Windows, e a janela do console fecha antes de a pessoa ler o resultado. Um `.exe` resolve os três. Enquanto o certificado da SignPath não chega, o Windows vai mostrar "protegeu sua senha" na primeira execução — é o custo de um binário sem assinatura, e o botão **Mais informações → Executar mesmo assim** libera.
 
 ### Linux
 
@@ -70,7 +72,7 @@ login do Google AI Pro, que exige terminal interativo.
 
 ## Desinstalar
 
-- **Windows:** Configurações → Aplicativos instalados → BrOWSER → Desinstalar (ou rode `uninstall.ps1`). Remove a ponte, os registros nos navegadores, a integração com o Antigravity CLI e os dados locais.
+- **Windows:** Configurações → Aplicativos instalados → BrOWSER → Desinstalar (ou o atalho "Desinstalar BrOWSER" no Menu Iniciar). Remove a ponte, os registros nos navegadores e os dados locais.
 - **Linux:** `~/.local/share/BrOWSER/install.sh --desinstalar` (ou `bridge --uninstall` para só tirar o registro e os dados locais).
 - **Depois, remova a extensão do navegador** — em nenhum dos casos isso é automatizável.
 

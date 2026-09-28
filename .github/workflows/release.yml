@@ -47,34 +47,48 @@ jobs:
           test -x packages/bridge/dist/bridge || { echo 'bridge sem permissão de execução'; exit 1; }
           ls -la packages/bridge/dist/
 
-      - name: Empacotar
+      # O instalador do Windows é um .exe de verdade (NSIS), não um script: o duplo clique em
+      # .ps1 ora abre no Bloco de Notas, ora é barrado pela ExecutionPolicy, e a janela do console
+      # fecha antes da pessoa ler o resultado. O makensis roda no Linux, então o release inteiro
+      # continua num job só.
+      - name: Instalar o NSIS e compilar o instalador do Windows
         run: |
           set -e
-          mkdir -p pacotes/windows pacotes/linux
-          # A extensão vai DENTRO de cada pacote: uma máquina virgem não deveria precisar baixar
-          # dois arquivos e descobrir qual é o quê. O zip solto continua existindo, para quem só
-          # quer atualizar a extensão.
-          cp -r packages/extension/.output/chrome-mv3 pacotes/windows/extensao
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nsis
+          mkdir -p /tmp/nsis/extensao
+          cp packages/bridge/dist/bridge.exe design/icone.ico /tmp/nsis/
+          cp -r packages/extension/.output/chrome-mv3/. /tmp/nsis/extensao/
+          cp packages/bridge/scripts/instalar.nsi /tmp/nsis/
+          # O NSIS nomeia o arquivo de idioma diferente em cada plataforma: BrazilianPortuguese no
+          # Windows, PortugueseBR no pacote Linux. O script tem esse nome como define justamente
+          # para não travar o build em um dos dois.
+          (cd /tmp/nsis && makensis -DVERSAO="$VERSAO" -DIDIOMA=PortugueseBR instalar.nsi)
+          cp "/tmp/nsis/BrOWSER-Setup-$VERSAO.exe" "pacotes/BrOWSER-Setup-$VERSAO.exe"
+          # MZ = Portable Executable. Um ELF aqui seria o build de Linux com o nome de Windows.
+          head -c2 "pacotes/BrOWSER-Setup-$VERSAO.exe" | grep -q 'MZ' || { echo 'o instalador não é um PE'; exit 1; }
+          # O instalador tem que trazer a extensão dentro, senão a pessoa instala e descobre que
+          # faltou um arquivo.
+          ls -la "pacotes/BrOWSER-Setup-$VERSAO.exe"
+
+      - name: Empacotar Linux e a extensão solta
+        run: |
+          set -e
+          mkdir -p pacotes/linux
           cp -r packages/extension/.output/chrome-mv3 pacotes/linux/extensao
-          cp packages/bridge/dist/bridge.exe packages/bridge/scripts/uninstall.ps1 design/icone.ico LICENSE pacotes/windows/
           cp packages/bridge/dist/bridge packages/bridge/scripts/install.sh packages/bridge/scripts/leia-me.md LICENSE pacotes/linux/
-          chmod +x pacotes/windows/bridge.exe pacotes/linux/bridge pacotes/linux/install.sh
+          chmod +x pacotes/linux/bridge pacotes/linux/install.sh
           # O instalador leva a versão do release.
-          sed "s/\[string\]\$Versao = '[^']*'/[string]\$Versao = '$VERSAO'/" packages/bridge/scripts/setup.ps1 > pacotes/windows/setup.ps1
-          grep -q "\\\$Versao = '$VERSAO'" pacotes/windows/setup.ps1 || { echo 'a versão não entrou no setup.ps1'; exit 1; }
           sed "s/^VERSAO=\".*\"$/VERSAO=\"$VERSAO\"/" pacotes/linux/install.sh > /tmp/install.sh && mv /tmp/install.sh pacotes/linux/install.sh
           grep -q "^VERSAO=\"$VERSAO\"" pacotes/linux/install.sh || { echo 'a versão não entrou no install.sh'; exit 1; }
           chmod +x pacotes/linux/install.sh
-          (cd pacotes/windows && zip -q -r ../BrOWSER-windows.zip .)
           (cd pacotes/linux && tar -czf ../BrOWSER-linux.tar.gz .)
           (cd packages/extension/.output/chrome-mv3 && zip -q -r "$GITHUB_WORKSPACE/pacotes/BrOWSER-extensao.zip" .)
-          # Confere que os três pacotes saíram com conteúdo, e não um zip vazio.
-          for p in pacotes/BrOWSER-windows.zip pacotes/BrOWSER-extensao.zip pacotes/BrOWSER-linux.tar.gz; do
+          for p in pacotes/BrOWSER-linux.tar.gz pacotes/BrOWSER-extensao.zip; do
             test -s "$p" || { echo "pacote vazio: $p"; exit 1; }
           done
-          # A extensão tem que estar dentro: é o que faz o release ser um download só.
-          for f in pacotes/windows/extensao/manifest.json pacotes/linux/extensao/manifest.json; do
-            test -f "$f" || { echo "extensão ausente do pacote: $f"; exit 1; }
+          for f in pacotes/linux/extensao/manifest.json pacotes/linux/install.sh; do
+            test -f "$f" || { echo "faltando no pacote: $f"; exit 1; }
           done
           ls -la pacotes
 
@@ -83,4 +97,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --prerelease --generate-notes --title "BrOWSER $VERSAO" \
-            pacotes/BrOWSER-windows.zip pacotes/BrOWSER-extensao.zip pacotes/BrOWSER-linux.tar.gz
+            "pacotes/BrOWSER-Setup-$VERSAO.exe" pacotes/BrOWSER-extensao.zip pacotes/BrOWSER-linux.tar.gz
