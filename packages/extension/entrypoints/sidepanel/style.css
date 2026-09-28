@@ -27,6 +27,10 @@
   --success-bg: rgba(52, 199, 89, 0.1);
   --error: #ff3b30;
   --error-bg: rgba(255, 59, 48, 0.1);
+  /* --error dá 3.55:1 em branco: serve para ícone e borda, não para texto. Para texto pequeno
+     (12px, precisa 4.5:1) o vermelho tem que ser mais escuro. Nenhum tom passa nos dois modos,
+     então o valor muda com a aparência. */
+  --error-text: #d70015;
 
   /* Stepper */
   --step-inactive: #d1d1d6;
@@ -63,6 +67,7 @@
     --success-bg: rgba(48, 209, 88, 0.15);
     --error: #ff453a;
     --error-bg: rgba(255, 69, 58, 0.15);
+    --error-text: #ff6b61;
     --step-inactive: #48484a;
     --step-active: #0a84ff;
     --step-done: #30d158;
@@ -1312,4 +1317,210 @@ textarea#texto::placeholder {
 .btn-agree-sm:hover {
   background: var(--accent-hover);
   transform: scale(1.02);
+}
+
+/* ---- Login oficial sem janela (link + código vindos da ponte) ---- */
+.login-card {
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--bg-secondary, #f6f6f7);
+  border: 1px solid var(--border-color, #e2e2e6);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.login-titulo { font-size: 13px; font-weight: 600; }
+.login-msg { font-size: 12px; line-height: 1.45; }
+.login-dica { font-size: 11px; opacity: 0.65; line-height: 1.4; }
+.login-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #007aff;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+.login-link:hover { background: #0062cc; }
+.login-codigo-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.login-codigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px dashed var(--border-color, #c9c9ce);
+}
+.login-mini-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  border-radius: 7px;
+  border: 1px solid var(--border-color, #d0d0d5);
+  background: #fff;
+  cursor: pointer;
+}
+.login-mini-btn:hover { background: #ececef; }
+.login-prazo { font-size: 11px; opacity: 0.7; }
+.login-prazo.expirado { color: #d70015; opacity: 1; font-weight: 600; }
+.login-campo-row { display: flex; gap: 8px; }
+.login-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #d0d0d5);
+  background: #fff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.login-ok { border-color: #1fa463; }
+.login-erro { border-color: #d70015; }
+.plan-detalhe { font-size: 10.5px; color: #d70015; margin-top: 2px; }
+
+/* ---- Desconectar todas as contas ---- */
+.sheet-footer {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}
+.btn-quiet-danger {
+  background: none;
+  border: none;
+  color: var(--error-text);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.btn-quiet-danger:hover { background: var(--error-bg); }
+.btn-quiet-danger:focus-visible,
+.alert-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Alert: modal centralizado, não sheet — a task é curta e tem Cancel. */
+.alert-backdrop { justify-content: center; padding: 16px; }
+.alert-content {
+  width: 100%;
+  max-width: 320px;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+  padding: 18px;
+  transform: scale(0.96);
+  opacity: 0;
+  transition: transform var(--duration-fast) var(--ease-smooth), opacity var(--duration-fast);
+}
+.alert-backdrop.open .alert-content { transform: scale(1); opacity: 1; }
+.alert-title { font-size: 14px; font-weight: 600; margin: 0 0 6px; line-height: 1.3; }
+.alert-msg { font-size: 12px; line-height: 1.45; color: var(--fg-secondary); margin: 0 0 16px; }
+.alert-botoes { display: flex; gap: 8px; }
+.alert-btn {
+  flex: 1;
+  min-height: 28px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.alert-btn:hover { background: var(--surface-secondary); }
+/* O botão do alert executa o que a pessoa acabou de pedir, então NÃO é destructive style
+   (alerts.md › Buttons). O vermelho fica no botão que abriu o alert. */
+.alert-btn-primario { background: var(--accent); border-color: transparent; color: #ffffff; }
+.alert-btn-primario:hover { background: var(--accent-hover); }
+
+/* ---- Switch de plano ativo ----
+   O switch responde "este plano é o que está em uso?" — dois valores opostos que mexem no
+   estado da view (ligar um desliga os outros). O estado da conexão NÃO cabe no switch (são
+   três estados, não dois), então mora na linha, como informação. */
+.plan-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 13px;
+  /* #8e8e93: o branco do knob só bate 3:1 (1.4.11) a partir desse cinza. Com #d1d1d6 o knob
+     some dentro do track (1.52:1) e o estado vira só "posição", que é justamente o que a
+     regra do toggles proíbe. */
+  background: #8e8e93;
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--duration-fast) var(--ease-smooth);
+  /* Alvo de toque confortável para desktop sem esticar a linha do card. */
+  min-height: 28px;
+}
+.plan-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform var(--duration-fast) var(--ease-smooth);
+}
+.plan-switch[aria-checked='true'] { background: var(--accent); }
+.plan-switch[aria-checked='true']::after { transform: translateX(18px); }
+.plan-switch:hover:not([aria-checked='true']) { background: #6e6e73; }
+.plan-switch:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* Conectando: o switch trava e treme de leve — sem isso o clique parece não ter pegado. */
+.plan-switch[aria-busy='true'] { opacity: 0.55; cursor: default; }
+.plan-switch[aria-busy='true']::after { animation: switch-pulse 1s ease-in-out infinite; }
+@keyframes switch-pulse {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(3px); }
+}
+
+/* A posição do knob já é o sinal; o preenchimento do card é o reforço de cor. */
+.plan-card.com-ativo {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.plan-card.com-ativo .plan-name,
+.plan-card.com-ativo .plan-sub { color: #ffffff; }
+.plan-card.com-ativo .plan-icon-wrap { background: rgba(255, 255, 255, 0.18); }
+.plan-card.com-ativo .plan-status { color: #ffffff; } /* 0.85 daria 3.83:1 */
+.plan-card.com-ativo .plan-switch { background: rgba(255, 255, 255, 0.55); }
+.plan-card.com-ativo .plan-switch[aria-checked='true'] { background: #ffffff; }
+.plan-card.com-ativo .plan-switch[aria-checked='true']::after { background: var(--accent); }
+
+.plan-status {
+  font-size: 11px;
+  color: var(--fg-secondary);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--step-inactive);
+  flex-shrink: 0;
+}
+.plan-status[data-conectado='sim']::before { background: var(--success); }
+.plan-status[data-conectado='nao']::before { background: var(--fg-tertiary); }
+@media (prefers-reduced-motion: reduce) {
+  .plan-switch, .plan-switch::after { transition: none; }
+  .plan-switch[aria-busy='true']::after { animation: none; }
 }

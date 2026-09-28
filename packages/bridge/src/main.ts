@@ -10,7 +10,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { IAS, type Campo, type Cmd, type Comandos, type Evento, type Ia, type MensagemExtensao, type PapelAgente, type Pedir, type Resposta, type RespostaUsuario, type SiteBlueprint } from '@browser/shared';
 import { executar, type Execucao } from './ias';
-import { abrirLoginOficial, obterStatusAssinaturas } from './assinaturas';
+import { iniciarLogin, responderCodigo, fimDoLogin, obterStatusAssinaturas, encerrarLogin, desconectarTodas } from './assinaturas';
 import { pathComIAs } from './caminhos';
 import { registrarHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
@@ -82,9 +82,23 @@ async function lerStdin() {
           iaAtivaPreferencial = msg.ia;
           emitirStatusAssinaturas();
         } else if (msg.tipo === 'conectar_assinatura') {
-          const erro = abrirLoginOficial(msg.ia);
-          log(erro ? `login ${msg.ia}: ${erro}` : `login oficial aberto para ${msg.ia}`);
-          if (!erro) acompanharLogin(msg.ia);
+          conectarAssinatura(msg.ia).catch((e) => log(`login ${msg.ia} erro: ${e}`));
+        } else if (msg.tipo === 'desconectar_todos') {
+          desconectarTodas(iaAtivaPreferencial)
+            .then((r) => {
+              for (const f of r.falhou) log(`desconectar ${f.ia} falhou: ${f.erro}`);
+              return emitirStatusAssinaturas().then((lista) =>
+                escrever({
+                  tipo: 'logout_fim',
+                  ok: r.ok.length,
+                  falhou: r.falhou.map((f) => `${f.nome}: ${f.erro}`),
+                } satisfies Evento),
+              );
+            })
+            .catch((e) => log(`desconectar erro: ${e}`));
+        } else if (msg.tipo === 'login_codigo') {
+          const erro = responderCodigo(msg.ia, msg.codigo);
+          if (erro) log(`login_codigo ${msg.ia}: ${erro}`);
         }
         continue;
       }
@@ -100,8 +114,6 @@ async function lerStdin() {
 }
 
 // ---- Assinaturas ----
-const INTERVALO_LOGIN_MS = 5_000;
-const LIMITE_LOGIN_MS = 5 * 60_000;
 
 async function emitirStatusAssinaturas() {
   const assinaturas = await obterStatusAssinaturas(iaAtivaPreferencial);
@@ -110,17 +122,33 @@ async function emitirStatusAssinaturas() {
   return assinaturas;
 }
 
-// O usuário conclui o login no terminal/navegador; avisa o painel quando virar "conectado".
-async function acompanharLogin(ia: Ia) {
-  const fim = Date.now() + LIMITE_LOGIN_MS;
-  while (Date.now() < fim) {
-    await Bun.sleep(INTERVALO_LOGIN_MS);
-    const assinaturas = await emitirStatusAssinaturas();
-    if (assinaturas.find((a) => a.ia === ia)?.conectado) {
-      log(`login concluído: ${ia}`);
-      return;
-    }
+// Login oficial sem janela: o CLI roda escondido, a ponte manda pro painel o link e o código,
+// e o "conectou" vem do próprio processo terminar (proc.exited). Sem polling e sem correlação:
+// quem quiser outro plano clica em Conectar no outro card — não é preciso logar nos três.
+const NOMES: Record<Ia, string> = { agy: 'Google AI Pro', codex: 'ChatGPT Plus / Pro', claude: 'Claude Pro / Max' };
+
+async function conectarAssinatura(ia: Ia) {
+  const nome = NOMES[ia];
+  const { erro } = iniciarLogin(ia, (d) => escrever({ tipo: 'login_ia', ia, nome, ...d } satisfies Evento));
+  if (erro) {
+    escrever({ tipo: 'login_fim', ia, nome, ok: false, mensagem: erro } satisfies Evento);
+    return;
   }
+  const { ok } = await fimDoLogin(ia);
+  const lista = await obterStatusAssinaturas(iaAtivaPreferencial);
+  const conectado = lista.find((a) => a.ia === ia)?.conectado ?? false;
+  const ativa = lista.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
+  escrever({ tipo: 'status_assinaturas', assinaturas: lista, iaAtiva: ativa } satisfies Evento);
+  escrever({
+    tipo: 'login_fim',
+    ia,
+    nome,
+    ok: ok && conectado,
+    mensagem: conectado
+      ? `${nome} conectado. Já pode usar o bRowser.`
+      : `Não deu para conectar o ${nome} — o código pode ter expirado. Tente de novo, ou conecte outro plano.`,
+  } satisfies Evento);
+  log(`login ${ia}: ${ok && conectado ? 'ok' : 'falhou'}`);
 }
 
 // ---- Pedidos do painel lateral ----

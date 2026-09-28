@@ -1,6 +1,7 @@
 import { HOST_NAME, type Campo, type Comandos, type Evento, type MensagemExtensao, type Pedido, type Pedir, type Resposta, type RespostaUsuario } from '@browser/shared';
 import { iniciarMatrixOverlay, gerarScriptUpdate, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
 import { clicarDom, lerCamposDom, preencherDom, type LeituraDom } from '../utils/dom-fallback';
+import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
 // refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
@@ -63,8 +64,68 @@ let fila: Promise<unknown> = Promise.resolve();
 
 let porta: chrome.runtime.Port | undefined;
 
+// ---- Login oficial sem terminal: a aba de callback entrega o código sozinha ----
+//
+// O OAuth do Google/Claude não é device-code nativo: o CLI imprime uma URL com redirect_uri
+// apontando para uma página web. Depois do consentimento essa página mostra (ou traz na query)
+// o authorization code que o CLI espera no stdin. Em vez de pedir pra pessoa copiar e colar, a
+// extensão lê essa aba e entrega o código na ponte. É a aba dela, na sessão dela, na máquina dela.
+
+const vigias = new Map<string, string>(); // redirect_uri -> ia
+
+/** Lê o código de autorização na página de callback. Roda dentro da aba. */
+function rasparCodigo(): string | null {
+  const daUrl = codigoDaUrl(location.href);
+  if (daUrl) return daUrl;
+  for (const el of document.querySelectorAll('input')) {
+    const v = (el.value || el.textContent || '').trim();
+    if (pareceCodigo(v)) return v;
+  }
+  for (const sel of ['code', 'pre', '[data-code]', '[data-testid*="code" i]', '[class*="code" i]', '[id*="code" i]']) {
+    for (const el of document.querySelectorAll(sel)) {
+      const achado = codigoNoTexto(el.textContent || '');
+      if (achado) return achado;
+    }
+  }
+  return null;
+}
+
+function armarVigia(ia: string, urlAuth: string, pedeCodigo: boolean) {
+  if (!pedeCodigo) return; // o codex entrega o código no painel, não numa página
+  const redirect = redirectDe(urlAuth);
+  if (!redirect) return;
+  vigias.set(redirect, ia);
+}
+
+async function entregarCodigo(tabId: number, base: string, ia: string) {
+  let codigo: string | null = null;
+  // A página pode renderizar o código depois do load; uma segunda tentativa cobre isso.
+  for (const espera of [0, 1200]) {
+    if (espera) await new Promise((r) => setTimeout(r, espera));
+    codigo = await chrome.scripting
+      .executeScript({ target: { tabId }, func: rasparCodigo })
+      .then((r) => (r[0]?.result as string | null) ?? null)
+      .catch(() => null);
+    if (codigo) break;
+  }
+  vigias.delete(base);
+  if (!codigo) return;
+  // O código não é logado nem gravado: só viaja aba -> ponte -> stdin do CLI.
+  porta?.postMessage({ tipo: 'login_codigo', ia, codigo } as MensagemExtensao);
+  await chrome.tabs.remove(tabId).catch(() => {});
+}
+
 export default defineBackground(() => {
   conectar();
+  chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+    const url = tab?.pendingUrl || info.url || '';
+    if (info.status !== 'complete' || !url) return;
+    for (const [redirect, ia] of vigias) {
+      if (!url.startsWith(redirect.split('?')[0]!)) continue;
+      entregarCodigo(tabId, redirect, ia).catch(console.warn);
+      return;
+    }
+  });
   chrome.debugger.onDetach.addListener(({ tabId }) => {
     if (tabId) {
       anexadas.delete(tabId);
@@ -100,7 +161,9 @@ export default defineBackground(() => {
     if (
       msg?.tipo === 'consultar_assinaturas' ||
       msg?.tipo === 'conectar_assinatura' ||
-      msg?.tipo === 'ativar_assinatura'
+      msg?.tipo === 'ativar_assinatura' ||
+      msg?.tipo === 'login_codigo' ||
+      msg?.tipo === 'desconectar_todos'
     ) {
       porta?.postMessage(msg);
       responder({ ok: true });
@@ -166,6 +229,7 @@ function conectar() {
   porta.onMessage.addListener(async (p: Pedido | Evento) => {
     if ('tipo' in p) {
       // Evento da ponte -> painel (se o painel estiver fechado, ninguém recebe; tudo bem).
+      if (p.tipo === 'login_ia') armarVigia(p.ia, p.url, p.pedeCodigo);
       chrome.runtime.sendMessage(p).catch(() => {});
       if (alvo) {
         if (p.tipo === 'status') {

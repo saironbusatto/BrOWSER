@@ -507,6 +507,36 @@ chrome.runtime.onMessage.addListener((e: Evento) => {
     renderizarAssinaturas(e.assinaturas, e.iaAtiva);
     return;
   }
+  if (e.tipo === 'login_ia') {
+    loginPendente.add(e.ia);
+    renderizarAssinaturas(ultimasAssinaturas, iaAtivaAtual);
+    renderizarLogin(e);
+    return;
+  }
+  if (e.tipo === 'login_fim') {
+    loginTimer && clearInterval(loginTimer);
+    loginTimer = null;
+    loginPendente.delete(e.ia);
+    const box = document.getElementById('login-container')!;
+    box.innerHTML = `<div class="login-card login-${e.ok ? 'ok' : 'erro'}">
+      <div class="login-titulo">${e.ok ? '✓' : '⚠'} ${escapeHtml(e.nome)}</div>
+      <div class="login-msg">${escapeHtml(e.mensagem)}</div></div>`;
+    showToast(e.mensagem, e.ok ? 'success' : 'error');
+    return;
+  }
+  if (e.tipo === 'logout_fim') {
+    fecharDesconectar();
+    if (e.ok === 0 && e.falhou.length === 0) {
+      showToast('Nenhuma conta estava conectada.', 'success');
+    } else if (e.falhou.length === 0) {
+      showToast(e.ok === 1 ? '1 conta desconectada.' : `${e.ok} contas desconectadas.`, 'success');
+    } else {
+      // Falha parcial é o caso comum (secret-tool sem D-Bus, CLI ausente): diz o que falhou em vez
+      // de dizer "desconectado" quando não foi.
+      showToast(`Desconectadas: ${e.ok}. Não deu para: ${e.falhou.join(' · ')}`, 'error');
+    }
+    return;
+  }
   if (e.pedidoId !== pedidoAtual || !cardAtivo) return;
 
   if (e.tipo === 'status') {
@@ -634,7 +664,133 @@ if (!localStorage.getItem('browser_termos_aceitos_v2') && firstRunBanner) {
 }
 
 
+// Card de login oficial: só o link e o código que a ponte extraiu do CLI escondido.
+let loginTimer: ReturnType<typeof setInterval> | null = null;
+
+function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
+  loginTimer && clearInterval(loginTimer);
+  loginTimer = null;
+  const box = document.getElementById('login-container')!;
+  const codigo = e.codigo
+    ? `<div class="login-codigo-row">
+         <code class="login-codigo">${escapeHtml(e.codigo)}</code>
+         <button class="login-mini-btn" data-copiar="${escapeHtml(e.codigo)}">copiar</button>
+         <span class="login-prazo" data-prazo="${e.expiraEmSegundos ?? ''}"></span>
+       </div>`
+    : '';
+  const campo = e.pedeCodigo
+    ? `<div class="login-campo-row">
+         <input class="login-input" type="text" placeholder="cole aqui o código" autocomplete="off" spellcheck="false">
+         <button class="login-mini-btn login-enviar">enviar</button>
+       </div>
+       <div class="login-dica">A página vai mostrar um código; cole ele aqui.</div>`
+    : '';
+
+  box.innerHTML = `<div class="login-card">
+    <div class="login-titulo">Conectando ${escapeHtml(e.nome)}</div>
+    <a class="login-link" href="${escapeHtml(e.url)}" target="_blank" rel="noreferrer">Abrir login no navegador</a>
+    <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo bRowser.</div>
+    ${codigo}${campo}
+  </div>`;
+
+  box.querySelector('[data-copiar]')?.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget as HTMLElement;
+    await navigator.clipboard.writeText(b.dataset.copiar!);
+    b.textContent = 'copiado ✓';
+    setTimeout(() => (b.textContent = 'copiar'), 1500);
+  });
+
+  if (e.pedeCodigo) {
+    const input = box.querySelector<HTMLInputElement>('.login-input')!;
+    const enviar = () => {
+      const v = input.value.trim();
+      if (!v) return;
+      chrome.runtime.sendMessage({ tipo: 'login_codigo', ia: e.ia, codigo: v }).catch(() => {});
+      input.value = '';
+      input.placeholder = 'código enviado ✓';
+    };
+    box.querySelector('.login-enviar')?.addEventListener('click', enviar);
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') enviar();
+    });
+    setTimeout(() => input.focus(), 50);
+  }
+
+  // O agy dá 60s e não estende: abrir a aba na hora é o que cabe nesses 60s. O botão continua
+  // valendo pra quem preferir abrir depois.
+  chrome.tabs.create({ url: e.url, active: true }).catch(() => {});
+
+  const prazo = box.querySelector<HTMLElement>('[data-prazo]');
+  if (prazo && e.expiraEmSegundos) {
+    let restante = e.expiraEmSegundos;
+    const tick = () => {
+      if (restante <= 0) {
+        prazo.textContent = 'expirou';
+        prazo.classList.add('expirado');
+        clearInterval(loginTimer!);
+        loginTimer = null;
+        return;
+      }
+      const m = Math.floor(restante / 60);
+      prazo.textContent = `expira em ${m}:${String(restante % 60).padStart(2, '0')}`;
+      restante--;
+    };
+    tick();
+    loginTimer = setInterval(tick, 1000);
+  }
+}
+
+// ---- Desconectar todas as contas: botão quieto + alert de confirmação ----
+//
+// O botão que abre o alert é o destrutivo (vermelho). O botão de confirmação do alert não é:
+// ele executa exatamente o que a pessoa acabou de pedir (alerts.md › Buttons). Cancel nunca é o
+// default, e Esc também cancela (alerts.md › Buttons).
+
+const desconectarModal = () => document.getElementById('desconectar-modal')!;
+let gatilhoDesconectar: HTMLElement | null = null;
+
+function abrirDesconectar(e: Event) {
+  gatilhoDesconectar = e.currentTarget as HTMLElement;
+  const m = desconectarModal();
+  m.classList.add('open');
+  m.setAttribute('aria-hidden', 'false');
+  // Cancelar em foco: quem não quer o alert fecha sem ler os botões.
+  document.getElementById('btn-desconectar-cancelar')!.focus();
+}
+
+function fecharDesconectar() {
+  const m = desconectarModal();
+  if (!m.classList.contains('open')) return;
+  m.classList.remove('open');
+  m.setAttribute('aria-hidden', 'true');
+  gatilhoDesconectar?.focus();
+  gatilhoDesconectar = null;
+}
+
+document.getElementById('btn-desconectar-todas')?.addEventListener('click', abrirDesconectar);
+document.getElementById('btn-desconectar-cancelar')?.addEventListener('click', fecharDesconectar);
+document.getElementById('btn-desconectar-confirmar')!.addEventListener('click', () => {
+  chrome.runtime.sendMessage({ tipo: 'desconectar_todos' }).catch(() => {});
+  showToast('Desconectando as contas…');
+});
+// Clique fora cancela, como em qualquer modal.
+desconectarModal().addEventListener('click', (e) => {
+  if (e.target === desconectarModal()) fecharDesconectar();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !desconectarModal().classList.contains('open')) return;
+  e.preventDefault();
+  fecharDesconectar();
+});
+
+// Estado do card de planos, para a UI se redesenhar sozinha quando um login começa/termina.
+let ultimasAssinaturas: ItemAssinatura[] = [];
+let iaAtivaAtual = 'agy';
+const loginPendente = new Set<string>();
+
 function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
+  ultimasAssinaturas = assinaturas;
+  iaAtivaAtual = iaAtiva;
   const ativa = assinaturas.find((a) => a.ia === iaAtiva) || assinaturas.find((a) => a.ativo);
   if (ativa) {
     activeSubscriptionName.textContent = ativa.nome;
@@ -645,8 +801,9 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
     const card = document.createElement('div');
     const isActive = plano.ia === iaAtiva;
     const isConnected = plano.conectado;
+    const pendente = loginPendente.has(plano.ia);
 
-    card.className = `plan-card ${isActive ? 'active' : ''}`;
+    card.className = `plan-card ${isActive ? 'active com-ativo' : ''}`;
     card.dataset.ia = plano.ia;
 
     let iconSvg = '';
@@ -690,39 +847,40 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
         <div class="plan-details">
           <div class="plan-name-row">
             <span class="plan-name">${escapeHtml(plano.nome)}</span>
-            ${isActive ? '<span class="plan-badge-active">● Ativo</span>' : ''}
           </div>
           <div class="plan-sub">${escapeHtml(plano.subtitulo)}</div>
+          <div class="plan-status" data-conectado="${isConnected ? 'sim' : 'nao'}">
+            ${escapeHtml(pendente ? 'Conectando…' : isConnected ? 'Conectado' : plano.detalhe || 'Não conectado')}
+          </div>
         </div>
       </div>
       <div class="plan-action-container"></div>
     `;
 
     const actionContainer = card.querySelector('.plan-action-container')!;
-    const btn = document.createElement('button');
-    btn.className = 'plan-action-btn';
-
-    if (isActive) {
-      btn.classList.add('btn-switch');
-      btn.textContent = 'Ativo';
-      btn.disabled = true;
-    } else if (isConnected) {
-      btn.classList.add('btn-switch');
-      btn.textContent = 'Usar plano';
-      btn.addEventListener('click', () => {
+    // Switch, não botão: "usar este plano" é um estado, não uma ação pontual (toggles.md).
+    // Desligar o que está ligado não desconecta a conta — só volta a usar outro plano.
+    const sw = document.createElement('button');
+    sw.className = 'plan-switch';
+    sw.setAttribute('role', 'switch');
+    sw.setAttribute('aria-checked', String(isActive));
+    sw.setAttribute('aria-label', `Usar o plano ${plano.nome}`);
+    if (pendente) sw.setAttribute('aria-busy', 'true');
+    sw.disabled = pendente;
+    sw.addEventListener('click', () => {
+      if (isActive) return; // já é o plano em uso: nada a fazer
+      if (isConnected) {
         chrome.runtime.sendMessage({ tipo: 'ativar_assinatura', ia: plano.ia }).catch(() => {});
-        showToast(`Plano alterado para ${plano.nome}!`);
-      });
-    } else {
-      btn.classList.add('btn-connect');
-      btn.textContent = 'Conectar';
-      btn.addEventListener('click', () => {
+        showToast(`Plano alterado para ${plano.nome}.`);
+      } else {
+        // Ligar um plano que nunca foi conectado exige o login: a linha já diz "Não conectado",
+        // e o switch entra em "Conectando…" para o clique não parecer perdido.
+        loginPendente.add(plano.ia);
         chrome.runtime.sendMessage({ tipo: 'conectar_assinatura', ia: plano.ia }).catch(() => {});
-        showToast(`Iniciando conexão oficial com ${plano.nome}…`);
-      });
-    }
-
-    actionContainer.appendChild(btn);
+        renderizarAssinaturas(ultimasAssinaturas, iaAtivaAtual);
+      }
+    });
+    actionContainer.appendChild(sw);
     plansContainer.appendChild(card);
   }
 }
