@@ -25,7 +25,10 @@ function mascarar(texto: string): string {
 }
 
 /** Rótulo seguro para o mapa, ou null quando o texto é conteúdo do usuário. */
-export function sanitizarRotulo(bruto: string): string | null {
+export function sanitizarRotulo(bruto: string | null | undefined): string | null {
+  // Rótulo ausente não é erro: quem chama (inclusive o validador de arquivo remoto) descarta o
+  // campo. Antes, um `undefined` derrubava a ponte inteira.
+  if (typeof bruto !== 'string') return null;
   const texto = bruto.replace(/\s+/g, ' ').trim();
   if (!texto) return null;
   if (texto.length > MAX_ROTULO || URL.test(texto)) return null; // resultado/conteúdo, não controle
@@ -43,15 +46,20 @@ export function sanitizarRotulo(bruto: string): string | null {
 }
 
 function idSemantico(texto: string): string {
-  return texto.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'campo';
+  return (
+    texto
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'campo'
+  );
 }
 
 function sanitizarOpcoes(opcoes?: string[]): string[] | undefined {
   if (!opcoes?.length || opcoes.length > MAX_OPCOES) return undefined;
   // Opção com dado pessoal (endereço salvo, conta, documento) é descartada, não mascarada.
-  const limpas = opcoes.map((o) => o.trim())
-    .filter((o) => o && o.length <= MAX_OPCAO && !URL.test(o) && mascarar(o) === o);
+  const limpas = opcoes.map((o) => o.trim()).filter((o) => o && o.length <= MAX_OPCAO && !URL.test(o) && mascarar(o) === o);
   return limpas.length ? limpas : undefined;
 }
 
@@ -83,15 +91,13 @@ function sanitizarTitulo(titulo: string, dominio: string): string {
 
 export function sanitizarBlueprint(bp: SiteBlueprint): SiteBlueprint {
   const vistos = new Set<string>();
-  const campos = bp.campos
-    .map(sanitizarCampo)
-    .filter((c): c is CampoBlueprint => {
-      if (!c) return false;
-      const chave = `${c.papel}:${c.idSemantico}`; // "Traduzir esta página" x10 vira um só
-      if (vistos.has(chave)) return false;
-      vistos.add(chave);
-      return true;
-    });
+  const campos = bp.campos.map(sanitizarCampo).filter((c): c is CampoBlueprint => {
+    if (!c) return false;
+    const chave = `${c.papel}:${c.idSemantico}`; // "Traduzir esta página" x10 vira um só
+    if (vistos.has(chave)) return false;
+    vistos.add(chave);
+    return true;
+  });
   const gatilhos = (bp.gatilhos ?? []).map(sanitizarGatilho).filter((g): g is AcaoGatilho => g !== null);
   return { ...bp, titulo: sanitizarTitulo(bp.titulo, bp.dominio), campos, gatilhos };
 }
