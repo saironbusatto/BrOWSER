@@ -95,15 +95,10 @@ describe('comandoLogout: como sair de cada conta', () => {
     }
   });
 
-  it('as duas CLIs com logout próprio estão no PATH', () => {
-    expect(Bun.which('codex')).not.toBeNull();
-    expect(Bun.which('claude')).not.toBeNull();
-  });
-
   it('o logout do agy depende de secret-tool, que é só Unix', () => {
-    // Não exige que exista: no Windows a ponte cai no erro "não está instalado", que é o
-    // comportamento honesto. Aqui só fixamos que essa é a dependência, para o dia em que o agy
-    // ganhar logout próprio a gente saiba o que trocar.
+    // Não afirma que secret-tool existe: na CI (Windows) e em qualquer máquina sem D-Bus ele
+    // não está, e a ponte já trata "não está instalado" como erro honesto em vez de sumir.
+    // Aqui só fixamos a dependência, para o dia em que o agy ganhar logout próprio.
     expect(comandoLogout('agy')![0]).toBe('secret-tool');
   });
 });
