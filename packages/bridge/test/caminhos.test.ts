@@ -113,6 +113,34 @@ describe.skipIf(process.platform === 'win32')('removerHost: a desinstalação n�
     expect(existsSync(manifestos())).toBe(false);
   });
 
+  // Sobravam as pastas vazias acima: `~/.config/google-chrome/NativeMessagingHosts` saía, e
+  // `~/.config/google-chrome` e `.config` continuavam lá, vazios, na conta da pessoa.
+  it('limpa também os diretórios acima que ficaram vazios, mas para em .config', () => {
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(join(FAKE, '.config', 'google-chrome'))).toBe(false);
+    expect(existsSync(join(FAKE, '.config'))).toBe(true);
+  });
+
+  // O oposto: navegador já usado tem perfil dentro, e a limpeza tem que parar nele.
+  it('para de subir quando encontra conteúdo do navegador', () => {
+    mkdirSync(join(chrome(), 'Default'), { recursive: true });
+    writeFileSync(join(chrome(), 'Default', 'History'), 'x');
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(manifestos())).toBe(false);
+    expect(existsSync(join(chrome(), 'Default', 'History'))).toBe(true);
+  });
+
+  // Se `.config` tiver qualquer outra coisa, ele é intocável — e é o limite da limpeza.
+  it('nunca apaga o diretório de configuração do usuário', () => {
+    mkdirSync(join(FAKE, '.config'), { recursive: true });
+    writeFileSync(join(FAKE, '.config', 'outro-programa.conf'), 'x');
+    registrarHost(ponte(), FAKE);
+    removerHost(FAKE);
+    expect(existsSync(join(FAKE, '.config', 'outro-programa.conf'))).toBe(true);
+  });
+
   // A pasta de config do navegador guarda o perfil inteiro: histórico, cookies, senhas. Se a
   // limpeza fosse um `rm -rf` dela, desinstalar o BrOWSER apagaria a vida da pessoa no Chrome.
   it('preserva a pasta do navegador e o que está dentro dela', () => {

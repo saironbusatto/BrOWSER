@@ -88,8 +88,27 @@ export function registrarHost(executavel: string, base?: string): Registro[] {
   return process.platform === 'win32' ? registrarWindows(executavel) : registrarUnix(executavel, base);
 }
 
+// Onde a limpeza para: o diretório de configuração do navegador — `.config` no Linux,
+// `Library/Application Support` no macOS. Acima disso não se sobe, porque a pasta de mais acima
+// já é de outros programas. A base entra por argumento para que um teste com Home de mentira não
+// acabe medindo a máquina de quem roda o teste.
+function dirRaiz(home: string): string {
+  return process.platform === 'darwin' ? join(home, 'Library', 'Application Support') : join(home, '.config');
+}
+
+/** Remove `dir` e os pais vazios, parando em `teto` ou no primeiro diretório com conteúdo. */
+function limparVazias(dir: string, teto: string): void {
+  let atual = dir;
+  while (atual.length > teto.length && atual.startsWith(teto)) {
+    if (!existsSync(atual) || readdirSync(atual).length > 0) return;
+    rmSync(atual, { recursive: true, force: true });
+    atual = join(atual, '..');
+  }
+}
+
 /** Desfaz registrarHost: tira o host de todos os navegadores (o que não existir é ignorado). */
 export function removerHost(base?: string): string[] {
+  const teto = dirRaiz(base ?? homedir());
   if (process.platform === 'win32') {
     const removidos = CHAVES_WINDOWS.filter(
       ([, chave]) => Bun.spawnSync(['reg', 'delete', `${chave}\\${HOST_NAME}`, '/f']).exitCode === 0,
@@ -102,11 +121,11 @@ export function removerHost(base?: string): string[] {
     .filter(([, arquivo]) => existsSync(arquivo))
     .map(([navegador, arquivo]) => {
       rmSync(arquivo, { force: true });
-      // Tira a pasta `NativeMessagingHosts` se ela esvaziou, senão a desinstalação deixa
-      // pastas fantasma no perfil. Só ela: apagar a pasta do navegador (ex.: `~/.config/
-      // google-chrome`) levaria junto o perfil inteiro da pessoa.
-      const dir = join(arquivo, '..');
-      if (existsSync(dir) && readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+      // Tira as pastas que sobraram vazias, subindo de `NativeMessagingHosts` para fora. A
+      // parada no diretório de configuração é o que impede o pior: apagar a pasta do navegador
+      // (ex.: `~/.config/google-chrome`) levaria junto o perfil inteiro da pessoa. Só sai o que
+      // está comprovadamente vazio, e para ao encontrar conteúdo.
+      limparVazias(join(arquivo, '..'), teto);
       return navegador;
     });
 }
