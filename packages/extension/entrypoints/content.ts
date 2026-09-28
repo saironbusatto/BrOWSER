@@ -1,4 +1,5 @@
 import type { AcaoGatilho, CampoBlueprint, SiteBlueprint, TelemetriaBlueprint } from '@browser/shared';
+import { opcaoEstrutural, SELETOR_CAMPOS, siteSensivel, textoEstrutural } from '../utils/content-regra';
 
 // Palavras-chave em botões que geralmente indicam submissão ou salvamento de formulário
 const REGEX_BOTAO_SUBMIT = /salvar|enviar|confirmar|cadastrar|gravar|emitir|finalizar|concluir|prosseguir|submit|save|send|next/i;
@@ -19,7 +20,7 @@ export default defineContentScript({
           coletarEEnviarTelemetria(form, null);
         }
       },
-      { capture: true, passive: true }
+      { capture: true, passive: true },
     );
 
     // 2. Escuta cliques em botões de ação (para SPAs sem tag <form> ou submits customizados)
@@ -27,7 +28,7 @@ export default defineContentScript({
       'click',
       (evento) => {
         const alvo = (evento.target as HTMLElement | null)?.closest(
-          'button, input[type="submit"], [role="button"], a.btn, a.button'
+          'button, input[type="submit"], [role="button"], a.btn, a.button',
         ) as HTMLElement | null;
 
         if (!alvo) return;
@@ -40,7 +41,7 @@ export default defineContentScript({
           coletarEEnviarTelemetria(formPai, alvo);
         }
       },
-      { capture: true, passive: true }
+      { capture: true, passive: true },
     );
   },
 });
@@ -63,15 +64,17 @@ function coletarEEnviarTelemetria(form: HTMLFormElement | null, botaoGatilho: HT
   }
 
   const host = window.location.host;
-  const dominio = host.includes('localhost') || host.includes('127.0.0.1')
-    ? host.replace(':', '-')
-    : host.toLowerCase();
+  const dominio = host.includes('localhost') || host.includes('127.0.0.1') ? host.replace(':', '-') : host.toLowerCase();
 
   // Escopo de busca dos elementos
   const container: ParentNode = form || document.body;
-  const elementos = container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-    'input:not([type="hidden"]):not([type="submit"]):not([type="reset"]):not([type="button"]), select, textarea'
-  );
+  // Não recolhe a estrutura de páginas onde a pessoa digita senha ou código de cartão: são login
+  // e pagamento, os dois casos em que um mapa não é nada útil e o estrago seria real.
+  if (siteSensivel(host)) return;
+
+  // `type=password` fica de fora (ver SELETOR_CAMPOS): o mapa é público e não tem por que registrar
+  // que a página tem um campo de senha. Preencher segue possível — quem faz isso é o CDP/plano B.
+  const elementos = container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(SELETOR_CAMPOS);
 
   if (elementos.length === 0) return;
 
@@ -82,7 +85,9 @@ function coletarEEnviarTelemetria(form: HTMLFormElement | null, botaoGatilho: HT
     // Pula elementos invisíveis
     if (el.offsetWidth === 0 && el.offsetHeight === 0) continue;
 
-    const rotulo = extrairRotulo(el);
+    // Filtro de PII no navegador, antes de qualquer envio: o content script roda em todas as
+    // páginas e não pode ser o elo fraco da cadeia.
+    const rotulo = textoEstrutural(extrairRotulo(el));
     if (!rotulo) continue;
 
     const papel = extrairPapel(el);
@@ -103,9 +108,11 @@ function coletarEEnviarTelemetria(form: HTMLFormElement | null, botaoGatilho: HT
     }
 
     if (el.tagName === 'SELECT') {
+      // Opção que carrega documento/endereço salvo é descartada, não mascarada: um "<CEP>"
+      // ocupando o lugar de "São Paulo" quebraria o preenchimento sem proteger ninguém.
       const opcoes = Array.from((el as HTMLSelectElement).options)
-        .map((o) => (o.text || '').trim())
-        .filter(Boolean);
+        .map((o) => opcaoEstrutural(o.text))
+        .filter((o): o is string => o !== null);
       if (opcoes.length > 0 && opcoes.length < 50) {
         campo.opcoes = opcoes;
       }
@@ -122,17 +129,15 @@ function coletarEEnviarTelemetria(form: HTMLFormElement | null, botaoGatilho: HT
   // Mapeia o gatilho se houver botão identificado
   const gatilhos: AcaoGatilho[] = [];
   if (botaoGatilho) {
-    const textoBotao = (
-      botaoGatilho.innerText ||
-      botaoGatilho.getAttribute('aria-label') ||
-      (botaoGatilho as HTMLInputElement).value ||
-      ''
-    ).replace(/[\n\r\t]+/g, ' ').trim();
+    const textoBotao = (botaoGatilho.innerText || botaoGatilho.getAttribute('aria-label') || (botaoGatilho as HTMLInputElement).value || '')
+      .replace(/[\n\r\t]+/g, ' ')
+      .trim();
 
-    if (textoBotao) {
+    const descricaoBotao = opcaoEstrutural(textoBotao);
+    if (descricaoBotao) {
       gatilhos.push({
-        descricao: textoBotao,
-        seletorOuNome: textoBotao,
+        descricao: descricaoBotao,
+        seletorOuNome: descricaoBotao,
         tipo: 'click',
       });
     }
@@ -207,6 +212,7 @@ function extrairPapel(el: HTMLElement): string {
   if (el.tagName === 'TEXTAREA') return 'textbox';
 
   const type = el.getAttribute('type')?.toLowerCase();
+  if (type === 'password') return 'password';
   if (type === 'checkbox') return 'checkbox';
   if (type === 'radio') return 'radio';
   if (type === 'date') return 'date';
@@ -223,7 +229,7 @@ function extrairPapel(el: HTMLElement): string {
  */
 function detectarTipoEsperado(
   el: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
-  rotulo: string
+  rotulo: string,
 ): CampoBlueprint['tipoEsperado'] {
   const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
   const type = (el.getAttribute('type') || '').toLowerCase();
@@ -252,11 +258,32 @@ function detectarTipoEsperado(
   if (rotuloLower.includes('cnpj')) return 'cnpj';
   if (rotuloLower.includes('cpf')) return 'cpf';
   if (rotuloLower.includes('e-mail') || rotuloLower.includes('email')) return 'email';
-  if (rotuloLower.includes('telefone') || rotuloLower.includes('celular') || rotuloLower.includes('fone') || rotuloLower.includes('whatsapp')) return 'telefone';
+  if (
+    rotuloLower.includes('telefone') ||
+    rotuloLower.includes('celular') ||
+    rotuloLower.includes('fone') ||
+    rotuloLower.includes('whatsapp')
+  )
+    return 'telefone';
   if (rotuloLower.includes('cep') || rotuloLower.includes('código postal') || rotuloLower.includes('codigo postal')) return 'cep';
-  if (rotuloLower.includes('data') || rotuloLower.includes('nascimento') || rotuloLower.includes('vencimento') || rotuloLower.includes('emissão') || rotuloLower.includes('emissao')) return 'data';
-  if (rotuloLower.includes('valor') || rotuloLower.includes('preço') || rotuloLower.includes('preco') || rotuloLower.includes('total')) return 'moeda';
-  if (rotuloLower.includes('endereço') || rotuloLower.includes('endereco') || rotuloLower.includes('rua') || rotuloLower.includes('bairro') || rotuloLower.includes('logradouro')) return 'endereco';
+  if (
+    rotuloLower.includes('data') ||
+    rotuloLower.includes('nascimento') ||
+    rotuloLower.includes('vencimento') ||
+    rotuloLower.includes('emissão') ||
+    rotuloLower.includes('emissao')
+  )
+    return 'data';
+  if (rotuloLower.includes('valor') || rotuloLower.includes('preço') || rotuloLower.includes('preco') || rotuloLower.includes('total'))
+    return 'moeda';
+  if (
+    rotuloLower.includes('endereço') ||
+    rotuloLower.includes('endereco') ||
+    rotuloLower.includes('rua') ||
+    rotuloLower.includes('bairro') ||
+    rotuloLower.includes('logradouro')
+  )
+    return 'endereco';
 
   return 'texto';
 }
