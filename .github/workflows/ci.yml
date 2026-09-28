@@ -43,7 +43,7 @@ jobs:
         run: |
           Copy-Item packages/bridge/scripts/setup.ps1 packages/bridge/dist/
           & packages/bridge/dist/setup.ps1 -SemIA
-          if (-not (Test-Path "$env:LOCALAPPDATA\bRowser\bridge.exe")) { throw 'bridge.exe não foi copiado' }
+          if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi copiado' }
 
       - name: Conferir registro (Windows)
         if: runner.os == 'Windows'

@@ -20,7 +20,7 @@ let ponte: { port: number; token: string };
 try {
   ponte = JSON.parse(readFileSync(join(homedir(), '.config/browser-bridge/bridge.json'), 'utf8'));
 } catch {
-  console.error('ponte não encontrada: a extensão bRowser está carregada no Chrome?');
+  console.error('ponte não encontrada: a extensão BrOWSER está carregada no Chrome?');
   process.exit(1);
 }
 

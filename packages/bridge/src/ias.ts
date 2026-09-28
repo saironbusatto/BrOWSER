@@ -16,7 +16,7 @@ export type Execucao = { ok: boolean; ia?: Ia; texto: string };
 export function instrucoes(pedido: string, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null, caminhos: Record<string, string> = {}) {
   const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
-  return `Você é o bRowser AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
+  return `Você é o BrOWSER AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
 Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario, consultar_blueprint).
 Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comandos de shell nem acesso a arquivos do computador: qualquer tentativa é bloqueada e encerra o atendimento. Tudo o que precisa já está neste texto; a única exceção são arquivos que este texto mandar ler explicitamente (anexos/ no diretório de trabalho).
 

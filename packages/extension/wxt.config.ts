@@ -2,7 +2,7 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   manifest: {
-    name: 'bRowser',
+    name: 'BrOWSER',
     description: 'Preenche formulários com IA a partir de linguagem natural.',
     // Chave pública só fixa o ID da extensão (kofljccjbobcbcfnnolfgbobkckmiboe),
     // exigido em allowed_origins do Native Messaging. Não é segredo.
@@ -10,6 +10,6 @@ export default defineConfig({
     permissions: ['debugger', 'nativeMessaging', 'tabs', 'webNavigation', 'sidePanel', 'scripting'],
     // Plano B por DOM (chrome.scripting) precisa de acesso às páginas; o content.ts já roda em todas.
     host_permissions: ['<all_urls>'],
-    action: { default_title: 'Abrir o bRowser' },
+    action: { default_title: 'Abrir o BrOWSER' },
   },
 });

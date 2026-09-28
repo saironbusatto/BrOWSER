@@ -179,7 +179,7 @@ export function salvarOuAtualizarBlueprint(novo: SiteBlueprint): SiteBlueprint {
 }
 
 /**
- * Sanitiza e gera um blueprint a partir do estado da página lida pelo bRowser.
+ * Sanitiza e gera um blueprint a partir do estado da página lida pelo BrOWSER.
  * GARANTIA DE PRIVACIDADE:
  * - Remove 100% dos valores digitados ou sensíveis.
  * - Captura apenas metadados estruturais do DOM (rótulos, papéis ARIA, seletores).
@@ -260,6 +260,6 @@ export function formatarBlueprintParaIa(blueprint: SiteBlueprint): string {
     const tipo = c.tipoEsperado ? ` [tipo: ${c.tipoEsperado}]` : '';
     md += `- **${c.rotulo}** (${c.papel})${tipo}${obr}\n`;
   }
-  md += `\n*Dica para o bRowser:* Use estes campos e gatilhos para guiar a navegação rapidamente.\n---\n`;
+  md += `\n*Dica para o BrOWSER:* Use estes campos e gatilhos para guiar a navegação rapidamente.\n---\n`;
   return md;
 }
