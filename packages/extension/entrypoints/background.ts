@@ -10,18 +10,20 @@ const BLOQUEIO_DEBUGGER = /cannot access|cannot attach|another debugger|already 
 const abasSemDebugger = new Set<number>();
 let refsDom = new Map<number, { frameId: number; refLocal: number }>();
 
-async function lerCamposComPlanoB() {
-  const tabId = await abaAlvo();
-  if (!abasSemDebugger.has(tabId)) {
-    try {
-      return await lerCampos();
-    } catch (e) {
-      if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
-      abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
-    }
+// Iframe http(s) de OUTRA origem (formulário HubSpot, Typeform, pagamento…) roda em outro processo:
+// a sessão do chrome.debugger na aba não enxerga dentro dele. Esses frames vão pelo DOM; o resto, CDP.
+function ehOutraOrigem(urlFrame: string | undefined, origemTopo: string): boolean {
+  if (!urlFrame || !/^https?:/.test(urlFrame)) return false;
+  try {
+    return new URL(urlFrame).origin !== origemTopo;
+  } catch {
+    return false;
   }
-  const resultados = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: lerCamposDom });
-  refsDom = new Map();
+}
+
+async function lerViaDom(tabId: number, frameIds?: number[]): Promise<{ principal?: LeituraDom; campos: Campo[] }> {
+  const target = frameIds ? { tabId, frameIds } : { tabId, allFrames: true };
+  const resultados = await chrome.scripting.executeScript({ target, func: lerCamposDom });
   const campos: Campo[] = [];
   let principal: LeituraDom | undefined;
   for (const { frameId, result } of resultados) {
@@ -34,6 +36,44 @@ async function lerCamposComPlanoB() {
       campos.push({ ...c, ref });
     }
   }
+  return { principal, campos };
+}
+
+// Captcha é medida de segurança: fica com o usuário. A IA nem vê os controles dele.
+const CAPTCHA = /(^|\.)(recaptcha\.net|hcaptcha\.com|challenges\.cloudflare\.com)$|google\.com\/recaptcha|gstatic\.com\/recaptcha/i;
+const ehCaptcha = (url: string) => {
+  try {
+    const u = new URL(url);
+    return CAPTCHA.test(u.hostname) || CAPTCHA.test(u.hostname + u.pathname);
+  } catch {
+    return false;
+  }
+};
+
+async function lerIframesDeOutraOrigem(tabId: number, urlTopo: string): Promise<Campo[]> {
+  const frames = (await chrome.webNavigation.getAllFrames({ tabId }).catch(() => null)) ?? [];
+  const origemTopo = new URL(urlTopo).origin;
+  const ids = frames
+    .filter((f) => f.frameId !== 0 && ehOutraOrigem(f.url, origemTopo) && !ehCaptcha(f.url))
+    .map((f) => f.frameId);
+  if (!ids.length) return [];
+  return (await lerViaDom(tabId, ids).catch(() => ({ campos: [] as Campo[] }))).campos;
+}
+
+async function lerCamposComPlanoB() {
+  const tabId = await abaAlvo();
+  refsDom = new Map();
+  if (!abasSemDebugger.has(tabId)) {
+    try {
+      const leitura = await lerCampos();
+      const deOutraOrigem = await lerIframesDeOutraOrigem(tabId, leitura.url);
+      return deOutraOrigem.length ? { ...leitura, campos: [...leitura.campos, ...deOutraOrigem] } : leitura;
+    } catch (e) {
+      if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
+      abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
+    }
+  }
+  const { principal, campos } = await lerViaDom(tabId);
   return { url: principal?.url ?? '', titulo: principal?.titulo ?? '', campos, modo: 'dom' };
 }
 
@@ -319,7 +359,7 @@ const WIDGETS = ['date', 'time', 'datetime-local', 'month', 'week'];
 
 // Peças internas do navegador (ex.: Dia/Mês/Ano de um input date) ficam em shadow root
 // "user-agent": são escondidas, e o input em si entra como um campo só.
-function varrerDom(root: any) {
+function varrerDom(root: any, origemTopo: string) {
   const internos = new Set<number>();
   const widgets: { ref: number; tipo: string }[] = [];
   const andar = (n: any, interno: boolean) => {
@@ -331,24 +371,30 @@ function varrerDom(root: any) {
     }
     n.children?.forEach((c: any) => andar(c, interno));
     n.shadowRoots?.forEach((s: any) => andar(s, interno || s.shadowRootType === 'user-agent'));
-    if (n.contentDocument) andar(n.contentDocument, interno);
+    if (n.contentDocument && !ehOutraOrigem(n.contentDocument.documentURL, origemTopo)) andar(n.contentDocument, interno);
   };
   andar(root, false);
   return { internos, widgets };
 }
 
 async function lerCampos() {
-  if (alvo) ligarMatrix(alvo, 'Mapeando campos do formulário…').catch(() => {});
+  // Só atualiza o texto: ligar/desligar o efeito é do ciclo do pedido. Religar aqui deixava o
+  // Matrix preso depois do fim (a ponte lê a página de novo para salvar o blueprint).
+  if (alvo) atualizarMatrix(alvo, 'Mapeando campos do formulário…');
   const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true }); // pierce: inclui iframes
-  const { internos, widgets } = varrerDom(root);
   const { frameTree } = await cdp('Page.getFrameTree');
+  const origemTopo = new URL(frameTree.frame.url).origin;
+  const { internos, widgets } = varrerDom(root, origemTopo);
   const frames: string[] = [];
-  const andar = (t: any) => { frames.push(t.frame.id); t.childFrames?.forEach(andar); };
+  const andar = (t: any) => {
+    if (ehOutraOrigem(t.frame.url, origemTopo)) return; // lido pelo DOM em lerIframesDeOutraOrigem
+    frames.push(t.frame.id);
+    t.childFrames?.forEach(andar);
+  };
   andar(frameTree);
 
   const campos: Campo[] = [];
   for (const frameId of frames) {
-    // ponytail: só iframes do mesmo processo; iframes cross-origin (OOPIF) exigem sessão CDP própria.
     const { nodes } = await cdp('Accessibility.getFullAXTree', { frameId }).catch(() => ({ nodes: [] }));
     for (const n of nodes) {
       const papel = n.role?.value;
@@ -375,7 +421,7 @@ async function lerCampos() {
 }
 
 async function preencher(ref: number, valor: string) {
-  if (alvo) ligarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`).catch(() => {});
+  if (alvo) atualizarMatrix(alvo, `Preenchendo: ${valor.length > 20 ? valor.slice(0, 18) + '…' : valor}`);
   const tipo = await noElemento<string>(ref, 'function(){return this.tagName==="SELECT"?"select":(this.type||"text")}');
 
   if (tipo === 'select') {
@@ -412,7 +458,7 @@ async function preencher(ref: number, valor: string) {
 }
 
 async function clicar(ref: number) {
-  if (alvo) ligarMatrix(alvo, 'Clicando no elemento…').catch(() => {});
+  if (alvo) atualizarMatrix(alvo, 'Clicando no elemento…');
   try {
     await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
     const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });
