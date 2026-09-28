@@ -1,7 +1,7 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
 import { clicarDom, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
-import { gerarScriptUpdate, iniciarMatrixOverlay, SCRIPT_PARAR_MATRIX } from '../utils/matrix';
+import { configTeia, gerarScriptStatus, iniciarTeia, SCRIPT_PARAR_TEIA } from '../utils/teia';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
 // refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
@@ -270,7 +270,7 @@ export default defineBackground(() => {
   chrome.debugger.onDetach.addListener(({ tabId }) => {
     if (tabId) {
       anexadas.delete(tabId);
-      desligarMatrix(tabId).catch(() => {});
+      desligarTeia(tabId).catch(() => {});
     }
   });
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
@@ -286,7 +286,7 @@ export default defineBackground(() => {
       // Persistir o alvo antes de seguir garante que a aba não se perca se o worker morrer agora.
       definirAlvo(msg.tabId)
         .then(() => {
-          ligarMatrix(msg.tabId, 'IA conectada. Assumindo controle…').catch(() => {});
+          ligarTeia(msg.tabId, 'IA conectada. Assumindo controle…').catch(() => {});
           porta?.postMessage(msg);
         })
         .catch(() => {});
@@ -297,7 +297,7 @@ export default defineBackground(() => {
       // Parar é soberania do usuário (docs §7.3): a ponte mata o processo da IA, e aqui sai a
       // matriz da tela imediatamente — a pessoa não fica olhando "assumindo controle" para sempre.
       if (alvo !== undefined) {
-        desligarMatrix(alvo).catch(() => {});
+        desligarTeia(alvo).catch(() => {});
         chrome.debugger.detach({ tabId: alvo }).catch(() => {});
         anexadas.delete(alvo);
       }
@@ -306,7 +306,7 @@ export default defineBackground(() => {
       return;
     }
     if (msg?.tipo === 'resposta_usuario') {
-      if (alvo) ligarMatrix(alvo, 'Resposta recebida! Continuando na página…').catch(() => {});
+      if (alvo) ligarTeia(alvo, 'Resposta recebida! Continuando na página…').catch(() => {});
       porta?.postMessage(msg);
       responder({ ok: true });
       return;
@@ -348,40 +348,42 @@ async function garantirAnexado(tabId: number) {
   }
 }
 
-async function ligarMatrix(tabId: number, status?: string) {
+async function ligarTeia(tabId: number, status?: string) {
   try {
     await garantirAnexado(tabId);
     const r = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      expression: `(${iniciarMatrixOverlay.toString()})()`,
+      // A função é injetada serializada: tem de ser autossuficiente, e a config vai por
+      // parâmetro justamente para a matemática testável ficar do lado do host.
+      expression: `(${iniciarTeia.toString()})(${JSON.stringify(configTeia(window.innerWidth, window.innerHeight, window.devicePixelRatio))})`,
       returnByValue: true,
     })) as any;
     if (r?.exceptionDetails) {
-      console.warn('Erro ao avaliar iniciarMatrixOverlay:', r.exceptionDetails);
+      console.warn('Erro ao avaliar iniciarTeia:', r.exceptionDetails);
     }
     if (status) {
       await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-        expression: gerarScriptUpdate(status),
+        expression: gerarScriptStatus(status),
       });
     }
   } catch (err) {
-    console.warn('Matrix overlay não pôde ser injetado:', err);
+    console.warn('Tecido não pôde ser injetado:', err);
   }
 }
 
-async function atualizarMatrix(tabId: number, status: string) {
+async function atualizarTeia(tabId: number, status: string) {
   try {
     if (!anexadas.has(tabId)) return;
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      expression: gerarScriptUpdate(status),
+      expression: gerarScriptStatus(status),
     });
   } catch {}
 }
 
-async function desligarMatrix(tabId: number) {
+async function desligarTeia(tabId: number) {
   try {
     if (!anexadas.has(tabId)) return;
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      expression: SCRIPT_PARAR_MATRIX,
+      expression: SCRIPT_PARAR_TEIA,
     });
   } catch {}
 }
@@ -405,11 +407,11 @@ function conectar() {
       chrome.runtime.sendMessage(p).catch(() => {});
       if (alvo) {
         if (p.tipo === 'status') {
-          atualizarMatrix(alvo, p.texto);
+          atualizarTeia(alvo, p.texto);
         } else if (p.tipo === 'pergunta') {
-          atualizarMatrix(alvo, 'Aguardando suas informações no painel lateral…');
+          atualizarTeia(alvo, 'Aguardando suas informações no painel lateral…');
         } else if (p.tipo === 'resultado') {
-          desligarMatrix(alvo);
+          desligarTeia(alvo);
         }
       }
       return;
@@ -559,8 +561,8 @@ function varrerDom(root: any, origemTopo: string) {
 
 async function lerCampos() {
   // Só atualiza o texto: ligar/desligar o efeito é do ciclo do pedido. Religar aqui deixava o
-  // Matrix preso depois do fim (a ponte lê a página de novo para salvar o blueprint).
-  if (alvo) atualizarMatrix(alvo, 'Mapeando campos do formulário…');
+  // Tecido preso depois do fim (a ponte lê a página de novo para salvar o blueprint).
+  if (alvo) atualizarTeia(alvo, 'Mapeando campos do formulário…');
   const { root } = await cdp('DOM.getDocument', { depth: -1, pierce: true }); // pierce: inclui iframes
   const { frameTree } = await cdp('Page.getFrameTree');
   const origemTopo = new URL(frameTree.frame.url).origin;
@@ -624,7 +626,7 @@ function mascararSecreto(valor: string, sensivel: boolean): string {
 }
 
 async function preencher(ref: number, valor: string, sensivel = false) {
-  if (alvo) atualizarMatrix(alvo, `Preenchendo: ${mascararSecreto(valor, sensivel)}`);
+  if (alvo) atualizarTeia(alvo, `Preenchendo: ${mascararSecreto(valor, sensivel)}`);
   const tipo = await noElemento<string>(ref, 'function(){return this.tagName==="SELECT"?"select":(this.type||"text")}');
 
   if (tipo === 'select') {
@@ -674,7 +676,7 @@ async function preencher(ref: number, valor: string, sensivel = false) {
 }
 
 async function clicar(ref: number) {
-  if (alvo) atualizarMatrix(alvo, 'Clicando no elemento…');
+  if (alvo) atualizarTeia(alvo, 'Clicando no elemento…');
   try {
     await cdp('DOM.scrollIntoViewIfNeeded', { backendNodeId: ref });
     const { model } = await cdp('DOM.getBoxModel', { backendNodeId: ref });
