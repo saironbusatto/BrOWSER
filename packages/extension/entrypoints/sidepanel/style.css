@@ -1115,14 +1115,6 @@ textarea#texto::placeholder {
   color: var(--fg);
 }
 
-.plan-sub {
-  font-size: 11.5px;
-  color: var(--fg-secondary);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
 .plan-badge-active {
   display: inline-flex;
@@ -1478,8 +1470,7 @@ textarea#texto::placeholder {
   border-color: var(--accent);
 }
 .plan-card.com-ativo .plan-name,
-.plan-card.com-ativo .plan-sub { color: #ffffff; }
-.plan-card.com-ativo .plan-icon-wrap { background: rgba(255, 255, 255, 0.18); }
+.plan-card.com-ativo .plan-card.com-ativo .plan-icon-wrap { background: rgba(255, 255, 255, 0.18); }
 .plan-card.com-ativo .plan-status { color: #ffffff; } /* 0.85 daria 3.83:1 */
 .plan-card.com-ativo .plan-switch { background: rgba(255, 255, 255, 0.55); }
 .plan-card.com-ativo .plan-switch[aria-checked='true'] { background: #ffffff; }
@@ -1520,3 +1511,50 @@ textarea#texto::placeholder {
 }
 .sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
 .sheet-toggle small { display: block; color: var(--fg-tertiary); }
+
+/* ---- Onda de "a IA está trabalhando" ---- */
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+}
+.onda {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.onda i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.22;
+  animation: onda-pulso 1.3s ease-in-out infinite;
+  /* Negativo para a onda já estar em curso no primeiro quadro. O valor é ~1/9 do ciclo: é o que
+     faz cada quadrado ACENDER na vez do anterior, em vez de todos brilharem juntos. */
+  animation-delay: calc(var(--i) * -0.145s);
+}
+.onda i.onda-ponta {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: none;
+}
+/* Pico estreito e decaimento longo: é o que dá o "cometa" da imagem de referência. Com o brilho
+   espalhado por metade do ciclo, dois ou três quadrados ficam claros juntos e vira mancha. */
+@keyframes onda-pulso {
+  0%        { opacity: 0.16; transform: scaleY(0.8); }
+  11%       { opacity: 1;    transform: scaleY(1); }
+  38%       { opacity: 0.42; transform: scaleY(0.92); }
+  100%      { opacity: 0.16; transform: scaleY(0.8); }
+}
+/* Sem movimento continua sendo sinal de "processando": um quadrado fixo aceso. */
+@media (prefers-reduced-motion: reduce) {
+  .onda i { animation: none; opacity: 0.5; }
+  /* nth-of-type(2) e não :first-of-type: o primeiro <i> da fileira é a ponta redonda, não um
+     quadrado. Com :first-of-type o ponto acende e o primeiro quadrado fica apagado. */
+  .onda i:nth-of-type(2) { opacity: 1; }
+}
