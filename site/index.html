@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BrOWSER</title>
+  <meta name="description" content="Extensão que preenche formulários da página aberta usando a assinatura de IA que você já tem (Google AI Pro, ChatGPT ou Claude), sem chave de API.">
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" href="estilo.css">
+</head>
+<body>
+  <canvas id="campo-pontos" class="campo-pontos" aria-hidden="true"></canvas>
+
+  <main class="pagina">
+    <header class="topo">
+      <img src="icone.png" alt="" width="96" height="96" class="logo">
+      <h1><span class="br">Br</span>OWSER</h1>
+      <p class="frase">Preenche formulários com a assinatura de IA que você já tem.</p>
+      <div class="acoes">
+        <a class="botao" href="https://github.com/saironbusatto/BrOWSER/releases">Baixar</a>
+        <a class="link" href="https://github.com/saironbusatto/BrOWSER">Código no GitHub</a>
+      </div>
+      <p class="nota">Windows · Chrome, Edge e Brave · gratuito e open source</p>
+    </header>
+
+    <section>
+      <h2>Como funciona</h2>
+      <ol class="passos">
+        <li>Você escreve no painel o que preencher.</li>
+        <li>A IA da <b>sua assinatura</b> (Google AI Pro, ChatGPT ou Claude) lê a página e preenche.</li>
+        <li>Ela para antes de enviar: quem clica em Enviar é você.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Privacidade</h2>
+      <ul>
+        <li>Nenhum dado vai para os autores do BrOWSER. Não temos servidor.</li>
+        <li>O conteúdo da página vai só para a IA que você conectou, e só quando você pede.</li>
+        <li>O aprendizado de formulários guarda só a estrutura das páginas, no seu computador, e pode ser desligado.</li>
+      </ul>
+      <p><a href="privacidade.html">Termos e política de privacidade completos</a></p>
+    </section>
+
+    <section id="code-signing-policy" lang="en">
+      <h2>Code signing policy</h2>
+      <p>Free code signing provided by <a href="https://about.signpath.io">SignPath.io</a>, certificate by <a href="https://signpath.org">SignPath Foundation</a> (application in preparation — current binaries are not signed yet). Only artifacts built by this repository's GitHub Actions workflows from this repository's source code are signed.</p>
+      <ul>
+        <li>Committers and reviewers: <a href="https://github.com/saironbusatto">saironbusatto</a></li>
+        <li>Approvers: <a href="https://github.com/saironbusatto">saironbusatto</a></li>
+        <li>All team members use multi-factor authentication on GitHub and SignPath.</li>
+      </ul>
+      <p><b>Privacy policy.</b> This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. Page content is sent only to the AI provider the user connected (Google, OpenAI or Anthropic), and only when the user submits a request in the side panel. The bridge downloads a public index of site maps from the project's GitHub repository without sending user data.</p>
+    </section>
+
+    <footer class="rodape">
+      <a href="https://github.com/saironbusatto/BrOWSER/blob/main/LICENSE">Licença Apache-2.0</a>
+    </footer>
+  </main>
+
+  <script type="module" src="pontos.js"></script>
+</body>
+</html>

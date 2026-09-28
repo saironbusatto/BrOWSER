@@ -8,3 +8,4 @@ dist/
 
 # Fotos geradas fora do projeto: nao entram no repo.
 imgs/Gemini_Generated_Image_*
+dist-site/
