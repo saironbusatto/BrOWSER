@@ -63,6 +63,16 @@ export function navegadorInstalado(nome: string, amb: Ambiente = AMBIENTE_REAL):
   return (EXECUTAVEIS[nome] ?? []).some((exe) => amb.which(exe) !== null || amb.existe(exe));
 }
 
+/**
+ * O pty do login do Google AI Pro depende de python3. A busca por caminhos `/usr/...` fixos
+ * nunca encontrava nada no Windows, então o aviso sobre a dependência faltante simplesmente não
+ * existia lá — a pessoa descobria do nada, no meio do login.
+ */
+function python3Instalado(): boolean {
+  if (process.env.PYTHON !== undefined) return true;
+  return ['python3', 'python'].some((exe) => Bun.which(exe) !== null);
+}
+
 export function diagnosticar(base = homedir()): Diagnostico {
   const manifestoWindows = join(process.env.LOCALAPPDATA ?? join(base, 'AppData', 'Local'), HOST_NAME, `${HOST_NAME}.json`);
 
@@ -100,7 +110,7 @@ export function diagnosticar(base = homedir()): Diagnostico {
     temNavegador,
     extensaoRegistrada: temManifesto,
     ias: [], // preenchido por quem chama (o status exige executar as CLIs)
-    python3: existsSync('/usr/bin/python3') || existsSync('/usr/local/bin/python3') || process.env.PYTHON !== undefined,
+    python3: python3Instalado(),
     precisaPty: false,
     pronto: false,
     temComoConectar: false,

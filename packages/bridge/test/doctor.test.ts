@@ -160,10 +160,12 @@ describe('juntar: o veredito final', () => {
 
   // O login do Google AI Pro abre um terminal interativo (pty) e depende de python3. Sem isso a
   // pessoa descobre do nada, na hora do login, que falta dependência.
+  // Nem esta linha pode perguntar "a máquina que roda o teste tem python3?": o CI do Windows não
+  // tem, o do Linux tem, e o teste passava num e falhava no outro. O python3 é dado, não perguntado.
   it('avisa que o login do agy precisa de python3', () => {
-    const semPython = { ...base(), python3: false };
-    expect(juntar(semPython, [{ ia: 'agy' as const, instalado: true, conectado: false }]).precisaPty).toBe(true);
-    expect(juntar(base(), [{ ia: 'agy' as const, instalado: true, conectado: false }]).precisaPty).toBe(false);
+    const agyPendente = [{ ia: 'agy' as const, instalado: true, conectado: false }];
+    expect(juntar({ ...base(), python3: false }, agyPendente).precisaPty).toBe(true);
+    expect(juntar({ ...base(), python3: true }, agyPendente).precisaPty).toBe(false);
   });
 
   it('não reclama de python3 quando o agy não está instalado', () => {
