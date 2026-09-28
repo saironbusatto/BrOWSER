@@ -215,6 +215,19 @@ function appendUserMessage(msg: string, anexos?: ArquivoAnexo[]) {
   scrollToEnd();
 }
 
+// Onda de quadrados: a mesma ideia do indicador "a IA está trabalhando" que a gente reconhece de
+// qualquer lugar. Cada quadrado tem um atraso de fase, então o pico de brilho atravessa a fileira
+// e volta — dá para ver de longe que a IA está viva sem precisar ler texto.
+// ponytail: 5 quadrados + 2 pontas. Mais que isso vira listra, menos que isso não dá pra ler o
+// deslocamento. O --i é o que faz a onda; sem ele os 5 pulsam juntos e vira piscar.
+const ONDA = 5;
+const ondaHtml = () =>
+  `<div class="onda" aria-hidden="true">` +
+  `<i class="onda-ponta"></i>` +
+  Array.from({ length: ONDA }, (_, i) => `<i style="--i:${i}"></i>`).join('') +
+  `<i class="onda-ponta"></i>` +
+  `</div>`;
+
 function appendAssistantMessage(): HTMLElement {
   const row = document.createElement('div');
   row.className = 'message-row assistant';
@@ -247,7 +260,7 @@ function appendAssistantMessage(): HTMLElement {
             <span class="step-label">Conferindo</span>
           </div>
         </div>
-        <div class="live-status-text">Iniciando orquestração…</div>
+        <div class="live-status">${ondaHtml()}<div class="live-status-text">Iniciando orquestração…</div></div>
 
         <div class="multi-agent-grid">
           <div class="agent-row">
@@ -840,7 +853,6 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
           <div class="plan-name-row">
             <span class="plan-name">${escapeHtml(plano.nome)}</span>
           </div>
-          <div class="plan-sub">${escapeHtml(plano.subtitulo)}</div>
           <div class="plan-status" data-conectado="${isConnected ? 'sim' : 'nao'}">
             ${escapeHtml(pendente ? 'Conectando…' : isConnected ? 'Conectado' : plano.detalhe || 'Não conectado')}
           </div>

@@ -23,7 +23,6 @@ const ANSI = /\x1b\[[0-9;?]*[a-zA-Z]/g;
 
 type Entrada = {
   nome: string;
-  subtitulo: string;
   status: string[];
   login: string[];
   // Extrai do stdout o que o painel precisa mostrar. Ausente = CLI sem login programático.
@@ -42,7 +41,6 @@ type Entrada = {
 const CATALOGO: Record<Ia, Entrada> = {
   agy: {
     nome: 'Google AI Pro',
-    subtitulo: 'Gemini via Antigravity CLI',
     status: ['agy', 'models'],
     // O OAuth só acontece no print mode: `agy` sem args abre a TUI e morre sem /dev/tty, e
     // `agy models` só diz "Please sign in" e sai. Com -p ele imprime a URL do Google OAuth,
@@ -63,7 +61,6 @@ const CATALOGO: Record<Ia, Entrada> = {
   },
   codex: {
     nome: 'ChatGPT Plus / Pro',
-    subtitulo: 'OpenAI via Codex CLI',
     status: ['codex', 'login', 'status'],
     login: ['codex', 'login', '--device-auth'],
     logout: ['codex', 'logout'],
@@ -76,7 +73,6 @@ const CATALOGO: Record<Ia, Entrada> = {
   },
   claude: {
     nome: 'Claude Pro / Max',
-    subtitulo: 'Anthropic via Claude Code',
     status: ['claude', 'auth', 'status'],
     login: ['claude', 'auth', 'login', '--claudeai'],
     logout: ['claude', 'auth', 'logout'],
@@ -102,7 +98,7 @@ async function estaLogado(ia: Ia): Promise<{ conectado: boolean; detalhe?: strin
   const codigo = await proc.exited;
   clearTimeout(timer);
   if (expirou) return { conectado: false, detalhe: 'demorou para responder' };
-  if (codigo !== 0) return { conectado: false, detalhe: 'sem sessão ativa' };
+  if (codigo !== 0) return { conectado: false };
   const parser = CATALOGO[ia].lerStatus;
   if (!parser) return { conectado: true };
   try {
@@ -116,9 +112,9 @@ export async function obterStatusAssinaturas(preferida?: Ia): Promise<ItemAssina
   const ias = Object.keys(CATALOGO) as Ia[];
   const lista = await Promise.all(ias.map(async (ia): Promise<ItemAssinatura> => {
     const instalado = Boolean(Bun.which(ia));
-    if (!instalado) return { ia, nome: CATALOGO[ia].nome, subtitulo: CATALOGO[ia].subtitulo, instalado, conectado: false, ativo: false, detalhe: 'CLI não instalada' };
+    if (!instalado) return { ia, nome: CATALOGO[ia].nome, instalado, conectado: false, ativo: false, detalhe: 'ferramenta local não encontrada' };
     const st = await estaLogado(ia);
-    return { ia, nome: CATALOGO[ia].nome, subtitulo: CATALOGO[ia].subtitulo, instalado, conectado: st.conectado, ativo: false, ...(st.detalhe && { detalhe: st.detalhe }) };
+    return { ia, nome: CATALOGO[ia].nome, instalado, conectado: st.conectado, ativo: false, ...(st.detalhe && { detalhe: st.detalhe }) };
   }));
   const ativa = lista.find((i) => i.ia === preferida && i.conectado) ?? lista.find((i) => i.conectado);
   return lista.map((i) => ({ ...i, ativo: i === ativa }));
