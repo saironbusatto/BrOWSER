@@ -96,11 +96,33 @@
           </div>
         </div>
 
+        <div id="login-container"></div>
+
         <div class="sheet-security-banner">
           <svg viewBox="0 0 16 16" fill="currentColor">
             <path fill-rule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clip-rule="evenodd"/>
           </svg>
           <span>Login oficial direto pelo navegador. Zero chaves de API, com sua própria assinatura.</span>
+        </div>
+
+        <div class="sheet-footer">
+          <button id="btn-desconectar-todas" class="btn-quiet-danger">Desconectar todas as contas</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirmação de desconectar tudo (alert) -->
+    <div id="desconectar-modal" class="sheet-modal-backdrop alert-backdrop" role="dialog" aria-modal="true"
+         aria-labelledby="desconectar-titulo" aria-describedby="desconectar-msg" aria-hidden="true">
+      <div class="alert-content">
+        <h2 id="desconectar-titulo" class="alert-title">Desconectar todas as contas?</h2>
+        <p id="desconectar-msg" class="alert-msg">
+          O bRowser vai parar de usar essas assinaturas. Isso não cancela a assinatura em nenhuma
+          empresa. Para voltar, entre em cada conta de novo.
+        </p>
+        <div class="alert-botoes">
+          <button id="btn-desconectar-cancelar" class="alert-btn">Cancelar</button>
+          <button id="btn-desconectar-confirmar" class="alert-btn alert-btn-primario">Desconectar</button>
         </div>
       </div>
     </div>
