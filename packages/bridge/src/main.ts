@@ -145,7 +145,7 @@ async function conectarAssinatura(ia: Ia) {
     nome,
     ok: ok && conectado,
     mensagem: conectado
-      ? `${nome} conectado. Já pode usar o bRowser.`
+      ? `${nome} conectado. Já pode usar o BrOWSER.`
       : `Não deu para conectar o ${nome} — o código pode ter expirado. Tente de novo, ou conecte outro plano.`,
   } satisfies Evento);
   log(`login ${ia}: ${ok && conectado ? 'ok' : 'falhou'}`);

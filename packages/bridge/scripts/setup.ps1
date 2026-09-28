@@ -1,4 +1,4 @@
-# Instalador do bRowser para Windows (usuário final).
+# Instalador do BrOWSER para Windows (usuário final).
 # Uso: coloque este arquivo ao lado do bridge.exe e rode:  powershell -ExecutionPolicy Bypass -File setup.ps1
 # Não pede administrador: tudo vai para o perfil do usuário (%LOCALAPPDATA% e HKCU).
 # -SemIA: não pergunta sobre instalar o Gemini (usado no CI).
@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $origem = Join-Path $PSScriptRoot 'bridge.exe'
 if (-not (Test-Path $origem)) { throw "bridge.exe não encontrado ao lado deste script ($origem)." }
 
-$destino = Join-Path $env:LOCALAPPDATA 'bRowser'
+$destino = Join-Path $env:LOCALAPPDATA 'BrOWSER'
 New-Item -ItemType Directory -Force -Path $destino | Out-Null
 Copy-Item $origem (Join-Path $destino 'bridge.exe') -Force
 Write-Host "Ponte copiada para $destino"
@@ -28,4 +28,4 @@ if (-not $SemIA -and -not (Get-Command agy -ErrorAction SilentlyContinue) -and -
 }
 
 Write-Host ''
-Write-Host 'Pronto. Feche e abra o navegador, abra o bRowser e conecte sua assinatura em Assinaturas > Conectar.'
+Write-Host 'Pronto. Feche e abra o navegador, abra o BrOWSER e conecte sua assinatura em Assinaturas > Conectar.'

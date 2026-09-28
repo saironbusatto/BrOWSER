@@ -234,7 +234,7 @@ function appendAssistantMessage(): HTMLElement {
             <path d="M8 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 2Zm4.243 2.757a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 1 1-1.06 1.062l-1.061-1.061a.75.75 0 0 1 0-1.06ZM14 8a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 14 8ZM2 8a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2 8Zm1.697-3.243a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.062l-1.061-1.061a.75.75 0 0 1 0-1.06ZM8 12a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 12Z"/>
             <circle cx="8" cy="8" r="3"/>
           </svg>
-          <span>bRowser Multiagente</span>
+          <span>BrOWSER Multiagente</span>
         </div>
       </div>
 
@@ -415,7 +415,7 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
         <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
           <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14Zm0-1.5a5.5 5.5 0 1 0 0-11 5.5 5.5 0 0 0 0 11ZM6.5 6.25a1.5 1.5 0 1 1 2.378 1.226c-.346.242-.628.53-.628.924V9h-1.5v-.5a2.25 2.25 0 0 1 1.05-1.928.75.75 0 0 0-.3-.722.75.75 0 0 0-1-.15.75.75 0 0 1-1-.15Zm1.5 5.25a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"/>
         </svg>
-        <span>bRowser precisa de informações</span>
+        <span>BrOWSER precisa de informações</span>
       </div>
       <p class="question-desc">${escapeHtml(e.pergunta)}</p>
       ${camposHtml}
@@ -689,7 +689,7 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
   box.innerHTML = `<div class="login-card">
     <div class="login-titulo">Conectando ${escapeHtml(e.nome)}</div>
     <a class="login-link" href="${escapeHtml(e.url)}" target="_blank" rel="noreferrer">Abrir login no navegador</a>
-    <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo bRowser.</div>
+    <div class="login-dica">Login oficial da sua assinatura. Nenhuma chave de API passa pelo BrOWSER.</div>
     ${codigo}${campo}
   </div>`;
 

@@ -138,7 +138,7 @@ export default defineBackground(() => {
   chrome.runtime.onMessage.addListener((msg: MensagemExtensao, _remetente, responder) => {
     if (msg?.tipo === 'pedido') {
       if (!porta) {
-        responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do bRowser.' });
+        responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do BrOWSER.' });
         return;
       }
       alvo = msg.tabId;

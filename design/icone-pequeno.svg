@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Ícone BrOWSER (16/32 px, sem espinhos para não virar ruído): monograma "Br" (B verde + r amarelo, paleta do logo original) com os
+       espinhos de casco no topo do B como aceno ao mascote — sem usar personagem de terceiros. -->
+  <defs>
+    <linearGradient id="fundo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23304F"/>
+      <stop offset="1" stop-color="#141B30"/>
+    </linearGradient>
+    <linearGradient id="verde" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6BDB76"/>
+      <stop offset="1" stop-color="#249A3C"/>
+    </linearGradient>
+    <linearGradient id="amarelo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE766"/>
+      <stop offset="1" stop-color="#F4B40F"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#fundo)"/>
+
+  <!-- espinhos do casco -->
+
+  <text x="13" y="104" font-family="Inter" font-weight="900" font-size="96"
+        fill="url(#verde)" stroke="#0E4F1F" stroke-width="7" stroke-linejoin="round" paint-order="stroke">B</text>
+  <text x="76" y="104" font-family="Inter" font-weight="900" font-size="80"
+        fill="url(#amarelo)" stroke="#8E2A18" stroke-width="7" stroke-linejoin="round" paint-order="stroke">r</text>
+</svg>
