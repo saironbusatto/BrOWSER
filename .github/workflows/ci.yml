@@ -65,6 +65,25 @@ jobs:
           EXE=packages/bridge/dist/bridge; [ "$RUNNER_OS" = "Windows" ] && EXE=packages/bridge/dist/bridge.exe
           bun packages/bridge/scripts/smoke.ts "$EXE" --codex
 
+      # Desinstalação tem de desfazer tudo (exigência da SignPath: "uninstallation facilities").
+      - name: Desinstalador (uninstall.ps1)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & "$env:LOCALAPPDATA\BrOWSER\uninstall.ps1" -Sim
+          if (Test-Path "$env:LOCALAPPDATA\BrOWSER") { throw 'pasta do BrOWSER não foi removida' }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER') { throw 'entrada em Aplicativos instalados não foi removida' }
+          foreach ($chave in 'Google\Chrome', 'BraveSoftware\Brave-Browser', 'Microsoft\Edge') {
+            if (Test-Path "HKCU:\Software\$chave\NativeMessagingHosts\com.browser.bridge") { throw "registro não removido: $chave" }
+          }
+          'desinstalação completa'
+
+      - name: Desinstalação (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          packages/bridge/dist/bridge --uninstall
+          test ! -e ~/.config/google-chrome/NativeMessagingHosts/com.browser.bridge.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: ponte-${{ matrix.os }}
