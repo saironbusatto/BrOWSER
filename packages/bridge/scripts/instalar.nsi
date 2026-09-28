@@ -26,7 +26,6 @@ Unicode true
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
-!include /NONFATAL "FileFunc.nsh"
 
 ; A versao e o idioma chegam por um arquivo gerado pelo build, e nao por -D na linha de
 ; comando. No Linux o -D funciona; no Windows o makensis reparte o argumento com ponto e sobra
@@ -42,6 +41,8 @@ Unicode true
 !define EDITOR "BrOWSER (open source)"
 !define SITE "https://github.com/saironbusatto/BrOWSER"
 !define CHAVE_SOFTWARE "Software\${NOME}"
+Var MARCA
+
 !define CHAVE_UNINSTALL "Software\Microsoft\Windows\CurrentVersion\Uninstall\${NOME}"
 
 Name "${NOME} ${VERSAO}"
@@ -141,6 +142,8 @@ Para desinstalar: pelo botao aqui embaixo, ou em $\"Aplicativos instalados$\" > 
 
 Section "Instalar" SecMain
   DetailPrint "Instalando ${NOME} ${VERSAO} em $INSTDIR"
+  StrCpy $MARCA "inicio em $INSTDIR"
+  Call .marcar
 
   SetOutPath "$INSTDIR"
   File "bridge.exe"
@@ -151,6 +154,8 @@ Section "Instalar" SecMain
   File /r "extensao\*.*"
   SetOutPath "$INSTDIR"
 
+  StrCpy $MARCA "arquivos copiados"
+  Call .marcar
   ; Fecha a ponte de uma instalacao anterior. Sem isso, o desinstalador fica travado: o
   ; navegador mantem o executavel aberto enquanto a extensao esta ativa.
   ExecWait 'taskkill /F /IM bridge.exe >NUL 2>NUL'
@@ -158,12 +163,28 @@ Section "Instalar" SecMain
   ; O registro nos navegadores e o proprio bridge que faz, e ele ja sabe onde foi instalado.
   ; Rodar daqui e rodar de la o mesmo codigo, em vez de duplicar aqui a lista de navegadores.
   DetailPrint "Registrando a ponte nos navegadores"
+  StrCpy $MARCA "chamando bridge --install"
+  Call .marcar
+  ; Sem prazo: o ExecWait deste build aceita só o comando e o código de saída. O que sustenta a
+  ; instalação é que o --install da ponte é só escrita de arquivo e quatro `reg add` síncronos, e
+  ; nada ali pode ficar esperando. Se um dia travar, o rastro de etapas abaixo diz onde.
   ExecWait '"$INSTDIR\bridge.exe" --install' $0
+  StrCpy $MARCA "registro terminou com codigo $0"
+  Call .marcar
   ${If} $0 != "0"
-    MessageBox MB_ICONSTOP|MB_OK "Nao foi possivel registrar a ponte nos navegadores.$\r$\n$\r$\nO BrOWSER nao foi instalado. Nada foi alterado no seu computador.$\r$\n$\r$\nCodigo do erro: $0"
+    ; MessageBox é bloqueante, e o modo silencioso (/S) não o desliga. Deixar este diálogo sem
+    ; guarda fez a primeira versão do instalador travar para sempre no runner: a ponte devolvia
+    ; erro e o instalador ficava esperando alguém clicar numa janela que ninguém via.
+    ${IfNot} ${Silent}
+      MessageBox MB_ICONSTOP|MB_OK "Não foi possível registrar a ponte nos navegadores.$\r$\n$\r$\nO BrOWSER não foi instalado. Nada foi alterado no seu computador.$\r$\n$\r$\nCódigo do erro: $0"
+    ${EndIf}
+    StrCpy $MARCA "FALHOU no registro"
+    Call .marcar
     Abort
   ${EndIf}
 
+  StrCpy $MARCA "ponte registrada; escrevendo o desinstalador"
+  Call .marcar
   WriteUninstaller "$INSTDIR\Uninstall ${NOME}.exe"
   WriteRegStr HKCU "${CHAVE_SOFTWARE}" "InstallDir" "$INSTDIR"
 
@@ -181,20 +202,23 @@ Section "Instalar" SecMain
   WriteRegDWORD HKCU "${CHAVE_UNINSTALL}" "NoModify" 1
   WriteRegDWORD HKCU "${CHAVE_UNINSTALL}" "NoRepair" 1
 
+  StrCpy $MARCA "chaves e atalhos"
+  Call .marcar
   CreateDirectory "$SMPROGRAMS\${NOME}"
   CreateShortCut "$SMPROGRAMS\${NOME}\BrOWSER.lnk" "$INSTDIR\Uninstall ${NOME}.exe"
   CreateShortCut "$SMPROGRAMS\${NOME}\Desinstalar BrOWSER.lnk" "$INSTDIR\Uninstall ${NOME}.exe"
   CreateShortCut "$DESKTOP\BrOWSER.lnk" "$INSTDIR\Uninstall ${NOME}.exe"
 
-  ; O tamanho da pasta, agora que a extensao esta dentro, para o Painel de Controle mostrar o
-  ; numero certo. GetSize devolve tres: tamanho em KB, em bytes, e quantos arquivos.
-  ${GetSize} "$INSTDIR" "/S=1K" $0 $1 $2
-  IntFmt $0 "0x%08X" $0
-  WriteRegDWORD HKCU "${CHAVE_UNINSTALL}" "EstimatedSize" "$0"
+  ; Sem EstimatedSize de propósito. A única forma de calculá-lo é a função artificial do
+  ; FileFunc, que é um recurso de runtime do NSIS sem garantia: se ela falhar, o instalador
+  ; mostra um diálogo e trava. Um número cosmético em "Aplicativos instalados" não vale um
+  ; instalador que pode não terminar.
 
   ; Um arquivo solto na pasta instalada, com o resumo. Serve a pessoa que abrir a pasta procurando
   ; o que fazer, e serve ao CI para conferir o que o instalador de fato fez — inclusive se os
   ; acentos sobreviveram a tudo isso e chegaram no arquivo.
+  StrCpy $MARCA "escrevendo INSTALADO.txt"
+  Call .marcar
   FileOpen $9 "$INSTDIR\INSTALADO.txt" w
   FileWrite $9 "BrOWSER ${VERSAO} instalado.$\r$\n"
   FileWrite $9 "Instalado em: $INSTDIR$\r$\n$\r$\n"
@@ -206,10 +230,14 @@ Section "Instalar" SecMain
   FileWrite $9 "  3. Clique em Carregar sem compactação e escolha a pasta:$\r$\n"
   FileWrite $9 "     $INSTDIR\extensao$\r$\n"
   FileClose $9
+  StrCpy $MARCA "instalacao concluida"
+  Call .marcar
 SectionEnd
 
 Section "Desinstalar" UnSecMain
   DetailPrint "Desinstalando ${NOME}"
+  StrCpy $MARCA "desinstalacao iniciada"
+  Call .marcar
 
   ; A ponte desfaz o registro nos navegadores e apaga os dados locais antes da pasta sumir: depois
   ; que a pasta vai, o executavel que faria isso ja nao existe mais.
@@ -221,13 +249,19 @@ Section "Desinstalar" UnSecMain
     DetailPrint "Ponte não encontrada; seguindo com a remoção da pasta."
   depois_ponte:
 
+  StrCpy $MARCA "ponte desregistrada; limpando atalhos e pasta"
+  Call .marcar
   Delete "$DESKTOP\BrOWSER.lnk"
   RMDir /r "$SMPROGRAMS\${NOME}"
   DeleteRegKey HKCU "${CHAVE_SOFTWARE}"
   RMDir /r "$INSTDIR"
   DeleteRegKey HKCU "${CHAVE_UNINSTALL}"
 
-  MessageBox MB_ICONINFORMATION|MB_OK "BrOWSER removido deste computador.$\r$\n$\r$\nFalta um passo que nenhum programa pode fazer por você: remova a extensão em chrome://extensions.$\r$\n$\r$\nSem isso o ícone continua aparecendo e avisa “Ponte não conectada”. Se a extensão continuar carregada, use “Remover” na própria tela do chrome://extensions."
+  StrCpy $MARCA "desinstalacao concluida"
+  Call .marcar
+  ${IfNot} ${Silent}
+    MessageBox MB_ICONINFORMATION|MB_OK "BrOWSER removido deste computador.$\r$\n$\r$\nFalta um passo que nenhum programa pode fazer por você: remova a extensão em chrome://extensions.$\r$\n$\r$\nSem isso o ícone continua aparecendo e avisa “Ponte não conectada”. Se a extensão continuar carregada, use “Remover” na própria tela do chrome://extensions."
+  ${EndIf}
 SectionEnd
 
 ; ---------------------------------------------------------------------------------------
@@ -241,3 +275,17 @@ SectionEnd
 ; verdade e o INSTALADO.txt, que o instalador escreve em tempo de execucao e que o CI do Windows
 ; le conferindo palavra acentuada por palavra acentuada.
 ; ---------------------------------------------------------------------------------------
+
+; Uma linha por etapa num arquivo. Sem isso, um instalador que trava em /S não diz nada: o
+; primeiro sintoma é só a ausência de saída, e caçar a etapa exata no escuro é o que travou este
+; trabalho. /S não mostra a janela de detalhes, então o rastro precisa existir em disco.
+; `LogSet` resolveria, mas só existe em build de debug do NSIS, e o release compila com o normal.
+;
+; `Function .marcar` e não `Function marcar`: sem o ponto, o NSIS lê a função como sendo do
+; desinstalador e o build aborta. E a chamada é `Call .marcar`, não `Call :marcar` — os dois
+; pontos procuram um rótulo, e o texto não cabe como argumento com espaço, então vai por variável.
+Function .marcar
+  FileOpen $9 "$TEMP\instalar-${NOME}.log" a
+  FileWrite $9 "$MARCA$\r$\n"
+  FileClose $9
+FunctionEnd

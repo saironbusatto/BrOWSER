@@ -103,7 +103,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $p = Start-Process dist-instalador/BrOWSER-Setup-0.0.0.exe -ArgumentList '/S' -Wait -PassThru
+          Remove-Item "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
+          $p = Start-Process dist-instalador/BrOWSER-Setup-0.0.0.exe -ArgumentList '/S' -PassThru
+          # O instalador escreve uma linha por etapa. Um instalador que trava em /S não devolve
+          # nada, e sem este rastro a única pista seria "a etapa não terminou": foi assim que a
+          # primeira versão gastou três rodadas de CI sem dizer onde parava.
+          if (-not $p.WaitForExit(300000)) {
+            $p | Stop-Process -Force
+            '--- o instalador travou. Rastro de etapas:'
+            Get-Content "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
+            throw 'o instalador não terminou em 5 minutos'
+          }
+          '--- rastro de etapas do instalador:'
+          Get-Content "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { throw "o instalador saiu com $($p.ExitCode)" }
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi instalado' }
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\extensao\manifest.json")) { throw 'a extensão não foi instalada' }
