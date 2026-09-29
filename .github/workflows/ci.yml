@@ -59,6 +59,10 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item packages/bridge/scripts/setup.ps1, packages/bridge/scripts/uninstall.ps1, packages/bridge/scripts/instalar.cmd, design/icone.ico packages/bridge/dist/
+          # A extensão entra no pacote, igual entra no release. Sem esta cópia o instalador
+          # acharia que o pacote veio quebrado — que é o que aconteceu na primeira tentativa.
+          New-Item -ItemType Directory -Force -Path packages/bridge/dist/extensao | Out-Null
+          Copy-Item packages/extension/.output/chrome-mv3/* packages/bridge/dist/extensao/ -Recurse
       - name: Instalar (instalar.cmd -sim)
         if: runner.os == 'Windows'
         shell: cmd
