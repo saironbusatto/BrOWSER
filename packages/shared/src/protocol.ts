@@ -20,6 +20,11 @@ export type Comandos = {
   ler_campos: { args: Record<string, never>; result: { url: string; titulo: string; campos: Campo[] } };
   preencher: { args: { ref: number; valor: string }; result: { valor: string } };
   clicar: { args: { ref: number }; result: { ok: true } };
+  // Texto da página inteira. A IA só tinha os campos, e por isso recusava "resume esta página".
+  ler_pagina: {
+    args: { limite?: number };
+    result: { url: string; titulo: string; texto: string; truncado: boolean; caracteres: number };
+  };
   // Só para o runner do teste conferir o resultado; não é exposto no MCP.
   avaliar: { args: { expr: string }; result: unknown };
   // Dev: recarrega a extensão após um build (a ponte reinicia junto).

@@ -452,6 +452,43 @@ function criarMcp() {
       return texto(await enviar('clicar', { ref }));
     },
   );
+  // A ferramenta que faltava. Sem ela a IArespondia "não consigo ler a página" a pedido legítimo,
+  // porque só existia ler_campos: ela via os campos do formulário, não o texto. Recusar um
+  // pedido que dá para cumprir é a pior resposta que um agente pode dar.
+  s.registerTool(
+    'ler_pagina',
+    {
+      description:
+        'Lê o TEXTO da aba ativa: a página inteira de uma vez, sem precisar rolar. Use para entender a página, resumir, responder perguntas sobre o que está escrito, localizar um texto antes de clicar. Para preencher formulários use ler_campos. Campo de senha nunca tem o valor lido. Se o retorno disser que o texto foi cortado, peça o trecho que falta em vez de adivinhar.',
+      inputSchema: {
+        limite: z
+          .number()
+          .int()
+          .min(500)
+          .max(200_000)
+          .optional()
+          .describe('Máximo de caracteres a devolver (padrão 40000). Aumente só se o texto vier cortado.'),
+      },
+    },
+    async ({ limite }) => {
+      if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
+      const r = (await enviar('ler_pagina', limite ? { limite } : {}).catch((e) => ({
+        erro: `não consegui ler a página: ${String(e)}`,
+      }))) as { url: string; titulo: string; texto: string; truncado: boolean; caracteres: number; erro?: string };
+      if (r.erro) return texto(r);
+      return texto({
+        url: r.url,
+        titulo: r.titulo,
+        caracteres: r.caracteres,
+        truncado: r.truncado,
+        texto: r.texto,
+        aviso: r.truncado
+          ? 'O texto veio cortado. Se a resposta depender do que ficou de fora, chame ler_pagina de novo com um limite maior.'
+          : undefined,
+      });
+    },
+  );
+
   s.registerTool(
     'perguntar_ao_usuario',
     {

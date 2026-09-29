@@ -1,6 +1,7 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
 import { clicarDom, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
+import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
 import { configTeia, gerarScriptStatus, iniciarTeia, SCRIPT_PARAR_TEIA } from '../utils/teia';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
@@ -453,6 +454,10 @@ async function executar(p: Pedido): Promise<unknown> {
       const ref = (p.args as Comandos['clicar']['args']).ref;
       return ref >= REF_BASE_DOM ? naPaginaDom(ref, clicarDom, []) : clicar(ref);
     }
+    case 'ler_pagina': {
+      const a = p.args as Comandos['ler_pagina']['args'];
+      return lerPagina(a.limite);
+    }
     case 'avaliar':
       return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar':
@@ -557,6 +562,44 @@ function varrerDom(root: any, origemTopo: string) {
   };
   andar(root, false);
   return { internos, widgets };
+}
+
+/**
+ * Texto da página inteira, por código: o DOM, sem renderizar e sem rolar.
+ *
+ * O CDP é o caminho normal. O plano B (injetar na aba) existe pelo mesmo motivo do `ler_campos`:
+ * quando o chrome.debugger está bloqueado — política de empresa, extensão de segurança, navegador
+ * sem permissão — a leitura continua funcionando por `executeScript`.
+ */
+async function lerPagina(limite?: number): Promise<{ url: string; titulo: string; texto: string; truncado: boolean; caracteres: number }> {
+  const teto = typeof limite === 'number' && limite > 0 ? Math.min(limite, 200_000) : LIMITE_PADRAO;
+  const tabId = await abaAlvo();
+  const [aba] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+  const url = aba?.url ?? '';
+
+  if (!abasSemDebugger.has(tabId)) {
+    try {
+      // A função é serializada e roda dentro da página; por isso vai por string, e não como
+      // chamada direta.
+      const expr = `(${extrairTextoDaPagina.toString()})(${teto})`;
+      const r = await cdp('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+      if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? 'erro ao ler a página');
+      return { url, ...(r.result.value as { titulo: string; texto: string; truncado: boolean; caracteres: number }) };
+    } catch (e) {
+      if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
+      abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
+      await salvarRefs();
+    }
+  }
+
+  const [injetado] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: extrairTextoDaPagina,
+    args: [teto],
+  });
+  const r = injetado?.result as { titulo: string; texto: string; truncado: boolean; caracteres: number } | undefined;
+  if (!r) throw new Error('a página não devolveu texto (a aba pode ter mudado no meio do pedido)');
+  return { url, ...r };
 }
 
 async function lerCampos() {
