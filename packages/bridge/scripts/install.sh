@@ -15,7 +15,7 @@ set -euo pipefail
 
 AQUI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DESTINO="${XDG_DATA_HOME:-$HOME/.local/share}/BrOWSER"
-VERSAO="0.5.0"
+VERSAO="0.5.1"
 PRIVACIDADE="https://github.com/saironbusatto/BrOWSER/blob/main/docs/termos-e-privacidade.md"
 SIM=0
 ACAO=instalar

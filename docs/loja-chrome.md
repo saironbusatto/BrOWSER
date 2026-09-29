@@ -1,7 +1,7 @@
 # Listagem da Chrome Web Store — conteúdo pronto para colar
 
 Painel: https://chrome.google.com/webstore/devconsole
-Pacote: `BrOWSER-extensao.zip` (versão 0.5.0, ícone 128×128, arquivos na raiz do zip)
+Pacote: `BrOWSER-extensao.zip` (versão 0.5.1, ícone 128×128, arquivos na raiz do zip)
 Política de privacidade: https://saironbusatto.github.io/BrOWSER/privacidade.html
 
 > O campo `key` no manifesto preserva o ID `kofljccjbobcbcfnnolfgbobkckmiboe` entre atualizações.

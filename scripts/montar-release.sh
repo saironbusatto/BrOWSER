@@ -6,7 +6,7 @@
 #Descobrir o problema lá.
 set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
-VERSAO=${VERSAO:-0.5.0}
+VERSAO=${VERSAO:-0.5.1}
 SAIDA=${SAIDA:-"$RAIZ/Downloads-brOWSER"}
 SAIDA="$SAIDA/BrOWSER-$VERSAO"
 
