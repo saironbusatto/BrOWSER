@@ -10,7 +10,6 @@
 //
 // A lista é conveniência, não portão: um id fora dela é repassado ao CLI, que decide. Se a lista
 // estiver velha, o máximo que acontece é o modelo novo não aparecer no <select>.
-
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
