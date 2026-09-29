@@ -30,6 +30,8 @@ export function conector(id: string): Conector | undefined {
 }
 
 const RAIZ = 'https://www.googleapis.com/drive/v3';
+// Já vem com o wrapper `files(...)`: embrulhar de novo gera `files(files(...))`, que o Drive
+// rejeita com 400. É o valor cru do parâmetro `fields`.
 const CAMPOS = 'files(id,name,mimeType,size,modifiedTime)';
 
 // Documentos nativos do Google (Docs/Sheets/Slides) só saem pelo /export, que é outro endpoint e
@@ -167,7 +169,7 @@ export async function listarDrive(token: string, pastaId?: string): Promise<Arqu
   const r = await fetch(
     `${RAIZ}/files?${new URLSearchParams({
       q: pastaId ? `'${pastaId}' in parents and trashed = false` : 'trashed = false',
-      fields: `files(${CAMPOS})`,
+      fields: CAMPOS,
       orderBy: 'modifiedTime desc',
       pageSize: '50',
       supportsAllDrives: 'true',
