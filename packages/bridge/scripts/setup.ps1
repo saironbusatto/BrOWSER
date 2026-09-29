@@ -111,10 +111,10 @@ $resumo = Join-Path $destino 'INSTALADO.txt'
   "BrOWSER $Versao instalado."
   "Instalado em: $destino"
   ''
-  'Falta um passo manual, porque o Chrome nao deixa um programa instalar extensao sem a sua confirmacao:'
+  'Falta um passo manual, porque o Chrome não deixa um programa instale a extensão sem a sua confirmação:'
   '  1. Feche e abra de novo o navegador.'
   '  2. Em chrome://extensions, ative Modo do desenvolvedor.'
-  '  3. Clique em Carregar sem compactacao e escolha a pasta:'
+  '  3. Clique em Carregar sem compactação e escolha a pasta:'
   "     $extensao"
   ''
   'Para conferir o que falta em qualquer momento:'
