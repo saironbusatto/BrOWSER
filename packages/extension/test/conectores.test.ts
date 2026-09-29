@@ -42,8 +42,18 @@ describe('listarDrive: o que entra na lista de anexos', () => {
     expect(lista[0]!.tamanho).toBe(0);
   });
 
-  it('erro do Drive vira mensagem, não json quebrado', async () => {
-    globalThis.fetch = (() => Promise.resolve(new Response('', { status: 403 }))) as any;
+  it('erro do Drive traz a mensagem do Google, não só o status', async () => {
+    // A doc diz: em 400 o corpo traz "an error message stating what's wrong". Sem ler o corpo,
+    // fields malformado e token expirado viram o mesmo "respondeu 400" e não há como diagnosticar.
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: { code: 400, message: 'Invalid field selection canAddChildren.' } }), { status: 400 }),
+      )) as any;
+    await expect(listarDrive(token)).rejects.toThrow('Invalid field selection canAddChildren.');
+  });
+
+  it('erro sem corpo JSON não derruba a mensagem', async () => {
+    globalThis.fetch = (() => Promise.resolve(new Response('nao e json', { status: 403 }))) as any;
     await expect(listarDrive(token)).rejects.toThrow('403');
   });
 
