@@ -174,6 +174,18 @@ export function relatorio(d: Diagnostico): { linhas: string[]; saida: 0 | 1 } {
       linhas.push(aviso(`${NOMES[ia.ia]}: instalada, ainda não conectada${ia.detalhe ? ` (${ia.detalhe})` : ''}`));
     }
   }
+  // O agy é a primeira opção e a única com login OAuth. Se a pessoa está com codex ou claude
+  // e sem o agy, o diagnóstico say "Tudo pronto" — o que é verdade — mas ela fica sem saber que
+  // está usando o plano secundário. Dizer em qual ordem as ferramentas são usadas é o que o
+  // --doctor existe para esclarecer.
+  const temPrincipal = d.ias.some((i) => i.ia === 'agy' && i.conectado);
+  const temSecundaria = d.ias.some((i) => i.ia !== 'agy' && i.conectado);
+  if (temSecundaria && !temPrincipal) {
+    linhas.push('');
+    linhas.push(aviso('Você está usando uma alternativa. O plano principal do BrOWSER é o Google AI Pro (agy),'));
+    linhas.push(aviso('instalador oficial do Google: https://antigravity.google/cli/install.sh'));
+  }
+
   if (!d.temComoConectar) {
     linhas.push('');
     linhas.push(erro('nenhuma ferramenta de IA instalada — sem ela o BrOWSER não preenche nada'));

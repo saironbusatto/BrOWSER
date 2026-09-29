@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, SiteBlueprint } from '@browser/shared';
-import { lerComPrazo } from '../src/assinaturas';
+import { CATALOGO, lerComPrazo, statusConectado } from '../src/assinaturas';
 import { comando, instrucoes, type Mcp, respostaFinal } from '../src/ias';
 
 const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
@@ -193,4 +193,50 @@ describe('lerComPrazo: uma CLI travada não pode travar o diagnóstico', () => {
     expect(r.expirou).toBe(false);
     expect(r.saida).toContain('loggedIn');
   }, 20_000);
+});
+
+describe('statusConectado: a tela não pode mentir sobre o que está conectado', () => {
+  // Saídas reais, copiadas das ferramentas nesta máquina. O defeito era a ponte afirmar
+  // "conectado" sem olhar a saída: o agy deslogado diz "Please sign in" e sai com código 0, e o
+  // codex nem recebia um comando válido — `login --status` não existe, e ele sai com 0 mesmo
+  // errando o argumento. Nos dois casos o resultado era "conectado" para sempre.
+  it('agy: "Please sign in" é NÃO conectado, mesmo saindo com código 0', () => {
+    expect(statusConectado('agy', 'Please sign in to continue.')).toEqual({ conectado: false });
+    expect(statusConectado('agy', 'Please sign in').conectado).toBe(false);
+  });
+
+  it('agy: a lista de modelos é conectada', () => {
+    const saida = 'Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)';
+    expect(statusConectado('agy', saida).conectado).toBe(true);
+  });
+
+  it('codex: "Logged in using ChatGPT" é conectado; erro de argumento NÃO é', () => {
+    expect(statusConectado('codex', 'Logged in using ChatGPT').conectado).toBe(true);
+    // A saída que `codex login --status` devolve, e que saía com código 0:
+    const errado = "error: unexpected argument '--status' found\nUsage: codex login [OPTIONS] [COMMAND]";
+    expect(statusConectado('codex', errado).conectado).toBe(false);
+  });
+
+  it('claude: o JSON que o claude devolve', () => {
+    expect(statusConectado('claude', '{"loggedIn": true}').conectado).toBe(true);
+    expect(statusConectado('claude', '{"loggedIn": false}').conectado).toBe(false);
+  });
+
+  // O invariante que impede a mentira voltar: toda ferramenta adicionada precisa ter como
+  // conferir o próprio status. Sem isso, alguém cadastra uma IA nova e ela aparece como
+  // conectada desde o primeiro dia, sem nunca ter sido perguntada.
+  it('toda ferramenta do catálogo sabe conferir o próprio status', () => {
+    for (const [ia, entrada] of Object.entries(CATALOGO)) {
+      expect(`${ia}:${entrada.lerStatus ? 'ok' : 'SEM PARSER'}`).toBe(`${ia}:ok`);
+    }
+  });
+
+  // E o comando de status precisa existir de verdade. `codex login --status` não existe e sai
+  // com 0, o que passava por conectado.
+  it('o comando de status é um subcomando que existe, não uma flag inventada', () => {
+    for (const [ia, entrada] of Object.entries(CATALOGO)) {
+      const status = entrada.status.join(' ');
+      expect(`${ia}: ${status}`).not.toMatch(/--(status|logged|auth)$/);
+    }
+  });
 });

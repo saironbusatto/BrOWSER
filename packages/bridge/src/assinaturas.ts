@@ -41,7 +41,8 @@ type Entrada = {
   logout?: string[];
 };
 
-const CATALOGO: Record<Ia, Entrada> = {
+// Exportado para o teste garantir o invariante de que toda entrada tem `lerStatus`.
+export const CATALOGO: Record<Ia, Entrada> = {
   agy: {
     nome: 'Google AI Pro',
     status: ['agy', 'models'],
@@ -54,6 +55,11 @@ const CATALOGO: Record<Ia, Entrada> = {
       expiraEmSegundos: 60,
     }),
     pedeCodigo: true,
+    // Deslogado, `agy models` imprime "Please sign in" e sai com código 0 — igualzinho quando
+    // está logado. Só o texto separa os dois, então é o texto que decide. Sem este parser a ponte
+    // devolvia "conectado" sempre que o binário existia, e o painel mostrava Gemini conectado
+    // sem nunca ter perguntado ao agy.
+    lerStatus: (t) => !/please sign in|not signed in|sign in to continue/i.test(t),
     // Com stdin pipeado o agy recusa ("Run 'agy' to log in, then retry"): ele detecta que está
     // sendo dirigido por script. E sem pty ele morre tentando abrir /dev/tty. viaPty resolve os dois.
     viaPty: true,
@@ -67,6 +73,10 @@ const CATALOGO: Record<Ia, Entrada> = {
     status: ['codex', 'login', 'status'],
     login: ['codex', 'login', '--device-auth'],
     logout: ['codex', 'logout'],
+    // `codex login status` imprime "Logged in using ChatGPT" quando há sessão. O --status com
+    // traço não existe, e o codex devolve código 0 mesmo errando o argumento — o que dava
+    // "conectado" para sempre, sem nunca perguntar nada ao codex.
+    lerStatus: (t) => /logged in|already logged in/i.test(t),
     extrair: (t) => ({
       url: t.match(/https:\/\/auth\.openai\.com\S*/)?.[0],
       // O lado direito tem 4 ou 5 chars nos códigos reais (ex.: 1R1Y-NFXEE): 4 exatos erra.
@@ -140,18 +150,29 @@ export async function lerComPrazo(
   return { saida, codigo: codigo ?? -1, expirou };
 }
 
+/**
+ * Julga se a saída da ferramenta significa "conectado".
+ *
+ * Extraído de `estaLogado` para poder ser testado com saída real: o defeito que corrigimos foi
+ * justamente uma regra que ninguém podia exercitar, porque estava escondida dentro de uma função
+ * que executa processo.
+ */
+export function statusConectado(ia: Ia, texto: string): { conectado: boolean; detalhe?: string } {
+  const parser = CATALOGO[ia].lerStatus;
+  if (!parser) return { conectado: false, detalhe: 'status não verificado: a ferramenta não expõe como conferir' };
+  try {
+    return { conectado: parser(texto.replace(ANSI, '')) };
+  } catch {
+    return { conectado: false, detalhe: 'status ilegível' };
+  }
+}
+
 async function estaLogado(ia: Ia): Promise<{ conectado: boolean; detalhe?: string }> {
   const proc = Bun.spawn(comandoExecutavel(CATALOGO[ia].status), { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
   const { saida, codigo, expirou } = await lerComPrazo(proc, TIMEOUT_STATUS_MS);
   if (expirou) return { conectado: false, detalhe: 'demorou para responder' };
   if (codigo !== 0) return { conectado: false };
-  const parser = CATALOGO[ia].lerStatus;
-  if (!parser) return { conectado: true };
-  try {
-    return { conectado: parser(saida.replace(ANSI, '')) };
-  } catch {
-    return { conectado: false, detalhe: 'status ilegível' };
-  }
+  return statusConectado(ia, saida);
 }
 
 export async function obterStatusAssinaturas(preferida?: Ia): Promise<ItemAssinatura[]> {
