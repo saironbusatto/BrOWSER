@@ -10,3 +10,6 @@ dist/
 imgs/Gemini_Generated_Image_*
 dist-site/
 pacotes/
+
+# Documento de handoff de teste: é trabalho local, não entra no repositório.
+HANDOFF-*.md
