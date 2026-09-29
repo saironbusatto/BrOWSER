@@ -165,6 +165,22 @@ export async function desconectarGoogle(): Promise<void> {
   await chrome.storage.local.remove(CHAVE_REFRESH);
 }
 
+/**
+ * Erro do Drive, com a mensagem que o Google mandou.
+ *
+ * A doc é explícita: em 400 o corpo traz "an error message stating what's wrong".
+ * Sem ler o corpo, um `fields` malformado e um token expirado viram o mesmo
+ * "Drive respondeu 400" — e ai não há como diagnosticar sem chutar o parâmetro.
+ */
+async function erroDrive(r: Response, acao: string): Promise<Error> {
+  let detalhe = '';
+  try {
+    const corpo = (await r.json()) as { error?: { message?: string } };
+    detalhe = corpo.error?.message ?? '';
+  } catch {}
+  return new Error(`Drive ${acao} (${r.status})${detalhe ? `: ${detalhe}` : ''}`);
+}
+
 export async function listarDrive(token: string, pastaId?: string): Promise<ArquivoDrive[]> {
   const r = await fetch(
     `${RAIZ}/files?${new URLSearchParams({
@@ -177,7 +193,7 @@ export async function listarDrive(token: string, pastaId?: string): Promise<Arqu
     })}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!r.ok) throw new Error(`Drive respondeu ${r.status}.`);
+  if (!r.ok) throw await erroDrive(r, 'não listou');
   const { files = [] } = (await r.json()) as { files: Array<RawArquivo> };
   return files
     .filter((f) => f.mimeType !== PASTA && !NATIVOS.test(f.mimeType))
@@ -197,7 +213,7 @@ export async function baixarDrive(token: string, arquivo: ArquivoDrive): Promise
   const r = await fetch(`${RAIZ}/files/${encodeURIComponent(arquivo.id)}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!r.ok) throw new Error(`Drive respondeu ${r.status} ao baixar ${arquivo.nome}.`);
+  if (!r.ok) throw await erroDrive(r, `não baixou ${arquivo.nome}`);
   return new File([await r.blob()], arquivo.nome, { type: arquivo.mimeType });
 }
 
