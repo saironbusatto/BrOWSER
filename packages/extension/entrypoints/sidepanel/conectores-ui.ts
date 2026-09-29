@@ -93,7 +93,7 @@ async function alternar(sw: HTMLButtonElement, status: HTMLElement) {
   sw.setAttribute('aria-busy', 'true');
   try {
     if (conectado) {
-      await desconectarGoogle(tokenAtual);
+      await desconectarGoogle();
       pintar(sw, status, false);
       deps.avisar('Google Drive desconectado.');
     } else {
