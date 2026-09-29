@@ -52,7 +52,13 @@ export function blocoConectores(): HTMLElement {
     <div class="conectores-titulo">Conectores do Google</div>
     <div class="conector-linha">
       <div class="conector-icone" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8.47 2.88 1.57 15.31a1.34 1.34 0 0 0 1.16 2.01h16.54a1.34 1.34 0 0 0 1.16-2.01L15.53 2.88a1.34 1.34 0 0 0-2.32 0L12.08 5.5H7.79L8.47 2.88Zm-2.4 5.06H3.2l6.13-10.98 2.87 5.15v5.83H6.07Zm5.6 5.83V7.11L8.8 1.98l3.73 6.67v5.12h-.86Z"/></svg>
+        <svg class="icone-drive" viewBox="0 0 87.3 78" aria-hidden="true">
+<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+<path d="M43.65 25 13.75 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.45z" fill="#00ac47"/>
+<path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L56.75 46.55 43.65 69.2z" fill="#ea4335"/>
+<path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+<path d="M59.8 53.3 56.75 46.55 43.65 69.2 30.55 46.55 27.45 53.3l-13.7 23.7c1.35.8 2.9 1.2 4.5 1.2h50.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+</svg>
       </div>
       <div class="conector-info">
         <span class="conector-nome">${CONECTORES[0]!.nome}</span>
@@ -126,7 +132,13 @@ export async function iniciarConectores(d: Deps): Promise<void> {
   btn.className = 'attach-btn drive-btn';
   btn.title = 'Anexar do Google Drive';
   btn.setAttribute('aria-label', 'Anexar arquivo do Google Drive');
-  btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.47 2.88 1.57 15.31a1.34 1.34 0 0 0 1.16 2.01h16.54a1.34 1.34 0 0 0 1.16-2.01L15.53 2.88a1.34 1.34 0 0 0-2.32 0L12.08 5.5H7.79L8.47 2.88Zm-2.4 5.06H3.2l6.13-10.98 2.87 5.15v5.83H6.07Zm5.6 5.83V7.11L8.8 1.98l3.73 6.67v5.12h-.86Z"/></svg>`;
+  btn.innerHTML = `<svg class="icone-drive" viewBox="0 0 87.3 78" aria-hidden="true">
+<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+<path d="M43.65 25 13.75 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.45z" fill="#00ac47"/>
+<path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L56.75 46.55 43.65 69.2z" fill="#ea4335"/>
+<path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+<path d="M59.8 53.3 56.75 46.55 43.65 69.2 30.55 46.55 27.45 53.3l-13.7 23.7c1.35.8 2.9 1.2 4.5 1.2h50.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+</svg>`;
   btn.addEventListener('click', () => void abrirSeletor());
   acoes.prepend(btn);
 }
@@ -138,7 +150,7 @@ type Trilho = { id: string; nome: string }[];
 
 async function abrirSeletor() {
   const fundo = document.createElement('div');
-  fundo.className = 'sheet-modal-backdrop';
+  fundo.className = 'sheet-modal-backdrop drive-folha';
   fundo.setAttribute('role', 'dialog');
   fundo.setAttribute('aria-modal', 'true');
   fundo.setAttribute('aria-label', 'Arquivos do Google Drive');
