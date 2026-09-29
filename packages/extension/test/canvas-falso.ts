@@ -207,8 +207,15 @@ export function mundo(largura = 1920, altura = 1080): Mundo {
   };
 }
 
+const performanceOriginal = globalThis.performance;
+
 export function limparMundo() {
-  for (const k of ['window', 'document', 'performance']) delete (globalThis as Record<string, unknown>)[k];
+  for (const k of ['window', 'document']) delete (globalThis as Record<string, unknown>)[k];
+  if (performanceOriginal !== undefined) {
+    (globalThis as Record<string, unknown>).performance = performanceOriginal;
+  } else {
+    delete (globalThis as Record<string, unknown>).performance;
+  }
 }
 
 export { Ctx2D, El };
