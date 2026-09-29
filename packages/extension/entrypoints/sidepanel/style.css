@@ -1739,3 +1739,9 @@ textarea#texto::placeholder {
   .drive-item { transition: none; }
   .drive-item:hover:not(:disabled) { transform: none; }
 }
+
+/* Material Symbols são desenhados no viewBox 0 -960 960 960 e vêm com height/width fixos no
+   atributo. O flex do .drive-item-icone manda respeitar o tamanho do pai, senão os 16px do
+   atributo vencem e o glifo fica miúdo dentro de um slot de 34px. */
+.drive-item-icone .ms { width: 18px; height: 18px; fill: currentColor; }
+.drive-item:hover:not(:disabled) .drive-item-icone .ms { color: var(--accent); }
