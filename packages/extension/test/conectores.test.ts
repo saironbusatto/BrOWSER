@@ -1,0 +1,73 @@
+import { describe, expect, it } from 'bun:test';
+import { CONECTORES, formatarTamanho, listarDrive } from '../utils/conectores';
+
+// O chrome.runtime só existe dentro da extensão; o módulo chama isso no import.
+(globalThis as any).chrome = { runtime: { getManifest: () => ({}) } };
+
+describe('escopos dos conectores', () => {
+  it('Drive é só leitura — nenhum scope de escrita', () => {
+    // ponytail: se algum dia der escrita, o teste quebra na revisão. É a trava de segurança
+    // mais barata que existe: um escopo que o BrOWSER não precisa não entra.
+    for (const c of CONECTORES) {
+      expect(c.escopo).toMatch(/\.readonly$/);
+      expect(c.escopo).toContain('googleapis.com/auth/');
+    }
+  });
+});
+
+describe('listarDrive: o que entra na lista de anexos', () => {
+  const token = 'fake-token';
+  const resposta = (files: unknown[]) =>
+    Promise.resolve(
+      new Response(JSON.stringify({ files }), { status: 200 }),
+    );
+
+  it('esconde pastas e documentos nativos do Google (só saem por /export)', async () => {
+    globalThis.fetch = (() =>
+      resposta([
+        { id: 'a', name: 'nota.pdf', mimeType: 'application/pdf', size: '1024', modifiedTime: '2026-01-01T00:00:00Z' },
+        { id: 'b', name: 'Pasta', mimeType: 'application/vnd.google-apps.folder' },
+        { id: 'c', name: 'Planilha', mimeType: 'application/vnd.google-apps.spreadsheet' },
+        { id: 'd', name: 'dados.csv', mimeType: 'text/csv', size: '10' },
+      ])) as any;
+
+    const lista = await listarDrive(token);
+    expect(lista.map((f) => f.nome)).toEqual(['nota.pdf', 'dados.csv']);
+    expect(lista[0]!.tamanho).toBe(1024);
+  });
+
+  it('sem size no Drive (Google Docs exportado) não vira NaN', async () => {
+    globalThis.fetch = (() => resposta([{ id: 'a', name: 'x.bin', mimeType: 'application/octet-stream' }])) as any;
+    const lista = await listarDrive(token);
+    expect(lista[0]!.tamanho).toBe(0);
+  });
+
+  it('erro do Drive vira mensagem, não json quebrado', async () => {
+    globalThis.fetch = (() => Promise.resolve(new Response('', { status: 403 }))) as any;
+    await expect(listarDrive(token)).rejects.toThrow('403');
+  });
+
+  it('manda o bearer e só o que a lista precisa', async () => {
+    let url = '';
+    let headers: Record<string, string> = {};
+    globalThis.fetch = ((u: string, o: any) => {
+      url = u;
+      headers = o.headers;
+      return resposta([]);
+    }) as any;
+
+    await listarDrive(token);
+    expect(headers.Authorization).toBe('Bearer fake-token');
+    expect(url).toContain('trashed+%3D+false');
+    expect(url).toContain('orderBy=modifiedTime+desc');
+  });
+});
+
+describe('formatarTamanho', () => {
+  it('bytes, KB, MB e o zero que o Drive devolve para arquivo sem size', () => {
+    expect(formatarTamanho(0)).toBe('—');
+    expect(formatarTamanho(512)).toBe('512 B');
+    expect(formatarTamanho(2048)).toBe('2.0 KB');
+    expect(formatarTamanho(5 * 1024 * 1024)).toBe('5.0 MB');
+  });
+});

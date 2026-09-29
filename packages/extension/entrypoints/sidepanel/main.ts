@@ -3,8 +3,9 @@ import { iniciarCampoPontos } from '../../utils/campo-pontos';
 import { markdownSeguro } from '../../utils/markdown';
 import { bandejaHtml, classificarArquivos, ehArquivoTexto, mensagemAnexos } from './anexos';
 import { botaoVisivel, type EstadoBotao } from './botao';
+import { blocoConectores, iniciarConectores } from './conectores-ui';
 import { escapeHtml, urlSegura } from './escape';
-import { agenteDaMensagem, type Etapa, inferirEtapa } from './etapa';
+import { type Etapa, inferirEtapa } from './etapa';
 import { iconeMarca } from './icones';
 import {
   camposHtml,
@@ -33,6 +34,7 @@ const attachmentTray = document.getElementById('attachment-tray')!;
 const fileInput = document.getElementById('file-input') as HTMLInputElement;
 const attachBtn = document.getElementById('attach-btn') as HTMLButtonElement;
 const dropOverlay = document.getElementById('drop-overlay')!;
+const trabalhoBarra = document.getElementById('trabalho-barra')!;
 
 // ── Subscription Modal Refs (Apple Design) ──
 const btnSubscriptions = document.getElementById('btn-subscriptions')!;
@@ -189,19 +191,6 @@ function appendUserMessage(msg: string, anexos?: ArquivoAnexo[]) {
   scrollToEnd();
 }
 
-// Onda de quadrados: a mesma ideia do indicador "a IA está trabalhando" que a gente reconhece de
-// qualquer lugar. Cada quadrado tem um atraso de fase, então o pico de brilho atravessa a fileira
-// e volta — dá para ver de longe que a IA está viva sem precisar ler texto.
-// ponytail: 5 quadrados + 2 pontas. Mais que isso vira listra, menos que isso não dá pra ler o
-// deslocamento. O --i é o que faz a onda; sem ele os 5 pulsam juntos e vira piscar.
-const ONDA = 5;
-const ondaHtml = () =>
-  `<div class="onda" aria-hidden="true">` +
-  `<i class="onda-ponta"></i>` +
-  Array.from({ length: ONDA }, (_, i) => `<i style="--i:${i}"></i>`).join('') +
-  `<i class="onda-ponta"></i>` +
-  `</div>`;
-
 function appendAssistantMessage(): HTMLElement {
   const row = document.createElement('div');
   row.className = 'message-row assistant';
@@ -234,18 +223,14 @@ function appendAssistantMessage(): HTMLElement {
             <span class="step-label">Conferindo</span>
           </div>
         </div>
-        <div class="live-status">${ondaHtml()}<div class="live-status-text">Iniciando orquestração…</div></div>
-
-        <div class="multi-agent-grid">
-          <div class="agent-row">
-            <span class="agent-badge badge-scout">🧭 Navegador</span>
-            <span class="agent-msg scout-msg">Inspecionando aba…</span>
-          </div>
-          <div class="agent-row">
-            <span class="agent-badge badge-synth">⚡ Dados</span>
-            <span class="agent-msg synth-msg">Pronto</span>
-          </div>
-        </div>
+        <button type="button" class="pensar" aria-expanded="false">
+          <span class="pensar-titulo">Pensando</span>
+          <span class="pensar-atual">Iniciando orquestração…</span>
+          <svg class="pensar-seta" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M3.65 5.84a.75.75 0 0 1 1.09-1.02l3.26 3.48a.75.75 0 0 1 0 1l-3.26 3.48a.75.75 0 0 1-1.09-1.02L6.14 8.5 3.65 5.84Z"/>
+          </svg>
+        </button>
+        <ol class="pensar-log" hidden></ol>
       </div>
 
       <div class="markdown-content"></div>
@@ -256,12 +241,24 @@ function appendAssistantMessage(): HTMLElement {
   return row.querySelector('.assistant-card')!;
 }
 
+// Abrir/fechar o log de pensamento. Delegated porque o card é recriado a cada pergunta, então não
+// dá pra ligar o listener uma vez só no load.
+chatStream.addEventListener('click', (ev) => {
+  const toggle = (ev.target as HTMLElement).closest('.pensar');
+  if (!toggle) return;
+  const log = toggle.nextElementSibling as HTMLElement | null;
+  if (!log) return;
+  const aberto = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.setAttribute('aria-expanded', String(!aberto));
+  log.hidden = aberto;
+  if (!aberto) scrollToEnd();
+});
+
 function updateStepper(card: HTMLElement, etapa: Etapa, textoStatus: string, agente?: PapelAgente) {
   const steps = card.querySelectorAll<HTMLElement>('.step');
   const lines = card.querySelectorAll<HTMLElement>('.step-line');
-  const statusEl = card.querySelector<HTMLElement>('.live-status-text');
-  const scoutMsg = card.querySelector<HTMLElement>('.scout-msg');
-  const synthMsg = card.querySelector<HTMLElement>('.synth-msg');
+  const atualEl = card.querySelector<HTMLElement>('.pensar-atual');
+  const logEl = card.querySelector<HTMLElement>('.pensar-log');
 
   steps.forEach((el, i) => {
     el.classList.toggle('ativo', i === etapa);
@@ -271,24 +268,19 @@ function updateStepper(card: HTMLElement, etapa: Etapa, textoStatus: string, age
     el.classList.toggle('feito', i < etapa);
   });
 
-  if (statusEl && textoStatus) {
-    statusEl.textContent = textoStatus;
-  }
+  if (!textoStatus) return;
+  if (atualEl) atualEl.textContent = textoStatus;
 
-  // Quem fala é o agente: o scout cuida da leitura da página, o synthesizer dos anexos/dados.
-  // Sem papel definido, o texto vai para os dois (antes ele ia só para o scout).
-  switch (agenteDaMensagem(agente)) {
-    case 'scout':
-      if (scoutMsg) scoutMsg.textContent = textoStatus;
-      break;
-    case 'synthesizer':
-      if (synthMsg) synthMsg.textContent = textoStatus;
-      break;
-    case 'ambos':
-      if (scoutMsg) scoutMsg.textContent = textoStatus;
-      if (synthMsg) synthMsg.textContent = textoStatus;
-      break;
-  }
+  // O log é a memória do card: cada status vira uma linha, na ordem. Sem isso o card só mostra o
+  // último pensamento e a pessoa não tem como saber o que a IA já fez — que é exatamente o
+  // interesse que faz ela querer abrir.
+  if (!logEl) return;
+  const ultima = logEl.lastElementChild;
+  if (ultima?.textContent === textoStatus) return; // status repetido não polui o log
+  const li = document.createElement('li');
+  li.textContent = textoStatus;
+  if (agente) li.dataset.agente = agente;
+  logEl.appendChild(li);
 }
 
 // Estado do botão enviar/parar. A regra em si está em botao.ts (testada); aqui é só o reflexo
@@ -311,6 +303,9 @@ function setEstadoBotao(estado: EstadoBotao) {
 function setBusy(busy: boolean) {
   texto.disabled = busy;
   attachBtn.disabled = busy;
+  // A barra mora no footer, mas o busy é decidedor do card — por isso o mesmo setBusy serve pros
+  // dois. Se algum dia ela voltar pro card, é daqui que sai.
+  trabalhoBarra.hidden = !busy;
   if (busy) setEstadoBotao({ tipo: 'rodando' });
   else if (estadoBotao.tipo === 'erro') setEstadoBotao({ tipo: 'ocioso' });
   else setEstadoBotao({ tipo: 'ocioso' });
@@ -424,7 +419,7 @@ function renderQuestionCard(e: Extract<Evento, { tipo: 'pergunta' }>) {
     showToast('Informações enviadas! Continuando preenchimento…');
 
     if (cardAtivo) {
-      const statusEl = cardAtivo.querySelector('.live-status-text');
+      const statusEl = cardAtivo.querySelector('.pensar-atual');
       if (statusEl) statusEl.textContent = 'Continuando preenchimento com seus dados…';
     }
   }
@@ -814,10 +809,35 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
           <div class="plan-status" data-conectado="${isConnected ? 'sim' : 'nao'}">
             ${escapeHtml(pendente ? 'Conectando…' : isConnected ? 'Conectado' : plano.detalhe || 'Não conectado')}
           </div>
+          <input
+            type="text"
+            class="plan-model"
+            list="modelos-${plano.ia}"
+            placeholder="Modelo (padrão do CLI)"
+            aria-label="Modelo do ${escapeHtml(plano.nome)}"
+            value="${escapeHtml(plano.modelo ?? '')}"
+            ${isConnected ? '' : 'disabled'}
+          />
+          <datalist id="modelos-${plano.ia}">
+            ${(plano.modelos ?? []).map((m) => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.nome)}</option>`).join('')}
+          </datalist>
         </div>
       </div>
       <div class="plan-action-container"></div>
     `;
+
+    // input+datalist em vez de <select>: dá o dropdown com os modelos DESTA ia e aceita texto
+    // livre no mesmo controle. A lista envelhece (o codex não tem como se listar), e com <select>
+    // um id fora da lista seria impossível de escolher.
+    const modelInput = card.querySelector<HTMLInputElement>('.plan-model')!;
+    const enviarModelo = () => {
+      const modelo = modelInput.value.trim();
+      if (modelo === (plano.modelo ?? '')) return;
+      chrome.runtime.sendMessage({ tipo: 'definir_modelo', ia: plano.ia, modelo }).catch(() => {});
+      showToast(`Modelo do ${plano.nome}: ${modelo || 'padrão do CLI'}.`);
+    };
+    modelInput.addEventListener('change', enviarModelo);
+    modelInput.addEventListener('blur', enviarModelo);
 
     const actionContainer = card.querySelector('.plan-action-container')!;
     // Switch, não botão: "usar este plano" é um estado, não uma ação pontual (toggles.md).
@@ -844,8 +864,16 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
     });
     actionContainer.appendChild(sw);
     plansContainer.appendChild(card);
+    // Conectores do Google moram debaixo do card do Google, não no fim da lista.
+    if (plano.ia === 'agy') plansContainer.appendChild(blocoConectores());
   }
 }
+
+// O botão "anexar do Drive" só nasce se já houver token: sem client_id ou sem login, some.
+iniciarConectores({
+  aoAnexar: (arquivos) => void processarArquivos(arquivos),
+  avisar: (mensagem, erro) => showToast(mensagem, erro ? 'error' : 'success'),
+});
 
 // Consulta status inicial das assinaturas
 chrome.runtime.sendMessage({ tipo: 'consultar_assinaturas' }).catch(() => {});
