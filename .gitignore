@@ -13,3 +13,6 @@ pacotes/
 
 # Documento de handoff de teste: é trabalho local, não entra no repositório.
 HANDOFF-*.md
+
+# Handoffs entre sessoes: nota de trabalho, nao documentacao do produto.
+docs/handoff-*.md

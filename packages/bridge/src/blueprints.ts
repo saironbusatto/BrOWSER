@@ -307,8 +307,20 @@ export function neutralizarParaPrompt(texto: string): string {
     .slice(0, MAX_ROTULO_BLUEPRINT);
 }
 
+// Papéis que o mapa precisa nomear. `link` ficou de fora de propósito: no Spotify são 237 de 596
+// linhas (40%) e no AliExpress 76 de 92 (83%), e nenhum deles é preenchível — `preencher` nunca
+// os usa. Botão e item de menu continuam, porque `clicar` é como a IA navega. Links a IA lê ao
+// vivo em ler_campos, que é a fonte da verdade de qualquer forma.
+const LINK = 'link';
+const ORCAMENTO_CAMPOS = 6_000; // folga dentro de AGY_MAX_STDIN (20k), contando o resto do prompt
+
 /**
  * Formata um blueprint em Markdown para ser injetado nas instruções da IA.
+ *
+ * O mapa é cortado por orçamento, não por site: o Spotify sozinho dava 25k caracteres e estourava
+ * o AGY_MAX_STDIN, o que jogava o pedido inteiro num arquivo e custava uma tool call só para ler o
+ * que já tinha vindo no prompt. Cortar por orçamento é o que resolve sem precisar saber, antes,
+ * quantos campos cada site tem.
  */
 export function formatarBlueprintParaIa(blueprint: SiteBlueprint): string {
   let md = `\n---\n### 🗺️ MAPA DO SITE CONHECIDO (SITE BLUEPRINT)\n`;
@@ -324,12 +336,38 @@ export function formatarBlueprintParaIa(blueprint: SiteBlueprint): string {
     }
   }
 
-  md += `\n**Campos estruturados na página:**\n`;
-  for (const c of blueprint.campos) {
+  const linha = (c: CampoBlueprint) => {
     const obr = c.obrigatorio ? ' *(obrigatório)*' : '';
     const tipo = c.tipoEsperado ? ` [tipo: ${neutralizarParaPrompt(c.tipoEsperado)}]` : '';
-    md += `- **${neutralizarParaPrompt(c.rotulo)}** (${neutralizarParaPrompt(c.papel)})${tipo}${obr}\n`;
+    return `- **${neutralizarParaPrompt(c.rotulo)}** (${neutralizarParaPrompt(c.papel)})${tipo}${obr}\n`;
+  };
+  // Prioridade: preenchível > obrigatório > o resto. O que sobra é o que a IA consegue usar.
+  const ordenados = [...blueprint.campos].sort((a, b) => rank(a) - rank(b));
+  const cabem: string[] = [];
+  const cortados: string[] = [];
+  let gasto = 0;
+  for (const c of ordenados) {
+    const l = linha(c);
+    if (gasto + l.length > ORCAMENTO_CAMPOS) {
+      cortados.push(c.rotulo);
+      continue;
+    }
+    gasto += l.length;
+    cabem.push(l);
+  }
+
+  md += `\n**Campos estruturados na página:**\n`;
+  md += cabem.join('');
+  if (cortados.length > 0) {
+    // Diz o que faltou em vez de truncar calado: mapa incompleto sem aviso é pior que mapa grande,
+    // porque a IA passa a achar que o campo não existe.
+    md += `- _e mais ${cortados.length} campos não listados (links e duplicados) — use ler_campos_\n`;
   }
   md += `\n*Dica para o BrOWSER:* Use estes campos e gatilhos para guiar a navegação rapidamente.\n---\n`;
   return md;
+}
+
+function rank(c: CampoBlueprint): number {
+  if (c.papel === LINK) return 2;
+  return c.obrigatorio ? 0 : 1;
 }
