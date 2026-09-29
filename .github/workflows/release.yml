@@ -101,11 +101,17 @@ jobs:
           name: bridge-win-${{ github.ref_name }}
           path: pacotes/windows
 
-      # Condicional de propósito: hoje o certificado não existe e o release precisa sair assim
-      # mesmo. Quando o pedido for aprovado é só gravar a SIGNPATH_API_TOKEN no repositório.
+      # Condicional de propósito: hoje o certificado não existe e o release precisa sair
+      # mesmo. Quando o pedido for aprovado, gravar SIGNPATH_ORG_ID e SIGNPATH_PROJECT_SLUG
+      # como variáveis e a SIGNPATH_API_TOKEN como segredo.
       - name: Assinar com SignPath
         id: assinar
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        # O guarda é uma variável do repositório, não o segredo: o GitHub não compila um
+        # workflow que cita `secrets.X` dentro de `if:` enquanto esse segredo não existe
+        # no repositório — e é justamente o caso de hoje, em que o certificado ainda não
+        # foi aprovado e o release precisa sair do mesmo jeito. Com a variável setada, o
+        # passo roda e usa o segredo, que aí precisa existir.
+        if: ${{ vars.SIGNPATH_ORG_ID != '' }}
         uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
