@@ -20,9 +20,49 @@ const URL = /https?:\/\/|\bwww\.\S+\.\S+/i;
 const PAGINACAO = /^(page|p[áa]gina|pag\.?)?\s*\d{1,3}$/i;
 const MASCARADO = /\[(email|cnpj|cpf|cep|telefone|número)\]/;
 
+// ── Formas de CONTEÚDO em app logada ──
+//
+// As máscaras acima são de formulário brasileiro. O blueprint, porém, é montado a partir do
+// ler_campos, que enxerga a página inteira — e em Spotify/Gmail/YouTube o conteúdo da conta
+// (faixa, artista, busca, endereço salvo) tem forma de rótulo curto e passa como se fosse
+// controle. Sem estes padrões, "Never Gonna Give You Up" vira um campo do mapa.
+//
+// Limite conhecido, e é de propósito: rótulo curto não se distingue de controle por conteúdo.
+// A lista cobre as formas medidas (música, vídeo, marketplace, perfil). App com formato novo
+// passa. Fechar isso de vez exigiria hashear o rótulo e a IA perderia a semântica — troca de
+// contrato, não de filtro. ponytail: enquanto o blueprint é local e some, lista é o barato.
+
+// Duração de mídia. "3:45" nunca é um controle.
+const DURACAO = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+// Número de faixa/seguimento colado no título: "2 Somebody Told Me", "12º álbum".
+const ORDINAL = /^\d{1,3}\s+\S/;
+// Rua + número. Exige dígito: sem ele, "Endereço de entrega" (que é campo) cairia junto.
+const ENDERECO = /\b(rua|avenida|av\.|travessa|alameda|pra[çc]a|rodovia|estrada)\b.{0,40}?\d/i;
+// "Artista - Álbum - 2000": três segmentos com ano no fim.
+const TRILHA_ANO = /^[^-–|]{2,40}\s[-–|]\s[^-–|]{2,40}\s[-–|]\s(?:19|20)\d{2}$/;
+// Handle depois de um substantivo de conta: "Perfil de saironbusatto".
+const HANDLE = /^(perfil|conta|usuário|usuario|autor)\s+d[eo]\s+[\w.\-]{2,}$/i;
+// Contagem com unidade: "Ver todos os 67 itens", "10 mil visualizações".
+const CONTAGEM = /\b\d[\d.,]*\s*(mil|mi)?\s*(itens|faixas|m[úu]sicas|albuns|[áa]lbuns|playlists|epis[óo]dios|canais|seguidores|visualiza[çcõ]ões|coment[áa]rios|resultados?|results?)\b/i;
+
 function mascarar(texto: string): string {
   return MASCARAS.reduce((t, [re, rep]) => t.replace(re, rep), texto);
 }
+
+/** Verdadeiro quando o rótulo é conteúdo da conta, não um controle do site. */
+function ehConteudo(texto: string): boolean {
+  return DURACAO.test(texto) || ORDINAL.test(texto) || ENDERECO.test(texto) || TRILHA_ANO.test(texto) || HANDLE.test(texto) || CONTAGEM.test(texto);
+}
+
+// Lacunas conhecidas, de propósito. These rótulos são indistinguíveis de um controle pelo texto
+// sozinho, e catchá-los custaria mais do que rende:
+//
+//   "Never Gonna Give You Up"   (faixa)  ≡ "Pular para o conteúdo"     (controle)
+//   "Marcos - Medalhão"         (parce)  ≡ "Ajuda - Contato"            (menu)
+//
+// Ambos são 3 palavras, ambos podem ser capitalizados, ambos têm o mesmo formato. A lista pega a
+// forma (duração, endereço, contagem, trilha com ano) e deixa passar a queima-lenta: título de
+// faixa solto. Fechar isso exige hashear o rótulo — e aí a IA perde a semântica do mapa.
 
 /** Rótulo seguro para o mapa, ou null quando o texto é conteúdo do usuário. */
 export function sanitizarRotulo(bruto: string | null | undefined): string | null {
@@ -33,6 +73,9 @@ export function sanitizarRotulo(bruto: string | null | undefined): string | null
   if (!texto) return null;
   if (texto.length > MAX_ROTULO || URL.test(texto)) return null; // resultado/conteúdo, não controle
   if (PAGINACAO.test(texto)) return 'paginação';
+  // Antes das máscaras: "Perfil de saironbusatto" não tem e-mail pra mascarar, e um endereço sem
+  // CEP não tem nada que o MASCARAS saiba substituir. Aqui é só decidir fora.
+  if (ehConteudo(texto)) return null;
 
   const m = mascarar(texto);
   // Controle de conta ("Conta do Google: Fulano (fulano@x.com)"): mantém o controle, some a pessoa.

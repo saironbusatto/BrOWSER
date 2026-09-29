@@ -30,6 +30,8 @@ import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
 import { registrarHost, removerHost } from './instalar';
+import { Relogio } from './latencia';
+import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
@@ -87,6 +89,8 @@ const paradoEm = new Set<string>();
 // pessoa a entender por que a resposta parou no meio.
 let iaEmCurso: Ia | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
+// Modelo escolhido por IA. Ausente = default do CLI (que é o rápido).
+const modelosEscolhidos: Partial<Record<Ia, string>> = {};
 
 function escrever(msg: object) {
   const corpo = Buffer.from(JSON.stringify(msg));
@@ -95,9 +99,16 @@ function escrever(msg: object) {
   process.stdout.write(Buffer.concat([cab, corpo]));
 }
 
+// ---- Instrumentação: onde vai o tempo de um pedido? ----
+// `enviar` é o único funil por onde passa TODO comando de browser, então é o ponto certo de
+// medição: uma edição em vez de instrumentar tool por tool. Um pedido por vez (rodarPedido trava
+// em `ocupado`), então um relógio de módulo basta.
+const relogio = new Relogio();
+
 function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
   const id = ++seq;
   escrever({ id, cmd, args });
+  const t0 = performance.now();
   return new Promise((resolve, reject) => {
     // O timer é sempre limpo: sem isso cada comando deixava um setTimeout de 30s vivo e prendia
     // o event loop (pior no timer de 5 min das perguntas).
@@ -108,6 +119,7 @@ function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Coman
     pendentes.set(id, {
       ok: (v) => {
         clearTimeout(timer);
+        relogio.registrar(cmd, performance.now() - t0);
         resolve(v as Comandos[C]['result']);
       },
       falha: (e) => {
@@ -146,6 +158,11 @@ async function lerStdin() {
             );
           }
         } else if (msg.tipo === 'consultar_assinaturas') {
+          emitirStatusAssinaturas();
+        } else if (msg.tipo === 'definir_modelo') {
+          // Aceita id fora do catálogo de propósito: a lista envelhece, o campo de texto não trava.
+          modelosEscolhidos[msg.ia] = msg.modelo;
+          log(`modelo de ${msg.ia}: ${msg.modelo || '(default do CLI)'}`);
           emitirStatusAssinaturas();
         } else if (msg.tipo === 'ativar_assinatura') {
           iaAtivaPreferencial = msg.ia;
@@ -186,6 +203,11 @@ async function lerStdin() {
 
 async function emitirStatusAssinaturas() {
   const assinaturas = await obterStatusAssinaturas(iaAtivaPreferencial);
+  // Cada card leva só os modelos da própria IA: agy não oferece modelo do claude.
+  for (const a of assinaturas) {
+    a.modelos = await listarModelos(a.ia);
+    a.modelo = modelosEscolhidos[a.ia] ?? '';
+  }
   const iaAtiva = assinaturas.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
   escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva } satisfies Evento);
   return assinaturas;
@@ -274,17 +296,32 @@ async function rodarPedido(
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
+  // A conta fica aqui e não em atenderPedido de propósito: rodarPedido é o funil dos DOIS
+  // caminhos (painel lateral e `/control` do spike/teste). Medir num deles só deixaria o outro
+  // cego — que foi exatamente o erro da primeira versão desta instrumentação.
+  relogio.zerar();
+  const t0 = performance.now();
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
     // Token novo a cada execução: o que o agy grava na config global dele fica inútil assim que
     // o pedido termina. O cancelamento é registrado junto, para o botão Parar matar o processo.
     definirCancelamento(null);
-    return await executar(p.texto, sessaoMcp(), avisar, p.arquivos, blueprint, ordemFinal, (ia) => {
-      iaEmCurso = ia;
-    });
+    return await executar(
+      p.texto,
+      sessaoMcp(),
+      avisar,
+      p.arquivos,
+      blueprint,
+      ordemFinal,
+      (ia) => {
+        iaEmCurso = ia;
+      },
+      (ia) => modelosEscolhidos[ia] ?? '',
+    );
   } finally {
     definirCancelamento(null);
     ocupado = false;
+    log(relogio.resumo(performance.now() - t0));
   }
 }
 

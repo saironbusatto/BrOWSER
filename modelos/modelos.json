@@ -1,0 +1,52 @@
+{
+  "$comment": "Catálogo de modelos por CLI. Consumido pela ponte (blueprints.ts) e reescrito por um job que roda periodicamente: o codex não tem comando de listar (issue aberta na OpenAI, #23279), então essa é a única lista que precisa de refresh. agy e claude não dependem daqui — ver 'fonte'.",
+  "atualizadoEm": "2026-09-28T00:00:00Z",
+  "padrao": { "agy": "gemini-3.8-flash-low", "claude": "haiku", "codex": "gpt-5.1-codex" },
+  "modelos": {
+    "agy": {
+      "fonte": "cli",
+      "comando": "agy models",
+      "observacao": "Descoberto ao vivo a cada uso. Se a lista local divergir, o CLI vence.",
+      "itens": [
+        { "id": "gemini-3.8-flash-low", "nome": "Gemini 3.8 Flash (Low)", "rapido": true },
+        { "id": "gemini-3.8-flash-medium", "nome": "Gemini 3.8 Flash (Medium)" },
+        { "id": "gemini-3.8-flash-high", "nome": "Gemini 3.8 Flash (High)" },
+        { "id": "gemini-3.7-flash-low", "nome": "Gemini 3.7 Flash (Low)", "rapido": true },
+        { "id": "gemini-3.7-flash-medium", "nome": "Gemini 3.7 Flash (Medium)" },
+        { "id": "gemini-3.7-flash-high", "nome": "Gemini 3.7 Flash (High)" },
+        { "id": "gemini-3.6-flash-low", "nome": "Gemini 3.6 Flash (Low)", "rapido": true },
+        { "id": "gemini-3.6-flash-medium", "nome": "Gemini 3.6 Flash (Medium)" },
+        { "id": "gemini-3.6-flash-high", "nome": "Gemini 3.6 Flash (High)" },
+        { "id": "gemini-3.1-pro-low", "nome": "Gemini 3.1 Pro (Low)" },
+        { "id": "gemini-3.1-pro-high", "nome": "Gemini 3.1 Pro (High)" },
+        { "id": "claude-sonnet-4-6", "nome": "Claude Sonnet 4.6 (Thinking)", "forte": true },
+        { "id": "claude-opus-4-6-thinking", "nome": "Claude Opus 4.6 (Thinking)", "forte": true },
+        { "id": "gpt-oss-120b-medium", "nome": "GPT-OSS 120B (Medium)" }
+      ]
+    },
+    "claude": {
+      "fonte": "contrato-estavel",
+      "observacao": "Alias flutua sozinho para o modelo mais novo da familia. A lista de alias nao envelhece — so o destino muda. Fonte: code.claude.com/docs/en/model-config",
+      "itens": [
+        { "id": "haiku", "nome": "Haiku — mais novo", "rapido": true },
+        { "id": "sonnet", "nome": "Sonnet — mais novo" },
+        { "id": "opus", "nome": "Opus — mais novo", "forte": true },
+        { "id": "fable", "nome": "Fable 5 — mais pesado", "forte": true },
+        { "id": "best", "nome": "Melhor disponivel na conta", "forte": true },
+        { "id": "sonnet[1m]", "nome": "Sonnet 1M de contexto" },
+        { "id": "opus[1m]", "nome": "Opus 1M de contexto", "forte": true },
+        { "id": "opusplan", "nome": "Opus no plan, Sonnet na execucao" }
+      ]
+    },
+    "codex": {
+      "fonte": "remota",
+      "observacao": "codex NAO tem comando de listar modelos (openai/codex#23279). Esta lista e a unica que depende de refresh do job. Aceita qualquer id fora daqui: o campo de texto sempre passa.",
+      "itens": [
+        { "id": "gpt-5.1-codex", "nome": "GPT-5.1 Codex" },
+        { "id": "gpt-5.1", "nome": "GPT-5.1" },
+        { "id": "gpt-4.1", "nome": "GPT-4.1" },
+        { "id": "o4-mini", "nome": "o4-mini", "rapido": true }
+      ]
+    }
+  }
+}

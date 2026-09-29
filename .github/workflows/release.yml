@@ -7,9 +7,63 @@ on:
 
 permissions:
   contents: write
+  actions: read # o action da SignPath lê o artefato do workflow e baixa o binário assinado
 
 jobs:
+  # O .exe é compilado aqui, no Windows, e não no Ubuntu: o rcedit é um executável Windows e
+  # não roda no Linux sem wine. Compilando nativamente o pacote também sai sem cross-compilation.
+  preparar-windows:
+    runs-on: windows-latest
+    outputs:
+      # O action da SignPath não lê o artefato do checkout: ele exige o id que o
+      # upload-artifact devolve, então o id precisa atravessar o job.
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Versão da tag = versão da extensão
+        run: |
+          $env:VERSAO = "${{ github.ref_name }}".TrimStart('v')
+          $ext = (Get-Content packages/extension/package.json | ConvertFrom-Json).version
+          if ($env:VERSAO -ne $ext) { throw "tag $env:VERSAO ≠ extensão $ext" }
+          "VERSAO=$($env:VERSAO)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # O Windows quer 4 partes numéricas em FileVersion/ProductVersion.
+          $p = $env:VERSAO.Split('.')
+          "VERSAO_WIN=$($p[0]).$($p[1]).$($p[2]).0" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Compilar a ponte para Windows
+        run: bun run --cwd packages/bridge build:win
+
+      # Requisito do SignPath: todo binário assinado precisa ter ProductName e ProductVersion
+      # preenchidos e iguais em cada build. O bun build --compile não escreve esse recurso, e
+      # o rcedit que grava é um executável Windows — por isso este job é windows-latest.
+      - name: Metadata PE + ícone
+        run: bun scripts/rceditar.ts packages/bridge/dist/bridge.exe $env:VERSAO_WIN
+
+      # Falha aqui, com nome, em vez de a SignPath recusar o artefato depois.
+      - name: Conferir que o recurso entrou
+        run: |
+          if (-not (Select-String -Path packages/bridge/dist/bridge.exe -Pattern "bRowser" -SimpleMatch -Quiet)) {
+            throw "metadata PE nao entrou no binario"
+          }
+          (Get-Item packages/bridge/dist/bridge.exe).VersionInfo |
+            Format-List ProductName, ProductVersion, FileVersion
+
+      - uses: actions/upload-artifact@v4
+        id: upload
+        with:
+          name: bridge-win-${{ github.ref_name }}
+          path: packages/bridge/dist/bridge.exe
+          archive: false # ja e um .exe; zip aqui quebraria a config de artefato do SignPath
+          retention-days: 7
+
   release:
+    needs: preparar-windows
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,37 +83,58 @@ jobs:
           [ "$VERSAO" = "$EXT" ] || { echo "tag $VERSAO ≠ extensão $EXT"; exit 1; }
           echo "VERSAO=$VERSAO" >> "$GITHUB_ENV"
 
-      - name: Compilar a extensão
-        run: bun run --cwd packages/extension build
-
-      # O release roda em Linux e produz o executável do Windows na cross-compilação. Cada artefato
-      # é verificado por comportamento e por tipo antes de empacotar: um release que subisse com o
-      # binário errado (ou com o /control aberto) só apareceria depois de todo o resto passar.
-      # check-control também deixa o binário de release já compilado.
-      - name: Verificar os dois artefatos da ponte
+      - name: Compilar extensão e ponte Linux
+        # O client_id do Google (conector do Drive) é público por definição — o segredo real é o
+        # refresh token, que fica no keyring do navegador. Por isso é var, não secret. Sem ele a
+        # extensão ainda compila: utils/conectores.ts só mostra "Em breve" no lugar do botão.
+        env:
+          BROWSER_GOOGLE_CLIENT_ID: ${{ vars.BROWSER_GOOGLE_CLIENT_ID }}
         run: |
           bun packages/bridge/scripts/check-control.ts release
-          bun run --cwd packages/bridge build:win
-          # MZ no começo = Portable Executable. Um ELF aqui significaria que o build "de Windows"
-          # saiu Linux, que é exatamente o que acontecia quando o nome vinha da plataforma do host.
-          head -c2 packages/bridge/dist/bridge.exe | grep -q 'MZ' || { echo 'bridge.exe não é um PE'; exit 1; }
+          bun run --cwd packages/extension build
+          bun run --cwd packages/bridge build
           head -c4 packages/bridge/dist/bridge | grep -q $'\x7fELF' || { echo 'bridge não é um ELF'; exit 1; }
           test -x packages/bridge/dist/bridge || { echo 'bridge sem permissão de execução'; exit 1; }
-          ls -la packages/bridge/dist/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bridge-win-${{ github.ref_name }}
+          path: pacotes/windows
+
+      # Condicional de propósito: hoje o certificado não existe e o release precisa sair assim
+      # mesmo. Quando o pedido for aprovado é só gravar a SIGNPATH_API_TOKEN no repositório.
+      - name: Assinar com SignPath
+        id: assinar
+        if: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ needs.preparar-windows.outputs.artifact-id }}
+          wait-for-completion: true
+          skip-decompress: true # bate com archive:false no job de cima
+          output-artifact-directory: ${{ github.workspace }}/assinados
 
       - name: Empacotar
         run: |
           set -e
           mkdir -p pacotes/windows pacotes/linux
-          # A extensão vai DENTRO de cada pacote: uma máquina virgem não deveria precisar baixar
-          # dois arquivos e descobrir qual é o quê. O zip solto continua existindo, para quem só
-          # quer atualizar a extensão.
           cp -r packages/extension/.output/chrome-mv3 pacotes/windows/extensao
           cp -r packages/extension/.output/chrome-mv3 pacotes/linux/extensao
-          cp packages/bridge/dist/bridge.exe packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd design/icone.ico LICENSE pacotes/windows/
+          # O SignPath pode devolver o arquivo com outro nome (a config de artefato define isso),
+          # então procuramos qualquer .exe em vez de cravar o nome.
+          ASSINADO=$(find assinados -name '*.exe' -type f 2>/dev/null | head -1)
+          if [ -n "$ASSINADO" ]; then
+            cp "$ASSINADO" pacotes/windows/bridge.exe
+            echo "usando o binario assinado: $ASSINADO"
+          else
+            echo "sem assinatura (falta SIGNPATH_API_TOKEN); publicando o binario do CI"
+          fi
+          cp packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd design/icone.ico LICENSE pacotes/windows/
           cp packages/bridge/dist/bridge packages/bridge/scripts/install.sh packages/bridge/scripts/leia-me.md LICENSE pacotes/linux/
           chmod +x pacotes/windows/bridge.exe pacotes/linux/bridge pacotes/linux/install.sh
-          # O instalador leva a versão do release.
           sed "s/\[string\]\$Versao = '[^']*'/[string]\$Versao = '$VERSAO'/" packages/bridge/scripts/setup.ps1 > pacotes/windows/setup.ps1
           grep -q "\\\$Versao = '$VERSAO'" pacotes/windows/setup.ps1 || { echo 'a versão não entrou no setup.ps1'; exit 1; }
           sed "s/^VERSAO=\".*\"$/VERSAO=\"$VERSAO\"/" pacotes/linux/install.sh > /tmp/install.sh && mv /tmp/install.sh pacotes/linux/install.sh
