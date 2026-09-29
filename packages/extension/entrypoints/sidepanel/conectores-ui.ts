@@ -23,6 +23,12 @@ let conectado = false;
 let conectando = false;
 let tokenAtual = '';
 
+// Ícones do seletor. Pastas abrem, arquivo baixa, documento nativo exporta — o usuário precisa
+// distinguir os três, senão clica esperando anexo e recebe uma navegação.
+const ICONE_PASTA = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z"/></svg>';
+const ICONE_ARQUIVO = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15a0 0 0 0 1 0 0H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5Z"/></svg>';
+const ICONE_DOC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v1.5H8V11Zm0 3.5h8V16H8v-1.5Z"/></svg>';
+
 /** true quando dá para usar o Drive agora: client_id no manifest + token válido. */
 export async function drivePronto(): Promise<boolean> {
   if (!conectorConfigurado()) return false;
@@ -127,6 +133,9 @@ export async function iniciarConectores(d: Deps): Promise<void> {
 
 // ── Seletor de arquivos ──
 
+/** Uma pasta na pilha de navegação; o fim é a raiz ("Meu Drive"). */
+type Trilho = { id: string; nome: string }[];
+
 async function abrirSeletor() {
   const fundo = document.createElement('div');
   fundo.className = 'sheet-modal-backdrop';
@@ -139,21 +148,22 @@ async function abrirSeletor() {
       <div class="sheet-header">
         <div class="sheet-title-group">
           <h2>Google Drive</h2>
-          <p>Arquivos recentes que o BrOWSER sabe ler.</p>
+          <p>Escolha o arquivo para anexar ao pedido.</p>
         </div>
         <button type="button" class="icon-close-btn" title="Fechar" aria-label="Fechar">✕</button>
       </div>
+      <nav class="drive-trilho" aria-label="Caminho da pasta"></nav>
       <div class="drive-lista" role="list"></div>
     </div>
   `;
   document.body.appendChild(fundo);
   // .sheet-modal-backdrop nasce com opacity:0 e pointer-events:none. Sem a classe .open o modal
-  // existe mas é invisível e não recebe clique — que era o "cliquei e nada aconteceu".
-  // O requestAnimationFrame dá um frame para o navegador registrar o estado inicial, senão a
-  // transição de opacity não roda e o sheet salta sem animação.
+  // existe mas é invisível e não recebe clique. O rAF dá um frame para o estado inicial
+  // registrar, senão a transição de opacity não roda e o sheet salta sem animação.
   requestAnimationFrame(() => fundo.classList.add('open'));
 
   const lista = fundo.querySelector<HTMLElement>('.drive-lista')!;
+  const trilho = fundo.querySelector<HTMLElement>('.drive-trilho')!;
   const fechar = () => {
     fundo.classList.remove('open');
     fundo.addEventListener('transitionend', () => fundo.remove(), { once: true });
@@ -171,42 +181,87 @@ async function abrirSeletor() {
   });
   fundo.querySelector<HTMLButtonElement>('.icon-close-btn')!.focus();
 
-  lista.textContent = 'Carregando…';
-  let arquivos: ArquivoDrive[];
-  try {
-    arquivos = await listarDrive(tokenAtual);
-  } catch (e) {
-    lista.textContent = e instanceof Error ? e.message : 'Não deu para listar o Drive.';
-    return;
-  }
-  if (!fundo.isConnected) return; // a pessoa fechou enquanto a lista voltava
-  if (arquivos.length === 0) {
-    lista.innerHTML = '<p class="drive-vazio">Nenhum arquivo legível no Drive.</p>';
-    return;
-  }
+  const caminho: Trilho = [];
 
-  for (const arq of arquivos) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'drive-item';
-    item.setAttribute('role', 'listitem');
-    item.innerHTML = `
+  const pintarTrilho = () => {
+    trilho.innerHTML = '';
+    const passos = [{ id: '', nome: 'Meu Drive' }, ...caminho];
+    passos.forEach((p, i) => {
+      const ultimo = i === passos.length - 1;
+      if (i > 0) {
+        const sep = document.createElement('span');
+        sep.className = 'drive-sep';
+        sep.textContent = '/';
+        trilho.appendChild(sep);
+      }
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `drive-crumb${ultimo ? ' atual' : ''}`;
+      b.textContent = p.nome;
+      b.disabled = ultimo;
+      b.addEventListener('click', () => {
+        caminho.length = i; // corta a partir daqui
+        void carregar();
+      });
+      trilho.appendChild(b);
+    });
+  };
+
+  const carregar = async () => {
+    pintarTrilho();
+    lista.textContent = 'Carregando…';
+    const atual = caminho.at(-1);
+    let arquivos: ArquivoDrive[];
+    try {
+      arquivos = await listarDrive(tokenAtual, atual?.id);
+    } catch (e) {
+      lista.textContent = e instanceof Error ? e.message : 'Não deu para listar o Drive.';
+      return;
+    }
+    if (!fundo.isConnected) return; // a pessoa fechou enquanto a lista voltava
+    lista.innerHTML = '';
+    if (arquivos.length === 0) {
+      lista.innerHTML = `<p class="drive-vazio">${atual ? 'Esta pasta está vazia.' : 'Nada no seu Drive.'}</p>`;
+      return;
+    }
+    // Pastas primeiro: quem abre o seletor quer navegar, não descer arquivo na lista.
+    for (const arq of [...arquivos].sort((a, b) => Number(b.pasta) - Number(a.pasta))) {
+      lista.appendChild(await linhaDe(arq));
+    }
+  };
+
+  const linhaDe = async (arq: ArquivoDrive): Promise<HTMLElement> => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'drive-item';
+    b.setAttribute('role', 'listitem');
+    const icone = arq.pasta ? ICONE_PASTA : arq.exportavel ? ICONE_DOC : ICONE_ARQUIVO;
+    b.innerHTML = `
+      <span class="drive-item-icone" aria-hidden="true">${icone}</span>
       <span class="drive-item-nome" title="${escapeHtml(arq.nome)}">${escapeHtml(arq.nome)}</span>
-      <span class="drive-item-tamanho">${formatarTamanho(arq.tamanho)}</span>
+      <span class="drive-item-tamanho">${arq.pasta ? '' : formatarTamanho(arq.tamanho)}</span>
     `;
-    item.addEventListener('click', async () => {
-      item.disabled = true;
+    b.setAttribute('aria-label', arq.pasta ? `Abrir pasta ${arq.nome}` : `Anexar ${arq.nome}`);
+    b.addEventListener('click', async () => {
+      if (arq.pasta) {
+        caminho.push({ id: arq.id, nome: arq.nome });
+        await carregar();
+        return;
+      }
+      b.disabled = true;
       try {
         deps.aoAnexar([await baixarDrive(tokenAtual, arq)]);
         fechar();
         deps.avisar(`${arq.nome} anexado do Drive.`);
       } catch (e) {
-        item.disabled = false;
+        b.disabled = false;
         deps.avisar(e instanceof Error ? e.message : 'Falha ao baixar o arquivo.', true);
       }
     });
-    lista.appendChild(item);
-  }
+    return b;
+  };
+
+  await carregar();
 }
 
 function escapeHtml(s: string): string {

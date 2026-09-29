@@ -34,9 +34,11 @@ const RAIZ = 'https://www.googleapis.com/drive/v3';
 // rejeita com 400. É o valor cru do parâmetro `fields`.
 const CAMPOS = 'files(id,name,mimeType,size,modifiedTime)';
 
-// Documentos nativos do Google (Docs/Sheets/Slides) só saem pelo /export, que é outro endpoint e
-// outro formato. Filtra fora: o resto do fluxo de anexos (PDF/XML/CSV/imagem) já cobre o caso.
-const NATIVOS = /^application\/vnd\.google-apps\./;
+// Documentos nativos (Docs/Sheets/Slides) não têm bytes próprios: `alt=media` é mecanismo de blob
+// (a doc define blob como "raw binary file ... as opposed to a Google Workspace document"), então
+// eles saem pelo /export. PDF é o único mimeType que a doc de download confirma em todas as
+// amostras. Vids e Form não exportam: a doc diz que Vids devolve `fileNotExportable`.
+const NATIVOS = /^application\/vnd\.google-apps\.(document|spreadsheet|presentation)$/;
 const PASTA = 'application/vnd.google-apps.folder';
 
 export type ArquivoDrive = {
@@ -45,6 +47,8 @@ export type ArquivoDrive = {
   mimeType: string;
   tamanho: number;
   modificadoEm: string;
+  pasta: boolean; // navegável, não baixável
+  exportavel: boolean; // Google nativo: só sai por /export
 };
 
 /** Sem client_id no manifest o OAuth do Google não abre: a UI mostra o conector desabilitado. */
@@ -181,13 +185,19 @@ async function erroDrive(r: Response, acao: string): Promise<Error> {
   return new Error(`Drive ${acao} (${r.status})${detalhe ? `: ${detalhe}` : ''}`);
 }
 
+/**
+ * Lista o conteúdo de uma pasta. Sem `pastaId` é a raiz ("Meu Drive").
+ *
+ * Pastas vêm junto, marcadas, porque sem elas não há como navegar — esconder era o que deixava a
+ * lista vazia. O `q` usa `'<id>' in parents`, que a doc descreve como o filtro de pasta.
+ */
 export async function listarDrive(token: string, pastaId?: string): Promise<ArquivoDrive[]> {
   const r = await fetch(
     `${RAIZ}/files?${new URLSearchParams({
       q: pastaId ? `'${pastaId}' in parents and trashed = false` : 'trashed = false',
       fields: CAMPOS,
       orderBy: 'modifiedTime desc',
-      pageSize: '50',
+      pageSize: '100',
       supportsAllDrives: 'true',
       includeItemsFromAllDrives: 'true',
     })}`,
@@ -195,26 +205,62 @@ export async function listarDrive(token: string, pastaId?: string): Promise<Arqu
   );
   if (!r.ok) throw await erroDrive(r, 'não listou');
   const { files = [] } = (await r.json()) as { files: Array<RawArquivo> };
-  return files
-    .filter((f) => f.mimeType !== PASTA && !NATIVOS.test(f.mimeType))
-    .map((f) => ({
-      id: f.id,
-      nome: f.name,
-      mimeType: f.mimeType,
-      tamanho: Number(f.size ?? 0),
-      modificadoEm: f.modifiedTime ?? '',
-    }));
+  return files.map((f) => ({
+    id: f.id,
+    nome: f.name,
+    mimeType: f.mimeType,
+    tamanho: Number(f.size ?? 0),
+    modificadoEm: f.modifiedTime ?? '',
+    pasta: f.mimeType === PASTA,
+    // O único byte que não sai nem por alt=media é o Workspace document; Forms/Vids não exportam
+    // e aparecem com download quebrado, que é melhor que sumirem da lista.
+    exportavel: NATIVOS.test(f.mimeType),
+  }));
+}
+
+/** Mãe de um item, para montar o caminho de navegação (breadcrumb). */
+export async function paisDo(token: string, arquivoId: string): Promise<{ id: string; nome: string }[]> {
+  const r = await fetch(
+    `${RAIZ}/files/${encodeURIComponent(arquivoId)}?${new URLSearchParams({
+      fields: 'parents(id,name)',
+      supportsAllDrives: 'true',
+    })}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!r.ok) throw await erroDrive(r, 'não leu o caminho da pasta');
+  const { parents = [] } = (await r.json()) as { parents: { id: string; name: string }[] };
+  // A raiz ("Meu Drive") não tem pai; a ordem do Drive vai do pai para a raiz, então inverte.
+  return parents
+    .filter((p) => p.id !== 'root')
+    .map((p) => ({ id: p.id, nome: p.name }))
+    .reverse();
 }
 
 type RawArquivo = { id: string; name: string; mimeType: string; size?: string; modifiedTime?: string };
 
-/** Devolve um File pronto para processarArquivos(): o resto do pipeline não muda. */
+/**
+ * Devolve um File pronto para processarArquivos(): o resto do pipeline não muda.
+ *
+ * Blob vai por alt=media. Documento nativo vai por /export em PDF — único mimeType que a doc de
+ * download confirma, e o caminho que todos os exemplos da doc usam. O nome ganha .pdf, senão o
+ * processarArquivos classifica por extensão e manda XML para o modelo.
+ */
 export async function baixarDrive(token: string, arquivo: ArquivoDrive): Promise<File> {
-  const r = await fetch(`${RAIZ}/files/${encodeURIComponent(arquivo.id)}?alt=media`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!r.ok) throw await erroDrive(r, `não baixou ${arquivo.nome}`);
-  return new File([await r.blob()], arquivo.nome, { type: arquivo.mimeType });
+  const exportar = arquivo.exportavel;
+  const url = exportar
+    ? `${RAIZ}/files/${encodeURIComponent(arquivo.id)}/export?mimeType=application/pdf`
+    : `${RAIZ}/files/${encodeURIComponent(arquivo.id)}?alt=media`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) {
+    // Vids e Forms devolvem fileNotExportable; a doc diz isso explicitamente.
+    if (exportar && r.status === 403) {
+      throw new Error(`"${arquivo.nome}" não pode ser exportado pelo Google (Forms e Vids não são exportáveis).`);
+    }
+    throw await erroDrive(r, `não baixou ${arquivo.nome}`);
+  }
+  const nome = exportar ? `${arquivo.nome.replace(/\.g\w+$/, '')}.pdf` : arquivo.nome;
+  const tipo = exportar ? 'application/pdf' : arquivo.mimeType;
+  return new File([await r.blob()], nome, { type: tipo });
 }
 
 export function formatarTamanho(bytes: number): string {
