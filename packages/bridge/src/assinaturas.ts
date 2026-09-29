@@ -327,6 +327,35 @@ export function comandoLogout(ia: Ia): string[] | null {
 
 export type ResultadoLogout = { ok: Ia[]; falhou: { ia: Ia; nome: string; erro: string }[] };
 
+export type PlanoLogout = { ok: true; cmd: string[] } | { ok: false; erro: string };
+
+/**
+ * Decide o logout sem executar nada. Existe separado do `desconectar` para que o "vai rodar
+ * isto ou vai reclamar" possa ser testado sem disparar um logout de verdade na máquina de
+ * quem roda o teste.
+ */
+export function planejarLogout(ia: Ia): PlanoLogout {
+  const cmd = comandoLogout(ia);
+  if (!cmd) return { ok: false, erro: `sem comando de logout: rode \`${CATALOGO[ia].login.join(' ')}\` e depois /logout` };
+  if (!Bun.which(cmd[0]!)) return { ok: false, erro: `${cmd[0]} não está instalado` };
+  return { ok: true, cmd };
+}
+
+/**
+ * Sai de UMA conta. Não lança: quem falhou vem no resultado, para o painel falar o que
+ * aconteceu em vez de fingir que deu certo.
+ */
+export async function desconectar(ia: Ia): Promise<{ ok: boolean; erro: string }> {
+  const plano = planejarLogout(ia);
+  if (!plano.ok) return plano;
+  const proc = Bun.spawn(plano.cmd, { stdout: 'ignore', stderr: 'pipe', stdin: 'ignore' });
+  const timer = setTimeout(() => proc.kill(), TIMEOUT_LOGOUT_MS);
+  const err = await new Response(proc.stderr).text().catch(() => '');
+  const codigo = await proc.exited;
+  clearTimeout(timer);
+  return { ok: codigo === 0, erro: codigo === 0 ? '' : err.trim().slice(-200) || `saiu com código ${codigo}` };
+}
+
 /**
  * Sai de todas as contas. Só toca em quem está realmente conectado: rodar `codex logout` numa
  * máquina sem codex logado só gera barulho. Roda em paralelo e nunca lança — quem falhou vem
@@ -338,17 +367,7 @@ export async function desconectarTodas(preferida?: Ia): Promise<ResultadoLogout>
   if (conectadas.length === 0) return { ok: [], falhou: [] };
 
   const resultados = await Promise.all(
-    conectadas.map(async (a): Promise<{ ia: Ia; ok: boolean; erro: string }> => {
-      const cmd = comandoLogout(a.ia);
-      if (!cmd) return { ia: a.ia, ok: false, erro: `sem comando de logout: rode \`${CATALOGO[a.ia].login.join(' ')}\` e depois /logout` };
-      if (!Bun.which(cmd[0]!)) return { ia: a.ia, ok: false, erro: `${cmd[0]} não está instalado` };
-      const proc = Bun.spawn(cmd, { stdout: 'ignore', stderr: 'pipe', stdin: 'ignore' });
-      const timer = setTimeout(() => proc.kill(), TIMEOUT_LOGOUT_MS);
-      const err = await new Response(proc.stderr).text().catch(() => '');
-      const codigo = await proc.exited;
-      clearTimeout(timer);
-      return { ia: a.ia, ok: codigo === 0, erro: codigo === 0 ? '' : err.trim().slice(-200) || `saiu com código ${codigo}` };
-    }),
+    conectadas.map(async (a): Promise<{ ia: Ia; ok: boolean; erro: string }> => ({ ia: a.ia, ...(await desconectar(a.ia)) })),
   );
 
   const ok = resultados.filter((r) => r.ok).map((r) => r.ia);

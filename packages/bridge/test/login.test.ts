@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { comandoLogout, extrairLogin, fimDoLogin, responderCodigo } from '../src/assinaturas';
+import { comandoLogout, extrairLogin, fimDoLogin, planejarLogout, responderCodigo } from '../src/assinaturas';
 
 // Saída real capturada de `codex login --device-auth`, com os ANSI que ele emite (27/09/2026).
 const SAIDA_CODEX = `
@@ -98,5 +98,30 @@ describe('comandoLogout: como sair de cada conta', () => {
     // não está, e a ponte já trata "não está instalado" como erro honesto em vez de sumir.
     // Aqui só fixamos a dependência, para o dia em que o agy ganhar logout próprio.
     expect(comandoLogout('agy')![0]).toBe('secret-tool');
+  });
+});
+
+describe('desconectar: o planejamento do logout, sem executar nada', () => {
+  it('toda conta tem um caminho de logout (é o que o switch do plano ativo usa)', () => {
+    for (const ia of ['agy', 'codex', 'claude'] as const) {
+      expect(comandoLogout(ia)).not.toBeNull();
+    }
+  });
+
+  it('conta com a CLI presente vira comando, e não erro', () => {
+    // Decide com o catálogo, não com a máquina: `Bun.which` só importa para o caso de baixo.
+    const plano = planejarLogout('codex');
+    if (Bun.which('codex')) {
+      expect(plano.ok).toBe(true);
+      if (plano.ok) expect(plano.cmd[0]).toBe('codex');
+    } else {
+      expect(plano.ok).toBe(false);
+      if (!plano.ok) expect(plano.erro).toContain('codex');
+    }
+  });
+
+  it('CLI ausente nunca vira sucesso calado: sempre tem um motivo para o painel mostrar', () => {
+    const plano = planejarLogout('agy');
+    if (!plano.ok) expect(plano.erro.length).toBeGreaterThan(0);
   });
 });

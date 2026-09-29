@@ -22,7 +22,7 @@ import {
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAssinaturas, responderCodigo } from './assinaturas';
+import { desconectar, desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAssinaturas, responderCodigo } from './assinaturas';
 import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
 import { CONTROLE_ATIVO } from './build';
 import { pathComIAs } from './caminhos';
@@ -181,7 +181,20 @@ async function lerStdin() {
                 } satisfies Evento),
               );
             })
-            .catch((e) => log(`desconectar erro: ${e}`));
+            .catch((e) => log(`desconectar erro: ${String(e)}`));
+        } else if (msg.tipo === 'desconectar_assinatura') {
+          desconectar(msg.ia)
+            .then((r) => {
+              if (!r.ok) log(`desconectar ${msg.ia} falhou: ${r.erro}`);
+              return emitirStatusAssinaturas().then(() =>
+                escrever({
+                  tipo: 'logout_fim',
+                  ok: r.ok ? 1 : 0,
+                  falhou: r.ok ? [] : [r.erro],
+                } satisfies Evento),
+              );
+            })
+            .catch((e) => log(`desconectar ${msg.ia} erro: ${String(e)}`));
         } else if (msg.tipo === 'login_codigo') {
           const erro = responderCodigo(msg.ia, msg.codigo);
           if (erro) log(`login_codigo ${msg.ia}: ${erro}`);

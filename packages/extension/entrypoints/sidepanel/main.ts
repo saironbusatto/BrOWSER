@@ -1,4 +1,4 @@
-import type { ArquivoAnexo, Evento, ItemAssinatura, PapelAgente, Pedir, RespostaUsuario } from '@browser/shared';
+import type { ArquivoAnexo, Evento, Ia, ItemAssinatura, PapelAgente, Pedir, RespostaUsuario } from '@browser/shared';
 import { iniciarCampoPontos } from '../../utils/campo-pontos';
 import { markdownSeguro } from '../../utils/markdown';
 import { bandejaHtml, classificarArquivos, ehArquivoTexto, mensagemAnexos } from './anexos';
@@ -737,10 +737,17 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
 
 const desconectarModal = () => document.getElementById('desconectar-modal')!;
 let gatilhoDesconectar: HTMLElement | null = null;
+// 'todas' = o botão de desconectar tudo; uma IA = o switch daquela conta.
+let desconectarAlvo: { ia: Ia } | 'todas' = 'todas';
 
-function abrirDesconectar(e: Event) {
+function abrirDesconectar(e: Event, ia?: Ia, nome?: string) {
   gatilhoDesconectar = e.currentTarget as HTMLElement;
+  desconectarAlvo = ia ? { ia } : 'todas';
   const m = desconectarModal();
+  document.getElementById('desconectar-titulo')!.textContent = ia && nome ? `Desconectar ${nome}?` : 'Desconectar todas as contas?';
+  document.getElementById('desconectar-msg')!.textContent = ia
+    ? `O BrOWSER vai parar de usar essa conta. As outras continuam conectadas. Isso não cancela a assinatura em nenhuma empresa.`
+    : 'O BrOWSER vai parar de usar essas assinaturas. Isso não cancela a assinatura em nenhuma empresa. Para voltar, entre em cada conta de novo.';
   m.classList.add('open');
   m.setAttribute('aria-hidden', 'false');
   // Cancelar em foco: quem não quer o alert fecha sem ler os botões.
@@ -752,6 +759,7 @@ function fecharDesconectar() {
   if (!m.classList.contains('open')) return;
   m.classList.remove('open');
   m.setAttribute('aria-hidden', 'true');
+  desconectarAlvo = 'todas';
   gatilhoDesconectar?.focus();
   gatilhoDesconectar = null;
 }
@@ -759,8 +767,14 @@ function fecharDesconectar() {
 document.getElementById('btn-desconectar-todas')?.addEventListener('click', abrirDesconectar);
 document.getElementById('btn-desconectar-cancelar')?.addEventListener('click', fecharDesconectar);
 document.getElementById('btn-desconectar-confirmar')!.addEventListener('click', () => {
-  chrome.runtime.sendMessage({ tipo: 'desconectar_todos' }).catch(() => {});
-  showToast('Desconectando as contas…');
+  if (desconectarAlvo === 'todas') {
+    chrome.runtime.sendMessage({ tipo: 'desconectar_todos' }).catch(() => {});
+    showToast('Desconectando as contas…');
+  } else {
+    chrome.runtime.sendMessage({ tipo: 'desconectar_assinatura', ia: desconectarAlvo.ia }).catch(() => {});
+    showToast('Desconectando a conta…');
+  }
+  fecharDesconectar();
 });
 // Clique fora cancela, como em qualquer modal.
 desconectarModal().addEventListener('click', (e) => {
@@ -849,8 +863,13 @@ function renderizarAssinaturas(assinaturas: ItemAssinatura[], iaAtiva: string) {
     sw.setAttribute('aria-label', `Usar o plano ${plano.nome}`);
     if (pendente) sw.setAttribute('aria-busy', 'true');
     sw.disabled = pendente;
-    sw.addEventListener('click', () => {
-      if (isActive) return; // já é o plano em uso: nada a fazer
+    sw.addEventListener('click', (e) => {
+      if (isActive) {
+        // O switch do plano em uso não volta para "desligado": ele abre a confirmação de
+        // desconectar. Antes ele só fazia `return`, e o clique parecia não funcionar.
+        abrirDesconectar(e, plano.ia, plano.nome);
+        return;
+      }
       if (isConnected) {
         chrome.runtime.sendMessage({ tipo: 'ativar_assinatura', ia: plano.ia }).catch(() => {});
         showToast(`Plano alterado para ${plano.nome}.`);

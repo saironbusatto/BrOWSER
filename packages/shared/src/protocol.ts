@@ -142,6 +142,12 @@ export type DesconectarTodos = {
   tipo: 'desconectar_todos';
 };
 
+// extensão -> ponte: sair de UMA conta, sem tocar nas outras.
+export type DesconectarAssinatura = {
+  tipo: 'desconectar_assinatura';
+  ia: Ia;
+};
+
 export type MensagemExtensao =
   | Pedir
   | RespostaUsuario
@@ -149,6 +155,7 @@ export type MensagemExtensao =
   | TelemetriaBlueprint
   | ConsultarAssinaturas
   | ConectarAssinatura
+  | DesconectarAssinatura
   | AtivarAssinatura
   | DefinirModelo
   | ResponderCodigo
