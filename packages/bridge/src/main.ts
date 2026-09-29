@@ -15,6 +15,7 @@ import { pathComIAs } from './caminhos';
 import { registrarHost, removerHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
 import { listarModelos } from './modelos';
+import { Relogio } from './latencia';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -58,11 +59,24 @@ function escrever(msg: object) {
   process.stdout.write(Buffer.concat([cab, corpo]));
 }
 
+// ---- Instrumentação: onde vai o tempo de um pedido? ----
+// `enviar` é o único funil por onde passa TODO comando de browser, então é o ponto certo de
+// medição: uma edição em vez de instrumentar tool por tool. Um pedido por vez (rodarPedido trava
+// em `ocupado`), então um relógio de módulo basta.
+const relogio = new Relogio();
+
 function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
   const id = ++seq;
   escrever({ id, cmd, args });
+  const t0 = performance.now();
   return new Promise((ok, falha) => {
-    pendentes.set(id, { ok: ok as (v: unknown) => void, falha });
+    pendentes.set(id, {
+      ok: (v) => {
+        relogio.registrar(cmd, performance.now() - t0);
+        ok(v as Comandos[C]['result']);
+      },
+      falha,
+    });
     setTimeout(() => pendentes.delete(id) && falha(new Error(`timeout em ${cmd}`)), TIMEOUT_MS);
   });
 }
@@ -223,6 +237,8 @@ async function atenderPedido(p: Pedir) {
       }
     } catch {}
 
+    relogio.zerar();
+    const t0Pedido = performance.now();
     const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
       .catch((e): Execucao => ({ ok: false, texto: String(e) }));
     log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
@@ -239,6 +255,9 @@ async function atenderPedido(p: Pedir) {
         }
       } catch {}
     }
+    // Fica no fim de propósito: o ler_campos de conferência acima também é comando de browser,
+    // e a conta só fecha depois dele.
+    log(relogio.resumo(performance.now() - t0Pedido));
   } finally {
     pedidoAtivo = undefined;
   }
