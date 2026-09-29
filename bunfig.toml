@@ -10,6 +10,12 @@ coveragePathIgnorePatterns = [
   # Infraestrutura de teste. `canvas-falso.ts` mora em test/ mas não é `*.test.ts`, então o Bun
   # o contava como código do produto — e um arquivo que existe só para testar não tem cobertura a dever.
   "**/test/**",
+  # OAuth do Google Drive: o caminho de troca do token é `chrome.identity.launchWebAuthFlow` +
+  # `chrome.storage.local` + o keyring do navegador (PKCE em launchWebAuthFlow, refresh token
+  # guardado pelo Chrome e nunca tocado por código). Só roda dentro de um perfil real do Chrome.
+  # O que dá para testar por unidade — escopo de cada conector, formatação de tamanho, o
+  # codeChallenge do PKCE e a lista de anexos que entra no pedido — está em conectores.test.ts.
+  "packages/extension/utils/conectores.ts",
   # Pontos de entrada que dependem de API de navegador ou de processo real: o service worker, o
   # painel, o content script e o `main` da ponte. São exercitados de ponta a ponta pelo smoke do
   # CI (que sobe a ponte real e fala com ela por Native Messaging), não por teste de unidade.
