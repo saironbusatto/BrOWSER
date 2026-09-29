@@ -531,24 +531,6 @@ body {
 
 .step-line.feito { background: var(--step-done); }
 
-.live-status-text {
-  font-size: 12.5px;
-  color: var(--fg-secondary);
-  margin-top: 8px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.live-status-text::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse-dot 1.5s infinite;
-}
-
 /* ── Rendered Markdown Typography ── */
 .markdown-content {
   font-size: 14px;
@@ -642,6 +624,36 @@ body {
   -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+/* "A IA está trabalhando": um trecho de luz cruzando a largura toda do painel, acima do prompt.
+   Fica no footer e não dentro do card porque é o status da sessão inteira, não daquele passo —
+   o texto do que está acontecendo continua no card, que é onde a pessoa olha pra ler. */
+.trabalho-barra {
+  height: 2px;
+  margin-bottom: 9px;
+  border-radius: 2px;
+  background: var(--surface-secondary);
+  overflow: hidden;
+}
+.trabalho-barra[hidden] { display: none; }
+.trabalho-barra i {
+  display: block;
+  width: 34%;
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent) 35%, var(--accent) 65%, transparent);
+  /* -100% sai pela esquerda, 294% sai pela direita: 100/34 da largura do próprio trecho. Sem o
+     final exato, o brilho pisca nas bordas em vez de vazar. */
+  animation: trabalho-varredura 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes trabalho-varredura {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(294%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Sem varredura, continua sendo sinal: um trecho parado aceso no meio. */
+  .trabalho-barra i { animation: none; transform: translateX(97%); }
 }
 
 .input-box-wrap {
@@ -864,59 +876,94 @@ textarea#texto::placeholder {
   margin: 0;
 }
 
-/* ── Multi-Agent Live Stepper & Grid ── */
-.multi-agent-grid {
+/* ── Multi-Agent Live Stepper ── */
+/* Pensando: uma linha com o estado atual, clicável para abrir o log inteiro.
+   Substitui o grid de agentes. O grid mostrava o MESMO texto do status duas vezes (updateStepper
+   escrevia no scout-msg mesmo sem agente) mais um "Pronto" estático — três indicadores de
+   progresso, um deles repetido e um deles mentindo. Aqui é um: o agora, e o resto atrás do clique. */
+.pensar {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
   margin-top: 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: var(--fg-secondary);
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
 }
+.pensar:hover .pensar-titulo { color: var(--accent); }
 
-.agent-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.agent-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  font-size: 10.5px;
+.pensar-titulo {
+  font-size: 11px;
   font-weight: 600;
+  color: var(--accent);
   white-space: nowrap;
   flex-shrink: 0;
+  transition: color var(--duration-fast);
 }
-
-.badge-scout {
-  background: rgba(0, 113, 227, 0.12);
-  color: var(--accent);
-  border: 1px solid rgba(0, 113, 227, 0.25);
-}
-
-.badge-synth {
-  background: rgba(175, 82, 222, 0.12);
-  color: #af52de;
-  border: 1px solid rgba(175, 82, 222, 0.25);
-}
-
-.agent-msg {
+.pensar-atual {
+  font-size: 12.5px;
   color: var(--fg-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+.pensar-seta {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--fg-tertiary);
+  transition: transform var(--duration-fast);
+}
+.pensar[aria-expanded="true"] .pensar-seta { transform: rotate(90deg); }
+.pensar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pensar-log {
+  margin: 4px 0 0;
+  padding: 0 0 0 18px;
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+}
+.pensar-log[hidden] { display: none; }
+.pensar-log li {
+  position: relative;
   font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-tertiary);
+  padding: 1px 0;
+}
+.pensar-log li::before {
+  content: '';
+  position: absolute;
+  left: -14px;
+  top: 7px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--fg-tertiary);
+}
+/* A tag do agente fica como prefixo de quem falou, não como pílula: no log longo a pílula
+   repetida em cada linha vira ruído e empurra o texto. */
+.pensar-log li[data-agente]::after {
+  content: attr(data-agente);
+  margin-left: 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.7;
 }
 
-/* ── Subscription Pill Button (Header) ── */
-.subscription-pill-btn {
+/* ── Subscription Pill Button (Header) ── */.subscription-pill-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1494,6 +1541,28 @@ textarea#texto::placeholder {
 }
 .plan-status[data-conectado='sim']::before { background: var(--success); }
 .plan-status[data-conectado='nao']::before { background: var(--fg-tertiary); }
+
+/* Modelo: input quieto, o mesmo peso da linha de status. Não é campo de destaque — só quando a
+   pessoa quer o modelo forte que ela vem até aqui, e aí digita. */
+.plan-model {
+  margin-top: 5px;
+  padding: 2px 6px;
+  width: 100%;
+  max-width: 190px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.plan-model::placeholder { color: var(--fg-tertiary); }
+.plan-model:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.15);
+}
+.plan-model:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   .plan-switch, .plan-switch::after { transition: none; }
   .plan-switch[aria-busy='true']::after { animation: none; }
@@ -1512,49 +1581,53 @@ textarea#texto::placeholder {
 .sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
 .sheet-toggle small { display: block; color: var(--fg-tertiary); }
 
-/* ---- Onda de "a IA está trabalhando" ---- */
-.live-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 16px;
+
+/* ── Conectores do Google (abaixo do card do Google AI Pro) ── */
+.conectores-bloco {
+  margin: 2px 0 6px;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--surface-secondary) 60%, transparent);
 }
-.onda {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  flex-shrink: 0;
+.conectores-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-tertiary);
+  margin-bottom: 8px;
 }
-.onda i {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  background: var(--accent);
-  opacity: 0.22;
-  animation: onda-pulso 1.3s ease-in-out infinite;
-  /* Negativo para a onda já estar em curso no primeiro quadro. O valor é ~1/9 do ciclo: é o que
-     faz cada quadrado ACENDER na vez do anterior, em vez de todos brilharem juntos. */
-  animation-delay: calc(var(--i) * -0.145s);
+.conector-linha { display: flex; align-items: center; gap: 10px; }
+.conector-icone {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
 }
-.onda i.onda-ponta {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  opacity: 0.3;
-  animation: none;
+.conector-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.conector-nome { font-size: 13px; font-weight: 500; color: var(--fg-primary); }
+.conector-status { font-size: 11.5px; color: var(--fg-tertiary); }
+.conector-status[data-conectado='sim'] { color: var(--success); }
+.conector-vazio {
+  font-size: 11.5px; color: var(--fg-tertiary);
+  padding: 3px 9px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border);
 }
-/* Pico estreito e decaimento longo: é o que dá o "cometa" da imagem de referência. Com o brilho
-   espalhado por metade do ciclo, dois ou três quadrados ficam claros juntos e vira mancha. */
-@keyframes onda-pulso {
-  0%        { opacity: 0.16; transform: scaleY(0.8); }
-  11%       { opacity: 1;    transform: scaleY(1); }
-  38%       { opacity: 0.42; transform: scaleY(0.92); }
-  100%      { opacity: 0.16; transform: scaleY(0.8); }
+.conectores-nota { margin: 8px 0 0; font-size: 11.5px; color: var(--fg-tertiary); line-height: 1.4; }
+
+/* Seletor de arquivos do Drive */
+.drive-lista { display: flex; flex-direction: column; gap: 2px; padding: 4px 16px 16px; overflow-y: auto; max-height: 46vh; }
+.drive-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; border: 0; border-radius: 8px;
+  background: transparent; text-align: left; cursor: pointer;
+  font: inherit; color: var(--fg-primary);
 }
-/* Sem movimento continua sendo sinal de "processando": um quadrado fixo aceso. */
-@media (prefers-reduced-motion: reduce) {
-  .onda i { animation: none; opacity: 0.5; }
-  /* nth-of-type(2) e não :first-of-type: o primeiro <i> da fileira é a ponta redonda, não um
-     quadrado. Com :first-of-type o ponto acende e o primeiro quadrado fica apagado. */
-  .onda i:nth-of-type(2) { opacity: 1; }
-}
+.drive-item:hover:not(:disabled) { background: var(--surface-secondary); }
+.drive-item:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.drive-item:disabled { opacity: 0.5; cursor: default; }
+.drive-item-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.drive-item-tamanho { font-size: 11.5px; color: var(--fg-tertiary); flex-shrink: 0; }
+.drive-vazio { font-size: 12.5px; color: var(--fg-tertiary); margin: 0; padding: 8px 0; }
