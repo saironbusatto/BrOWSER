@@ -23,14 +23,12 @@ let conectado = false;
 let conectando = false;
 let tokenAtual = '';
 
-// Ícones do seletor. Pastas abrem, arquivo baixa, documento nativo exporta — o usuário precisa
-// distinguir os três, senão clica esperando anexo e recebe uma navegação.
-const ICONE_PASTA =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z"/></svg>';
-const ICONE_ARQUIVO =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15a0 0 0 0 1 0 0H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5Z"/></svg>';
-const ICONE_DOC =
-  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v1.5H8V11Zm0 3.5h8V16H8v-1.5Z"/></svg>';
+// Ícones oficiais do Google Material Symbols (fonts.google.com/icons), fill currentColor.
+// viewBox 0 -960 960 960 é o sistema de coordenadas deles — não é o 0 0 24 24 do resto.
+const ICONE_PASTA = `<svg class="ms ms-folder" viewBox="0 -960 960 960" width="16" height="16" aria-hidden="true"><path d="M140-160q-24 0-42-18.5T80-220v-520q0-23 18-41.5t42-18.5h281l60 60h339q23 0 41.5 18.5T880-680v460q0 23-18.5 41.5T820-160H140Zm0-60h680v-460H456l-60-60H140v520Zm0 0v-520 520Z"/></svg>`;
+const ICONE_ARQUIVO = `<svg class="ms ms-description" viewBox="0 -960 960 960" width="16" height="16" aria-hidden="true"><path d="M319-250h322v-60H319v60Zm0-170h322v-60H319v60ZM220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h361l219 219v521q0 24-18 42t-42 18H220Zm331-554v-186H220v680h520v-494H551ZM220-820v186-186 680-680Z"/></svg>`;
+// Nativo do Google sai por /export, então parece documento com texto — draft tem as linhas.
+const ICONE_DOC = `<svg class="ms ms-draft" viewBox="0 -960 960 960" width="16" height="16" aria-hidden="true"><path d="M220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h361l219 219v521q0 24-18 42t-42 18H220Zm331-554v-186H220v680h520v-494H551ZM220-820v186-186 680-680Z"/></svg>`;
 
 /** true quando dá para usar o Drive agora: client_id no manifest + token válido. */
 export async function drivePronto(): Promise<boolean> {
