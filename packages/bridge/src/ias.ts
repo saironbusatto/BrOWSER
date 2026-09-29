@@ -77,7 +77,13 @@ function escreverMcpClaude(cwd: string, mcp: Mcp): string {
 
 type Invocacao = { args: string[]; stdin: string; manterStdinAberto?: boolean };
 
-function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string, anexos: string[]): Invocacao {
+// A flag de modelo muda por CLI. Id fora do catálogo é repassado: quem digita, sabe.
+function flagModelo(ia: Ia, modelo: string): string[] {
+  if (!modelo) return [];
+  return ia === 'codex' ? ['-m', modelo] : ['--model', modelo];
+}
+
+function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | undefined>, cwd: string, anexos: string[], modelo = ''): Invocacao {
   switch (ia) {
     case 'agy': {
       let conteudo = prompt;
@@ -89,7 +95,19 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
         // Sem --dangerously-skip-permissions: só mcp(browser/*) é liberado (garantirPermissaoAgy);
         // terminal e arquivos são negados. Com ele, o agy chegou a rodar `find /` e ler a config
         // que guarda o token da ponte para "achar um anexo".
-        args: ['agy', '--input-format', 'stream-json', '--output-format', 'stream-json', '-p', ''],
+        args: [
+          'agy', '--input-format', 'stream-json', '--output-format', 'stream-json',
+          // effort low: o prompt exige 1-2 frases para preencher um formulário. Raciocínio
+          // máximo aqui é latência jogada fora.
+          '--effort', 'low',
+          // Print mode não usa skill nenhuma; expandir slash command só enche o prompt.
+          '--disable-slash-commands',
+          // --sandbox fecha o terminal. A alternativa seria --dangerously-skip-permissions, que é
+          // exatamente o que deixou o agy rodar `find /` e ler a config com o token da ponte.
+          '--sandbox',
+          ...flagModelo(ia, modelo),
+          '-p', '',
+        ],
         stdin: `${JSON.stringify({ event: 'user', message: { content: conteudo } })}\n`,
         manterStdinAberto: true, // fechar antes do "result" encerra a sessão sem chamar o modelo
       };
@@ -106,6 +124,7 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
           '-c', 'approval_policy=never',
           // Imagens entram como imagem de verdade; PDF o codex lê pelo caminho indicado no prompt.
           ...anexos.filter((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)).flatMap((a) => ['-i', a]),
+          ...flagModelo(ia, modelo),
           '-'],
         stdin: prompt,
       };
@@ -115,7 +134,8 @@ function comando(ia: Ia, prompt: string, mcp: Mcp, env: Record<string, string | 
           // JSON por arquivo (0600, apagado ao final), não como argumento: aspas e chaves quebram no cmd.exe.
           '--mcp-config', escreverMcpClaude(cwd, mcp),
           // Read só da pasta de anexos (PDF/imagem); o resto do disco segue fora.
-          '--allowedTools', [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(',')],
+          '--allowedTools', [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(','),
+          ...flagModelo(ia, modelo)],
         stdin: prompt,
       };
   }
@@ -181,7 +201,7 @@ export function respostaFinal(ia: Ia, saida: string): string | undefined {
   }
 }
 
-async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null): Promise<Execucao> {
+async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[], blueprint?: SiteBlueprint | null, modelo = ''): Promise<Execucao> {
   // Sem chaves de API no ambiente: garante que a IA roda pela assinatura.
   const env: Record<string, string | undefined> = { ...process.env };
   for (const k of CHAVES_API) delete env[k];
@@ -197,7 +217,7 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
-  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos));
+  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos), modelo);
   const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
   proc.stdin.write(inv.stdin);
@@ -229,17 +249,18 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
 export async function executar(
   pedido: string,
   mcp: Mcp,
-  avisar: (t: string, agente?: PapelAgente) => void,
+  avisar: (s: string, agente?: PapelAgente) => void,
   arquivos?: ArquivoAnexo[],
   blueprint?: SiteBlueprint | null,
-  ordem: readonly Ia[] = IAS
+  ordem: readonly Ia[] = IAS,
+  modeloDe: (ia: Ia) => string = () => '',
 ): Promise<Execucao> {
   const instaladas = ordem.filter((ia) => Bun.which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
   const falhas: string[] = [];
   for (const ia of instaladas) {
     avisar(`Conectando ${ia}…`, 'geral');
-    const r = await rodar(ia, pedido, mcp, arquivos, blueprint);
+    const r = await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia));
     if (r.ok) return r;
     falhas.push(r.texto);
     avisar(`${ia} falhou; tentando a próxima IA…`, 'geral');

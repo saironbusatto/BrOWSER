@@ -14,6 +14,7 @@ import { iniciarLogin, responderCodigo, fimDoLogin, obterStatusAssinaturas, ence
 import { pathComIAs } from './caminhos';
 import { registrarHost, removerHost } from './instalar';
 import { obterBlueprint, salvarBlueprintLocal, gerarBlueprintAnonimizado, salvarOuAtualizarBlueprint } from './blueprints';
+import { listarModelos } from './modelos';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -47,6 +48,8 @@ const pendentes = new Map<number, { ok: (v: unknown) => void; falha: (e: Error) 
 const perguntasPendentes = new Map<string, (r: { resposta: string; respostasCampos?: Record<string, string> }) => void>();
 let pedidoAtivo: string | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
+// Modelo escolhido por IA. Ausente = default do CLI (que é o rápido).
+const modelosEscolhidos: Partial<Record<Ia, string>> = {};
 
 function escrever(msg: object) {
   const corpo = Buffer.from(JSON.stringify(msg));
@@ -88,6 +91,11 @@ async function lerStdin() {
           }
         } else if (msg.tipo === 'consultar_assinaturas') {
           emitirStatusAssinaturas();
+        } else if (msg.tipo === 'definir_modelo') {
+          // Aceita id fora do catálogo de propósito: a lista envelhece, o campo de texto não trava.
+          modelosEscolhidos[msg.ia] = msg.modelo;
+          log(`modelo de ${msg.ia}: ${msg.modelo || '(default do CLI)'}`);
+          emitirStatusAssinaturas();
         } else if (msg.tipo === 'ativar_assinatura') {
           iaAtivaPreferencial = msg.ia;
           emitirStatusAssinaturas();
@@ -127,6 +135,11 @@ async function lerStdin() {
 
 async function emitirStatusAssinaturas() {
   const assinaturas = await obterStatusAssinaturas(iaAtivaPreferencial);
+  // Cada card leva só os modelos da própria IA: agy não oferece modelo do claude.
+  for (const a of assinaturas) {
+    a.modelos = await listarModelos(a.ia);
+    a.modelo = modelosEscolhidos[a.ia] ?? '';
+  }
   const iaAtiva = assinaturas.find((a) => a.ativo)?.ia ?? iaAtivaPreferencial;
   escrever({ tipo: 'status_assinaturas', assinaturas, iaAtiva } satisfies Evento);
   return assinaturas;
@@ -172,7 +185,7 @@ async function rodarPedido(p: Pedir, blueprint: SiteBlueprint | null, avisar: (t
   ocupado = true;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
-    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordemFinal);
+    return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordemFinal, (ia) => modelosEscolhidos[ia] ?? '');
   } finally {
     ocupado = false;
   }

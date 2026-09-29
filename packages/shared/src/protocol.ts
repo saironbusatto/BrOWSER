@@ -78,11 +78,32 @@ export type ItemAssinatura = {
   conectado: boolean;
   ativo: boolean;
   detalhe?: string; // "demorou para responder", "CLI ausente" — senão "desconectado" caluniando
+  // Preenchidos por main.ts depois de obterStatusAssinaturas: cada card leva só os modelos da
+  // própria IA (agy não oferece modelo do claude). Opcional porque assinaturas.ts monta o card
+  // antes de o catálogo ser consultado.
+  modelo?: string;
+  modelos?: ModeloInfo[];
 };
 
-// extensão -> ponte: consulta status das assinaturas
+/** Uma opção do <select> de modelo. */
+export type ModeloInfo = {
+  id: string;
+  nome: string;
+  rapido?: boolean; // default sugerido: barato para preencher formulário
+  forte?: boolean; // raciocínio pesado, para quando compensa esperar
+};
+
+// extensão -> ponte: consultar status das assinaturas
 export type ConsultarAssinaturas = {
   tipo: 'consultar_assinaturas';
+};
+
+// extensão -> ponte: escolher o modelo da assinatura ativa.
+// Aceita id fora da lista: o campo de texto sempre passa. A lista é conveniência, não portão.
+export type DefinirModelo = {
+  tipo: 'definir_modelo';
+  ia: Ia;
+  modelo: string;
 };
 
 // extensão -> ponte: disparar login oficial de uma assinatura
@@ -116,6 +137,7 @@ export type MensagemExtensao =
   | ConsultarAssinaturas
   | ConectarAssinatura
   | AtivarAssinatura
+  | DefinirModelo
   | ResponderCodigo
   | DesconectarTodos;
 
