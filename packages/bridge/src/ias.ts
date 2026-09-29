@@ -1,10 +1,18 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { IAS, type ArquivoAnexo, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 import { formatarBlueprintParaIa } from './blueprints';
 import { comandoExecutavel } from './caminhos';
+
+// Mesmo log de main.ts e assinaturas.ts: stdout é exclusivo do protocolo do Chrome.
+const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
+const log = (...a: unknown[]) => {
+  try {
+    appendFileSync(join(DIR_BRIDGE, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);
+  } catch {}
+};
 
 const TIMEOUT_MS = 5 * 60_000;
 const TOOLS = ['ler_campos', 'preencher', 'clicar', 'perguntar_ao_usuario', 'consultar_blueprint'];
@@ -219,7 +227,17 @@ async function rodar(ia: Ia, pedido: string, mcp: Mcp, arquivos?: ArquivoAnexo[]
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
   const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos), modelo);
   const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
-  const timer = setTimeout(() => proc.kill(), TIMEOUT_MS);
+  // O stderr só era lido depois de `await proc.exited`. Se o agy morresse no spawn ou travasse, o
+  // proc.stderr.text() ficava pendurado e a causa sumia: o BrOWSER só devolvia "saiu com código X".
+  // Agarrar o erro antes do kill é o que torna a falha de spawn visível no log.
+  const timer = setTimeout(async () => {
+    let stderr = '';
+    try {
+      stderr = await new Response(proc.stderr).text();
+    } catch {}
+    log(`timeout de ${TIMEOUT_MS}ms em ${ia}; stderr antes do kill: ${stderr.slice(-500) || '(vazio)'}`);
+    proc.kill();
+  }, TIMEOUT_MS);
   proc.stdin.write(inv.stdin);
   proc.stdin.flush();
   if (!inv.manterStdinAberto) proc.stdin.end();

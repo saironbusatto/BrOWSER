@@ -9,3 +9,6 @@ dist/
 # Fotos geradas fora do projeto: nao entram no repo.
 imgs/Gemini_Generated_Image_*
 dist-site/
+
+# Handoffs entre sessoes: nota de trabalho, nao documentacao do produto.
+docs/handoff-*.md
