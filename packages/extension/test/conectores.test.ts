@@ -105,3 +105,45 @@ describe('paramDaUrl: o code volta na query e o token no fragment', () => {
     expect(paramDaUrl('https://abc.chromiumapp.org/?error=access_denied', 'code')).toBeNull();
   });
 });
+
+describe('query do Drive: parâmetro malformado é 400, não lista vazia', () => {
+  const urlDaChamada = async () => {
+    let url = '';
+    globalThis.fetch = ((u: string) => {
+      url = u;
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
+    }) as any;
+    await listarDrive('t');
+    return url;
+  };
+
+  it('fields não vem aninhado: files(files(...)) faz o Drive responder 400', async () => {
+    const url = await urlDaChamada();
+    const fields = new URL(url).searchParams.get('fields')!;
+    expect(fields).toBe('files(id,name,mimeType,size,modifiedTime)');
+    expect(fields).not.toMatch(/files\(files\(/);
+    // O wrapper tem que fechar uma vez só — conta de parênteses é o teste mais direto.
+    expect((fields.match(/\(/g) ?? []).length).toBe((fields.match(/\)/g) ?? []).length);
+    expect((fields.match(/files\(/g) ?? []).length).toBe(1);
+  });
+
+  it('supportsAllDrives sem corpora=team/allUser não é pedido de shared drive', async () => {
+    const params = new URL(await urlDaChamada()).searchParams;
+    // includeItemsFromAllDrives só faz sentido com corpora que inclua shared drives; com o
+    // padrão (user) ele é redundante e o Drive pode recusar a combinação.
+    expect(params.get('supportsAllDrives')).toBe('true');
+    expect(params.get('corpora')).toBeNull();
+  });
+
+  it('listar por pasta usa o mesmo seletor de campos, senão quebra só nesse caminho', async () => {
+    let url = '';
+    globalThis.fetch = ((u: string) => {
+      url = u;
+      return Promise.resolve(new Response(JSON.stringify({ files: [] }), { status: 200 }));
+    }) as any;
+    await listarDrive('t', 'abc123');
+    const params = new URL(url).searchParams;
+    expect(params.get('fields')).toBe('files(id,name,mimeType,size,modifiedTime)');
+    expect(params.get('q')).toBe("'abc123' in parents and trashed = false");
+  });
+});
