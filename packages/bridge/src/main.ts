@@ -197,11 +197,17 @@ async function rodarPedido(p: Pedir, blueprint: SiteBlueprint | null, avisar: (t
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
   if (ocupado) return { ok: false, texto: 'Já existe um pedido em andamento.' };
   ocupado = true;
+  // A conta fica aqui e não em atenderPedido de propósito: rodarPedido é o funil dos DOIS
+  // caminhos (painel lateral e `/control` do spike/teste). Medir num deles só deixaria o outro
+  // cego — que foi exatamente o erro da primeira versão desta instrumentação.
+  relogio.zerar();
+  const t0 = performance.now();
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
     return await executar(p.texto, mcp, avisar, p.arquivos, blueprint, ordemFinal, (ia) => modelosEscolhidos[ia] ?? '');
   } finally {
     ocupado = false;
+    log(relogio.resumo(performance.now() - t0));
   }
 }
 
@@ -237,8 +243,6 @@ async function atenderPedido(p: Pedir) {
       }
     } catch {}
 
-    relogio.zerar();
-    const t0Pedido = performance.now();
     const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }))
       .catch((e): Execucao => ({ ok: false, texto: String(e) }));
     log(`pedido ${p.pedidoId}: ${r.ok ? 'ok' : 'falhou'} (${r.ia ?? '-'})`);
@@ -255,9 +259,6 @@ async function atenderPedido(p: Pedir) {
         }
       } catch {}
     }
-    // Fica no fim de propósito: o ler_campos de conferência acima também é comando de browser,
-    // e a conta só fecha depois dele.
-    log(relogio.resumo(performance.now() - t0Pedido));
   } finally {
     pedidoAtivo = undefined;
   }
