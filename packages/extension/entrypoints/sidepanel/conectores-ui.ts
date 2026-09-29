@@ -46,9 +46,7 @@ export function blocoConectores(): HTMLElement {
     <div class="conectores-titulo">Conectores do Google</div>
     <div class="conector-linha">
       <div class="conector-icone" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-          <path d="M9.4 3.3a2 2 0 0 1 2.9 0l1.4 2.4h4.1a2 2 0 0 1 1.9 2.6l-2.1 7.1a2 2 0 0 1-1.9 1.4H7.3a2 2 0 0 1-1.9-1.4l-2.1-7.1a2 2 0 0 1 1.9-2.6h2.5l1.7-2.4Z"/>
-        </svg>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8.47 2.88 1.57 15.31a1.34 1.34 0 0 0 1.16 2.01h16.54a1.34 1.34 0 0 0 1.16-2.01L15.53 2.88a1.34 1.34 0 0 0-2.32 0L12.08 5.5H7.79L8.47 2.88Zm-2.4 5.06H3.2l6.13-10.98 2.87 5.15v5.83H6.07Zm5.6 5.83V7.11L8.8 1.98l3.73 6.67v5.12h-.86Z"/></svg>
       </div>
       <div class="conector-info">
         <span class="conector-nome">${CONECTORES[0]!.nome}</span>
@@ -122,8 +120,7 @@ export async function iniciarConectores(d: Deps): Promise<void> {
   btn.className = 'attach-btn drive-btn';
   btn.title = 'Anexar do Google Drive';
   btn.setAttribute('aria-label', 'Anexar arquivo do Google Drive');
-  btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-    <path d="M9.4 3.3a2 2 0 0 1 2.9 0l1.4 2.4h4.1a2 2 0 0 1 1.9 2.6l-2.1 7.1a2 2 0 0 1-1.9 1.4H7.3a2 2 0 0 1-1.9-1.4l-2.1-7.1a2 2 0 0 1 1.9-2.6h2.5l1.7-2.4Z"/></svg>`;
+  btn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8.47 2.88 1.57 15.31a1.34 1.34 0 0 0 1.16 2.01h16.54a1.34 1.34 0 0 0 1.16-2.01L15.53 2.88a1.34 1.34 0 0 0-2.32 0L12.08 5.5H7.79L8.47 2.88Zm-2.4 5.06H3.2l6.13-10.98 2.87 5.15v5.83H6.07Zm5.6 5.83V7.11L8.8 1.98l3.73 6.67v5.12h-.86Z"/></svg>`;
   btn.addEventListener('click', () => void abrirSeletor());
   acoes.prepend(btn);
 }
@@ -150,9 +147,18 @@ async function abrirSeletor() {
     </div>
   `;
   document.body.appendChild(fundo);
+  // .sheet-modal-backdrop nasce com opacity:0 e pointer-events:none. Sem a classe .open o modal
+  // existe mas é invisível e não recebe clique — que era o "cliquei e nada aconteceu".
+  // O requestAnimationFrame dá um frame para o navegador registrar o estado inicial, senão a
+  // transição de opacity não roda e o sheet salta sem animação.
+  requestAnimationFrame(() => fundo.classList.add('open'));
 
   const lista = fundo.querySelector<HTMLElement>('.drive-lista')!;
-  const fechar = () => fundo.remove();
+  const fechar = () => {
+    fundo.classList.remove('open');
+    fundo.addEventListener('transitionend', () => fundo.remove(), { once: true });
+    setTimeout(() => fundo.remove(), 300); // rede de segurança se transitionend não vier
+  };
   fundo.querySelector('.icon-close-btn')!.addEventListener('click', fechar);
   fundo.addEventListener('click', (e) => {
     if (e.target === fundo) fechar();
