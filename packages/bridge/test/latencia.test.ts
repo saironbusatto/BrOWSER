@@ -16,7 +16,11 @@ describe('textoLatencia: a conta que decide o próximo passo', () => {
     const linha = textoLatencia(
       10_000,
       5_000,
-      new Map([['clicar', cmd(2, 4_000)], ['preencher', cmd(20, 900)], ['ler_campos', cmd(2, 100)]]),
+      new Map([
+        ['clicar', cmd(2, 4_000)],
+        ['preencher', cmd(20, 900)],
+        ['ler_campos', cmd(2, 100)],
+      ]),
     );
     const ordem = linha.match(/preencher|clicar|ler_campos/g)!;
     expect(ordem).toEqual(['preencher', 'clicar', 'ler_campos']);

@@ -3,14 +3,14 @@
 // mete o bloco na lista, porque main.ts é o arquivo que mais muda neste repo.
 
 import {
-  CONECTORES,
+  type ArquivoDrive,
   baixarDrive,
+  CONECTORES,
   conectorConfigurado,
   desconectarGoogle,
   formatarTamanho,
   listarDrive,
   tokenGoogle,
-  type ArquivoDrive,
 } from '../../utils/conectores';
 
 type Deps = {
@@ -25,9 +25,12 @@ let tokenAtual = '';
 
 // Ícones do seletor. Pastas abrem, arquivo baixa, documento nativo exporta — o usuário precisa
 // distinguir os três, senão clica esperando anexo e recebe uma navegação.
-const ICONE_PASTA = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z"/></svg>';
-const ICONE_ARQUIVO = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15a0 0 0 0 1 0 0H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5Z"/></svg>';
-const ICONE_DOC = '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v1.5H8V11Zm0 3.5h8V16H8v-1.5Z"/></svg>';
+const ICONE_PASTA =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h9A1.5 1.5 0 0 1 21 9v8.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5v-11Z"/></svg>';
+const ICONE_ARQUIVO =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15a0 0 0 0 1 0 0H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5Z"/></svg>';
+const ICONE_DOC =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M6 2h7l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm7 1.5V7h3.5L13 3.5ZM8 11h8v1.5H8V11Zm0 3.5h8V16H8v-1.5Z"/></svg>';
 
 /** true quando dá para usar o Drive agora: client_id no manifest + token válido. */
 export async function drivePronto(): Promise<boolean> {
@@ -76,10 +79,12 @@ export function blocoConectores(): HTMLElement {
 
   if (!conectorConfigurado()) {
     // Sem client_id não há botão: OAuth sem client_id falha com erro de console inútil.
-    sw.replaceWith(Object.assign(document.createElement('span'), {
-      className: 'conector-vazio',
-      textContent: 'Em breve',
-    }));
+    sw.replaceWith(
+      Object.assign(document.createElement('span'), {
+        className: 'conector-vazio',
+        textContent: 'Em breve',
+      }),
+    );
     nota.hidden = false;
     nota.textContent = 'Conector em preparação. Só leitura: o Google nunca enxerga seus arquivos.';
     return bloco;

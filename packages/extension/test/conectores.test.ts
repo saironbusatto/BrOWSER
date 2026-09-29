@@ -17,10 +17,7 @@ describe('escopos dos conectores', () => {
 
 describe('listarDrive: o que entra na lista de anexos', () => {
   const token = 'fake-token';
-  const resposta = (files: unknown[]) =>
-    Promise.resolve(
-      new Response(JSON.stringify({ files }), { status: 200 }),
-    );
+  const resposta = (files: unknown[]) => Promise.resolve(new Response(JSON.stringify({ files }), { status: 200 }));
 
   it('pastas e nativos voltam marcados, não escondidos — sem pasta não há como navegar', async () => {
     globalThis.fetch = (() =>
@@ -40,8 +37,7 @@ describe('listarDrive: o que entra na lista de anexos', () => {
   });
 
   it('Forms e Vids não são exportáveis mas também não somem da lista', async () => {
-    globalThis.fetch = (() =>
-      resposta([{ id: 'f', name: 'Form', mimeType: 'application/vnd.google-apps.form' }])) as any;
+    globalThis.fetch = (() => resposta([{ id: 'f', name: 'Form', mimeType: 'application/vnd.google-apps.form' }])) as any;
     const lista = await listarDrive(token);
     // A doc só confirma que Vids dá fileNotExportable. O regex é restrito a doc/sheet/presentation
     // de propósito: Form aparece com download quebrado em vez de sumir da lista.
@@ -101,9 +97,7 @@ describe('formatarTamanho', () => {
 describe('code_verifier e code_challenge', () => {
   it('o S256 é determinístico e bate com o vetor oficial do RFC 7636', async () => {
     // O exemplo canônico do RFC: verifierKnown -> challengeKnown.
-    expect(await codeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe(
-      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
-    );
+    expect(await codeChallenge('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk')).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
   });
 
   it('base64url: sem +, / e = (o Google recusa se vazar)', async () => {

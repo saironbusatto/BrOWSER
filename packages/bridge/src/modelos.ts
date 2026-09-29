@@ -10,10 +10,11 @@
 //
 // A lista é conveniência, não portão: um id fora dela é repassado ao CLI, que decide. Se a lista
 // estiver velha, o máximo que acontece é o modelo novo não aparecer no <select>.
-import type { Ia, ModeloInfo } from '@browser/shared';
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { Ia, ModeloInfo } from '@browser/shared';
 import { comandoExecutavel } from './caminhos';
 
 const CACHE = join(homedir(), '.config', 'browser-bridge', 'modelos.json');
@@ -36,19 +37,23 @@ const TTL_MS = 6 * 60 * 60 * 1000; // 6h: o refresh do repo não muda mais que i
 const EMBUTIDO: Arquivo = {
   padrao: { agy: 'gemini-3.8-flash-low', claude: 'haiku', codex: 'gpt-5.1-codex' },
   modelos: {
-    agy: { itens: [
-      { id: 'gemini-3.8-flash-low', nome: 'Gemini 3.8 Flash (Low)', rapido: true },
-      { id: 'gemini-3.1-pro-high', nome: 'Gemini 3.1 Pro (High)', forte: true },
-      { id: 'claude-sonnet-4-6', nome: 'Claude Sonnet 4.6 (Thinking)', forte: true },
-      { id: 'claude-opus-4-6-thinking', nome: 'Claude Opus 4.6 (Thinking)', forte: true },
-    ] },
-    claude: { itens: [
-      { id: 'haiku', nome: 'Haiku — mais novo', rapido: true },
-      { id: 'sonnet', nome: 'Sonnet — mais novo' },
-      { id: 'opus', nome: 'Opus — mais novo', forte: true },
-      { id: 'fable', nome: 'Fable 5 — mais pesado', forte: true },
-      { id: 'best', nome: 'Melhor disponível na conta', forte: true },
-    ] },
+    agy: {
+      itens: [
+        { id: 'gemini-3.8-flash-low', nome: 'Gemini 3.8 Flash (Low)', rapido: true },
+        { id: 'gemini-3.1-pro-high', nome: 'Gemini 3.1 Pro (High)', forte: true },
+        { id: 'claude-sonnet-4-6', nome: 'Claude Sonnet 4.6 (Thinking)', forte: true },
+        { id: 'claude-opus-4-6-thinking', nome: 'Claude Opus 4.6 (Thinking)', forte: true },
+      ],
+    },
+    claude: {
+      itens: [
+        { id: 'haiku', nome: 'Haiku — mais novo', rapido: true },
+        { id: 'sonnet', nome: 'Sonnet — mais novo' },
+        { id: 'opus', nome: 'Opus — mais novo', forte: true },
+        { id: 'fable', nome: 'Fable 5 — mais pesado', forte: true },
+        { id: 'best', nome: 'Melhor disponível na conta', forte: true },
+      ],
+    },
     codex: { itens: [{ id: 'gpt-5.1-codex', nome: 'GPT-5.1 Codex' }] },
   },
 };

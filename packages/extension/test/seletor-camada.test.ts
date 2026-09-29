@@ -4,8 +4,9 @@
 // Este teste roda o MESMO seletor da produção contra as duas camadas que a extensão tem
 // (content script e executeScript) e mede a diferença. Se as duasgebenam o mesmo, o problema
 // não é o seletor — e a busca do Spotify simplesmente não é campo de texto no DOM.
-import { JSDOM } from 'jsdom';
+
 import { describe, expect, it } from 'bun:test';
+import { JSDOM } from 'jsdom';
 
 // Copiado de packages/extension/entrypoints/content.ts:72 — a camada do content script.
 const SELETOR_CONTENT = [
@@ -16,9 +17,22 @@ const SELETOR_CONTENT = [
 
 // Copiado de packages/extension/utils/dom-fallback.ts:11 — a camada do ler_campos.
 const SELETOR_FALLBACK = [
-  'input:not([type=hidden])', 'select', 'textarea', 'button', 'a[href]', '[contenteditable=""]', '[contenteditable=true]',
-  '[role=button]', '[role=checkbox]', '[role=radio]', '[role=combobox]', '[role=switch]', '[role=tab]',
-  '[role=menuitem]', '[role=option]', '[role=textbox]',
+  'input:not([type=hidden])',
+  'select',
+  'textarea',
+  'button',
+  'a[href]',
+  '[contenteditable=""]',
+  '[contenteditable=true]',
+  '[role=button]',
+  '[role=checkbox]',
+  '[role=radio]',
+  '[role=combobox]',
+  '[role=switch]',
+  '[role=tab]',
+  '[role=menuitem]',
+  '[role=option]',
+  '[role=textbox]',
 ].join(',');
 
 // As duas search boxes que o Spotify web usa (historicamente input, hoje contenteditable) coexistem
@@ -41,8 +55,8 @@ function comLayout(html: string, seletor: string): string[] {
   window.Element.prototype.getBoundingClientRect = function (this: Element) {
     return { width: 10, height: 10 } as DOMRect;
   };
-  return Array.from(window.document.querySelectorAll(seletor)).map(
-    (el) => (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('role') || el.tagName).trim()
+  return Array.from(window.document.querySelectorAll(seletor)).map((el) =>
+    (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.getAttribute('role') || el.tagName).trim(),
   );
 }
 

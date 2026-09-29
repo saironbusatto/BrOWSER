@@ -30,10 +30,7 @@ describe('formatarBlueprintParaIa: o mapa não pode estourar o prompt', () => {
   });
 
   it('link é o primeiro a ser cortado: nenhum deles é preenchível', () => {
-    const campos = [
-      campo('Nome completo', 'textbox', true),
-      ...Array.from({ length: 400 }, (_, i) => campo(`Link ${i}`, 'link')),
-    ];
+    const campos = [campo('Nome completo', 'textbox', true), ...Array.from({ length: 400 }, (_, i) => campo(`Link ${i}`, 'link'))];
     const md = formatarBlueprintParaIa(bp(campos));
     expect(md).toContain('Nome completo');
     expect(md).not.toContain('Link 399');

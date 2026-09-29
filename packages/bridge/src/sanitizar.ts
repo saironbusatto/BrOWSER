@@ -41,9 +41,10 @@ const ENDERECO = /\b(rua|avenida|av\.|travessa|alameda|pra[çc]a|rodovia|estrada
 // "Artista - Álbum - 2000": três segmentos com ano no fim.
 const TRILHA_ANO = /^[^-–|]{2,40}\s[-–|]\s[^-–|]{2,40}\s[-–|]\s(?:19|20)\d{2}$/;
 // Handle depois de um substantivo de conta: "Perfil de saironbusatto".
-const HANDLE = /^(perfil|conta|usuário|usuario|autor)\s+d[eo]\s+[\w.\-]{2,}$/i;
+const HANDLE = /^(perfil|conta|usuário|usuario|autor)\s+d[eo]\s+[\w.-]{2,}$/i;
 // Contagem com unidade: "Ver todos os 67 itens", "10 mil visualizações".
-const CONTAGEM = /\b\d[\d.,]*\s*(mil|mi)?\s*(itens|faixas|m[úu]sicas|albuns|[áa]lbuns|playlists|epis[óo]dios|canais|seguidores|visualiza[çcõ]ões|coment[áa]rios|resultados?|results?)\b/i;
+const CONTAGEM =
+  /\b\d[\d.,]*\s*(mil|mi)?\s*(itens|faixas|m[úu]sicas|albuns|[áa]lbuns|playlists|epis[óo]dios|canais|seguidores|visualiza[çcõ]ões|coment[áa]rios|resultados?|results?)\b/i;
 
 function mascarar(texto: string): string {
   return MASCARAS.reduce((t, [re, rep]) => t.replace(re, rep), texto);
@@ -51,7 +52,14 @@ function mascarar(texto: string): string {
 
 /** Verdadeiro quando o rótulo é conteúdo da conta, não um controle do site. */
 function ehConteudo(texto: string): boolean {
-  return DURACAO.test(texto) || ORDINAL.test(texto) || ENDERECO.test(texto) || TRILHA_ANO.test(texto) || HANDLE.test(texto) || CONTAGEM.test(texto);
+  return (
+    DURACAO.test(texto) ||
+    ORDINAL.test(texto) ||
+    ENDERECO.test(texto) ||
+    TRILHA_ANO.test(texto) ||
+    HANDLE.test(texto) ||
+    CONTAGEM.test(texto)
+  );
 }
 
 // Lacunas conhecidas, de propósito. These rótulos são indistinguíveis de um controle pelo texto
