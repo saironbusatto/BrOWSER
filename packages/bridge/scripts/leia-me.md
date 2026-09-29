@@ -6,6 +6,34 @@ ferramenta de IA oficial que você já paga (Google AI Pro, ChatGPT ou Claude). 
 Neste pacote já vêm a ponte, a extensão e o instalador. Nada além do navegador e da
 ferramenta de IA que você escolher.
 
+## Como instalar (leia antes de clicar em nada)
+
+**Não dê duplo clique em `install.sh`.** No Linux, duplo clique em um arquivo `.sh` **abre o
+código num editor de texto** — é o padrão do ambiente gráfico, não uma falha. E `bridge` é um
+executável: clicar nele também não faz nada.
+
+Faça por um terminal. Qualquer um destes serve:
+
+```bash
+# 1. abrindo um terminal dentro da pasta
+./install.sh
+
+# 2. do terminal, de qualquer lugar
+bash ~/Downloads/BrOWSER-linux/install.sh
+
+# 3. pelo menu do botão direito do arquivo
+#    "Executar em um terminal" / "Run in a Terminal"
+```
+
+Se aparecer "Permissão negada", é falta a permissão de execução:
+
+```bash
+chmod +x install.sh bridge && ./install.sh
+```
+
+**No Windows**, o inverso: clique duas vezes em `instalar.cmd` — e **extraia o .zip antes**, senão
+o Windows copia só o arquivo clicado e o `setup.ps1` não vai junto.
+
 ## Antes de tudo: o diagnóstico
 
 Diga se esta máquina tem o que o BrOWSER precisa, **antes** de instalar:

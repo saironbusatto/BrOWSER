@@ -109,6 +109,46 @@ echo "✓ ponte e extensão copiadas para $DESTINO"
 "$DESTINO/bridge" --install
 echo "✓ ponte registrada nos navegadores"
 
+# O Antigravity CLI (agy) é o caminho principal do BrOWSER — primeira opção, e a única que faz
+# login OAuth da assinatura. ChatGPT (codex) e Claude (claude) são alternativas, usadas quando a
+# pessoa já tem uma delas; a ponte cai para elas se o agy não estiver conectado.
+#
+# O instalador NÃO instala agy por conta própria: mostra o comando oficial do Google e pergunta.
+# A pessoa confirma, e o comando é o mesmo que está na documentação do Antigravity. Baixar e
+# executar um script remoto é o que o instalador faz aqui, e só com o "s" da pessoa.
+URL_AGY="https://antigravity.google/cli/install.sh"
+COMANDO_AGY="curl -fsSL ${URL_AGY} | bash"
+if [ "$SIM" -ne 1 ] && ! command -v agy >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/agy" ]; then
+  echo ""
+  echo "O Antigravity CLI (agy) não está instalado, e ele é o caminho principal do BrOWSER:"
+  echo "é a única ferramenta que faz login OAuth da assinatura."
+  echo "Instalador oficial do Google: $URL_AGY"
+  echo ""
+  printf "Instalar agora? (s/N) "
+  r=""
+  read -r r || true
+  case "$r" in
+    [sS]*)
+      echo "Rodando: $COMANDO_AGY"
+      if bash -c "$COMANDO_AGY"; then
+        echo "✓ Antigravity CLI instalado. O login da sua assinatura é feito depois, no painel,"
+        echo "  em Assinaturas > Conectar."
+      else
+        echo "! A instalação do Antigravity CLI falhou. Nada do BrOWSER foi afetado."
+        echo "  Se preferir, instale depois com: $COMANDO_AGY"
+      fi
+      ;;
+    *)
+      echo "Pulando. Se mudar de ideia, é só rodar: $COMANDO_AGY"
+      echo "ChatGPT (codex) e Claude (claude) também funcionam, se você já tiver algum deles."
+      ;;
+  esac
+elif [ "$SIM" -eq 1 ] && ! command -v agy >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/agy" ]; then
+  echo ""
+  echo "O Antigravity CLI (agy) não está instalado. Para o Google AI Pro, o instalador"
+  echo "oficial do Google é: $COMANDO_AGY"
+fi
+
 echo ""
-echo "Antes de abrir o navegador, um diagnóstico do que esta máquina tem:"
+echo "Instalado. Antes de abrir o navegador, confira o que esta máquina tem:"
 echo "  $DESTINO/bridge --doctor"

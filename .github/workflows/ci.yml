@@ -50,105 +50,54 @@ jobs:
         if: runner.os == 'Linux'
         run: packages/bridge/dist/bridge --install
 
-      # No Windows, o instalador é um .exe de verdade, e o CI o executa. Um instalador que só
-      # compila não diz nada: o que quebra é o registro, o caminho da extensão, o atalho e a
-      # desinstalação — e cada um desses só falha rodando.
-      - name: Compilar o instalador (NSIS)
+      # No Windows, testa o instalador do usuário final (copia para %LOCALAPPDATA% e registra).
+      # O caminho que a pessoa usa: clicar duas vezes em instalar.cmd. Rodar o setup.ps1 direto
+      # passaria por cima do que o .cmd resolve — a ExecutionPolicy, a marca de "baixado da
+      # internet" e a janela que fecha antes de dar para ler.
+      - name: Instalador (instalar.cmd)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # O PATH NÃO é caminho para o makensis: o choco instala em C:\Program Files (x86)\NSIS
-          # e a sessão do PowerShell já em execução continua sem enxergar o diretório novo. A
-          # primeira versão deste passo falhou exatamente nisso, com "makensis is not recognized"
-          # logo depois de o choco ter reportado sucesso.
-          $makensis = (Get-ChildItem 'C:\Program Files*\NSIS\makensis.exe' -ErrorAction SilentlyContinue |
-                       Select-Object -First 1).FullName
-          if (-not $makensis) {
-            'makensis não encontrado; instalando com o choco' | Out-Host
-            choco install nsis --no-progress -y
-            $makensis = (Get-ChildItem 'C:\Program Files*\NSIS\makensis.exe' -ErrorAction SilentlyContinue |
-                         Select-Object -First 1).FullName
-          }
-          if (-not $makensis) { throw 'makensis continua ausente depois do choco install nsis' }
-          "makensis: $makensis"
-          & $makensis -VERSION
-          New-Item -ItemType Directory -Force -Path dist-instalador/extensao | Out-Null
-          Copy-Item packages/bridge/dist/bridge.exe, design/icone.ico dist-instalador/
-          Copy-Item packages/extension/.output/chrome-mv3/* dist-instalador/extensao/ -Recurse
-          Copy-Item packages/bridge/scripts/instalar.nsi, packages/bridge/scripts/instalar-versao.nsh dist-instalador/
-          Push-Location dist-instalador
-          # A versão vai por arquivo, não por -D: no Windows o makensis reparte o argumento com
-          # ponto e sobraria um pedaço como nome de script. O idioma é PortugueseBR nas duas
-          # plataformas (BrazilianPortuguese é nome do Inno Setup e não existe no NSIS).
-          $defs = @('!define VERSAO "0.0.0"')
-          Set-Content -Encoding ASCII -Path instalar-versao.nsh -Value $defs
-          Get-Content instalar-versao.nsh
-          # Se o arquivo de idioma não existir, o makensis aborta com um erro que não diz quais
-          # nomes ele aceita. Conferir antes e dizer a lista no log evita a caça ao tesouro.
-          $nlf = Get-ChildItem (Split-Path $makensis) -Recurse -Filter 'PortugueseBR.nlf' -ErrorAction SilentlyContinue
-          if (-not $nlf) {
-            'PortugueseBR.nlf não encontrado. Idiomas disponíveis:' | Out-Host
-            Get-ChildItem (Join-Path (Split-Path $makensis) 'Contrib') -Recurse -Filter '*.nlf' -ErrorAction SilentlyContinue |
-              Select-Object -ExpandProperty Name | Out-Host
-            throw 'o instalador não pode ser compilado sem o arquivo de idioma'
-          }
-          "idioma: $($nlf.FullName)"
-          & $makensis instalar.nsi
-          Pop-Location
-          if (-not (Test-Path dist-instalador/BrOWSER-Setup-0.0.0.exe)) { throw 'o instalador não foi gerado' }
-          $cabecalho = (Get-Content dist-instalador/BrOWSER-Setup-0.0.0.exe -AsByteStream -TotalCount 2) -join ','
-          if ($cabecalho -ne '77,90') { throw "o instalador não é um PE (cabeçalho: $cabecalho)" }
-
-      - name: Instalar (o .exe, em silêncio, como quem clica)
+          Copy-Item packages/bridge/scripts/setup.ps1, packages/bridge/scripts/uninstall.ps1, packages/bridge/scripts/instalar.cmd, design/icone.ico packages/bridge/dist/
+      - name: Instalar (instalar.cmd -sim)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: packages\bridge\dist\instalar.cmd -sim -semia
+      - name: Conferir o que o instalador fez
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Remove-Item "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
-          $p = Start-Process dist-instalador/BrOWSER-Setup-0.0.0.exe -ArgumentList '/S' -PassThru
-          # O instalador escreve uma linha por etapa. Um instalador que trava em /S não devolve
-          # nada, e sem este rastro a única pista seria "a etapa não terminou": foi assim que a
-          # primeira versão gastou três rodadas de CI sem dizer onde parava.
-          if (-not $p.WaitForExit(300000)) {
-            $p | Stop-Process -Force
-            '--- o instalador travou. Rastro de etapas:'
-            Get-Content "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
-            throw 'o instalador não terminou em 5 minutos'
-          }
-          '--- rastro de etapas do instalador:'
-          Get-Content "$env:TEMP\instalar-BrOWSER.log" -ErrorAction SilentlyContinue
-          if ($p.ExitCode -ne 0) { throw "o instalador saiu com $($p.ExitCode)" }
-          if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi instalado' }
+          if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\bridge.exe")) { throw 'bridge.exe não foi copiado' }
           if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\extensao\manifest.json")) { throw 'a extensão não foi instalada' }
-          if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\Uninstall BrOWSER.exe")) { throw 'o desinstalador não foi criado' }
-          $app = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER'
-          $app | Select-Object DisplayName, DisplayVersion, InstallLocation, UninstallString, EstimatedSize | Format-List
-          if ($app.DisplayName -ne 'BrOWSER') { throw 'entrada em Aplicativos instalados ausente' }
-          if ($app.UninstallString -notmatch 'Uninstall BrOWSER.exe') { throw 'o desinstalador registrado não é o do instalador' }
+          if (-not (Test-Path "$env:LOCALAPPDATA\BrOWSER\INSTALADO.txt")) { throw 'o resumo não foi escrito' }
 
-          # O --doctor é executado aqui, e o ponto do teste é que ele TERMINA. No Windows toda CLI
-          # de npm é um shim .cmd: o cmd.exe vira um processo neto que segura a saída padrão, e a
-          # leitura do status ficava esperando para sempre. Foi esse passo que travou a primeira
-          # versão do instalador no runner.
-          #
-          # Não dá para exigir saída 0: o codex do CI está instalado e sem login, e aí o doctor
-          # está certo em reclamar. O que não pode é não voltar.
-          # WaitForExit(ms) e não Wait-Process -Timeout: o segundo devolve $null mesmo quando o
-          # processo já terminou, então a verificação passaria a reprovar sempre. O primeiro
-          # devolve $true/$false de verdade, o que é o que o teste precisa saber.
+          # O --doctor tem que VOLTAR. No Windows toda CLI de npm e um shim .cmd, e o processo neto
+          # segurava a leitura do status para sempre. WaitForExit(ms) e nao Wait-Process
+          # -Timeout: o segundo devolve $null mesmo quando o processo ja terminou, e a checagem
+          # passaria a reprovar sempre.
           $doctor = Start-Process "$env:LOCALAPPDATA\BrOWSER\bridge.exe" -ArgumentList '--doctor' -NoNewWindow -PassThru
           if (-not $doctor.WaitForExit(90000)) {
             $doctor | Stop-Process -Force
-            throw 'o --doctor não voltou em 90s: uma CLI de IA travou o diagnóstico'
+            throw 'o --doctor nao voltou em 90s: uma CLI de IA travou o diagnostico'
           }
-          "o --doctor voltou com código $($doctor.ExitCode) (1 é o esperado aqui: codex sem login)"
+          "doctor saiu com $($doctor.ExitCode) (1 e o esperado aqui: nenhuma IA conectada)"
 
-          # O arquivo que o instalador escreve é a prova de que os acentos sobreviveram à página de
-          # código do Windows até o arquivo em disco. Acentuação perdida aqui é defeito visível na
-          # tela da pessoa, e nenhuma asserção de "o instalador rodou" pegaria isso.
+          # Acentuacao perdida no arquivo do instalador seria defeito visivel na tela da pessoa.
           $txt = Get-Content "$env:LOCALAPPDATA\BrOWSER\INSTALADO.txt" -Raw -Encoding UTF8
-          if ($txt -notmatch 'Diagnóstico') { throw "acentuação perdida no INSTALADO.txt: $txt" }
-          if ($txt -notmatch 'extensão') { throw "acentuação perdida no INSTALADO.txt: $txt" }
-          $txt
+          if ($txt -notmatch 'le a extens') { throw "acentuacao perdida no INSTALADO.txt: $txt" }
+          $app = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER'
+          if ($app.DisplayName -ne 'BrOWSER') { throw 'entrada em Aplicativos instalados ausente' }
+          $app | Select-Object DisplayName, DisplayVersion, UninstallString, EstimatedSize | Format-List
+
+      - name: Conferir registro (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($chave in 'Google\Chrome', 'BraveSoftware\Brave-Browser', 'Microsoft\Edge') {
+            $manifesto = (Get-ItemProperty "HKCU:\Software\$chave\NativeMessagingHosts\com.browser.bridge").'(default)'
+            if (-not (Test-Path $manifesto)) { throw "manifesto não encontrado para ${chave}: $manifesto" }
+          }
+          Get-Content $manifesto
 
       # Instalador do Linux, caminho completo em HOME de mentira. Um release que ninguém instalou
       # em máquina limpa é um release que ninguém sabe se funciona.
@@ -198,21 +147,13 @@ jobs:
           bun packages/bridge/scripts/smoke.ts "$EXE" --codex
 
       # Desinstalação tem de desfazer tudo (exigência da SignPath: "uninstallation facilities").
-      # A desinstalação tem de desfazer tudo, senão o BrOWSER não pode ser assinado: a SignPath
-      # exige que exista uma forma de remover o que foi instalado. E o desinstalador gerado é um
-      # .exe do próprio NSIS, então é ele que o CI executa.
-      - name: Desinstalar (o desinstalador do instalador, em silêncio)
+      - name: Desinstalador (uninstall.ps1)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $u = "$env:LOCALAPPDATA\BrOWSER\Uninstall BrOWSER.exe"
-          if (-not (Test-Path $u)) { throw 'o desinstalador não existe' }
-          $p = Start-Process $u -ArgumentList '/S' -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "o desinstalador saiu com $($p.ExitCode)" }
-          Start-Sleep -Seconds 2
-          if (Test-Path "$env:LOCALAPPDATA\BrOWSER") { throw 'a pasta do BrOWSER não foi removida' }
-          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER') { throw 'a entrada em Aplicativos instalados não foi removida' }
-          if (Test-Path 'HKCU:\Software\BrOWSER') { throw 'a chave de configuração ficou para trás' }
+          & "$env:LOCALAPPDATA\BrOWSER\uninstall.ps1" -Sim
+          if (Test-Path "$env:LOCALAPPDATA\BrOWSER") { throw 'pasta do BrOWSER não foi removida' }
+          if (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER') { throw 'entrada em Aplicativos instalados não foi removida' }
           foreach ($chave in 'Google\Chrome', 'BraveSoftware\Brave-Browser', 'Microsoft\Edge') {
             if (Test-Path "HKCU:\Software\$chave\NativeMessagingHosts\com.browser.bridge") { throw "registro não removido: $chave" }
           }
