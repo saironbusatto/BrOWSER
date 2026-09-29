@@ -29,22 +29,30 @@ Painel lateral (extensão) ──► Ponte local (bridge) ──► Ferramenta o
 Um pacote por plataforma, com a ponte **e** a extensão dentro. Nenhum passo exige
 `root`, administrador, Node, Bun ou `npm install`.
 
-**Antes de instalar**, o binário diz se esta máquina tem o que o BrOWSER precisa:
+**Antes de instalar**, o binário diz se a máquina tem o que o BrOWSER precisa. Ele confere
+navegador, registro da ponte e as ferramentas de IA instaladas e logadas, sai com código 1
+enquanto faltar algo, e diz o que fazer.
 
 ```bash
-./bridge --doctor
+./bridge --doctor                                        # Linux
+"%LOCALAPPDATA%\BrOWSER\bridge.exe" --doctor              # Windows
 ```
-
-Ele confere navegador, registro da ponte e as ferramentas de IA instaladas e logadas.
-Sai com código 1 enquanto faltar algo, e diz o que fazer.
 
 ### Windows
 
-1. Baixe `BrOWSER-Setup-<versão>.exe` em [Releases](https://github.com/saironbusatto/BrOWSER/releases).
-2. **Clique duas vezes no .exe.** É um instalador de verdade: mostra o que vai mudar no seu computador e onde os seus dados vão, pede confirmação e cria o atalho. Não precisa de administrador, nem de Node, Bun, Python ou npm.
-3. **Reinicie o navegador** e carregue a extensão de dentro da pasta instalada: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação → `%LOCALAPPDATA%\BrOWSER\extensao`.
+1. Baixe `BrOWSER-windows.zip` em [Releases](https://github.com/saironbusatto/BrOWSER/releases) e **extraia** (não clique dentro do zip: o Windows copiaria só o arquivo clicado, e o instalador não encontraria o resto).
+2. **Clique duas vezes em `instalar.cmd`.** O instalador mostra o que vai mudar no seu computador e onde os seus dados vão, e pergunta antes. Não precisa de administrador, nem de Node, Bun, Python ou npm.
+3. Se o Antigravity CLI (`agy`) não estiver instalado, ele mostra a URL do instalador oficial do Google e pergunta se quer instalar. **Ele não baixa nada por conta própria.**
+4. **Reinicie o navegador** e carregue a extensão de dentro da pasta extraída: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação → a pasta `extensao` que está ao lado do `instalar.cmd`.
+5. Confira com `"%LOCALAPPDATA%\BrOWSER\bridge.exe" --doctor`.
 
-Por que um `.exe` e não um script: o duplo clique em `.ps1` ora abre no Bloco de Notas, ora é barrado pela `ExecutionPolicy` padrão do Windows, e a janela do console fecha antes de a pessoa ler o resultado. Um `.exe` resolve os três. Enquanto o certificado da SignPath não chega, o Windows vai mostrar "protegeu sua senha" na primeira execução — é o custo de um binário sem assinatura, e o botão **Mais informações → Executar mesmo assim** libera.
+Se preferir o terminal, ou se a janela do `.cmd` não abrir (política de empresa ou antivírus podem bloquear `.cmd`), o instalador é o `setup.ps1` e roda direto:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+Por que um `.cmd` e não um `.ps1` na mão: o duplo clique em `.ps1` ora abre no Bloco de Notas em vez de executar, e a `ExecutionPolicy` padrão recusa script baixado da internet. O `.cmd` resolve os dois, segura a janela aberta para o resultado poder ser lido, e é o que a pessoa clica.
 
 ### Linux
 
@@ -53,9 +61,12 @@ Por que um `.exe` e não um script: o duplo clique em `.ps1` ora abre no Bloco d
 3. **Reinicie o navegador** e instale a extensão de dentro do pacote em `~/.local/share/BrOWSER/extensao`: `chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação.
 4. Confira com `~/.local/share/BrOWSER/bridge --doctor`.
 
-**Passo 4 é sempre manual e é por decisão do Chrome**, não limitação nossa: um navegador
-comum não deixa nenhum programa instalar extensão sem a sua confirmação. Só em ambiente
-gerenciado (empresa, escola, kiosk) dá para distribuir a extensão já instalada.
+**Carregar a extensão é sempre manual, e é decisão do Chrome**, não limitação nossa: um
+navegador comum não deixa nenhum programa instalar extensão sem a sua confirmação. Só em
+ambiente gerenciado (empresa, escola, kiosk) dá para distribuir a extensão já instalada.
+
+E não dê duplo clique no `install.sh`: no Linux isso **abre o código no editor de texto**.
+É por terminal — `./install.sh`, ou botão direito → "Executar em um terminal".
 
 ### macOS
 
