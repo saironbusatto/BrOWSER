@@ -22,7 +22,7 @@ describe('listarDrive: o que entra na lista de anexos', () => {
       new Response(JSON.stringify({ files }), { status: 200 }),
     );
 
-  it('esconde pastas e documentos nativos do Google (só saem por /export)', async () => {
+  it('pastas e nativos voltam marcados, não escondidos — sem pasta não há como navegar', async () => {
     globalThis.fetch = (() =>
       resposta([
         { id: 'a', name: 'nota.pdf', mimeType: 'application/pdf', size: '1024', modifiedTime: '2026-01-01T00:00:00Z' },
@@ -32,8 +32,22 @@ describe('listarDrive: o que entra na lista de anexos', () => {
       ])) as any;
 
     const lista = await listarDrive(token);
-    expect(lista.map((f) => f.nome)).toEqual(['nota.pdf', 'dados.csv']);
-    expect(lista[0]!.tamanho).toBe(1024);
+    expect(lista).toHaveLength(4); // esconder era o que deixava o seletor vazio
+    expect(lista.find((f) => f.nome === 'Pasta')!.pasta).toBe(true);
+    expect(lista.find((f) => f.nome === 'Planilha')!.exportavel).toBe(true);
+    expect(lista.find((f) => f.nome === 'nota.pdf')!.exportavel).toBe(false);
+    expect(lista.find((f) => f.nome === 'nota.pdf')!.tamanho).toBe(1024);
+  });
+
+  it('Forms e Vids não são exportáveis mas também não somem da lista', async () => {
+    globalThis.fetch = (() =>
+      resposta([{ id: 'f', name: 'Form', mimeType: 'application/vnd.google-apps.form' }])) as any;
+    const lista = await listarDrive(token);
+    // A doc só confirma que Vids dá fileNotExportable. O regex é restrito a doc/sheet/presentation
+    // de propósito: Form aparece com download quebrado em vez de sumir da lista.
+    expect(lista).toHaveLength(1);
+    expect(lista[0]!.exportavel).toBe(false);
+    expect(lista[0]!.pasta).toBe(false);
   });
 
   it('sem size no Drive (Google Docs exportado) não vira NaN', async () => {

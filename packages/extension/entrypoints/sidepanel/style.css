@@ -1654,3 +1654,19 @@ textarea#texto::placeholder {
 .drive-item-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .drive-item-tamanho { font-size: 11.5px; color: var(--fg-tertiary); flex-shrink: 0; }
 .drive-vazio { font-size: 12.5px; color: var(--fg-tertiary); margin: 0; padding: 8px 0; }
+
+/* Navegação de pasta no seletor do Drive */
+.drive-trilho {
+  display: flex; align-items: center; gap: 2px; flex-wrap: wrap;
+  padding: 0 16px 8px; font-size: 12px;
+}
+.drive-crumb {
+  border: 0; background: transparent; padding: 2px 6px; border-radius: 5px;
+  font: inherit; color: var(--accent); cursor: pointer; max-width: 160px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.drive-crumb:hover:not(:disabled) { background: var(--surface-secondary); }
+.drive-crumb.atual { color: var(--fg-primary); font-weight: 500; cursor: default; }
+.drive-sep { color: var(--fg-tertiary); }
+.drive-item-icone { color: var(--fg-tertiary); display: flex; flex-shrink: 0; }
+.drive-item:hover:not(:disabled) .drive-item-icone { color: var(--accent); }
