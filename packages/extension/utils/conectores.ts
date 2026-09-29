@@ -61,6 +61,12 @@ const CHAVE_REFRESH = 'conector:refresh';
 // custa uma linha e devolve o "nada guardado" ao custo de reautorização.
 const ACCESS_TYPE = 'offline';
 
+// A credencial do Google que aceita a redirect chromiumapp.org é do tipo "Web", e essa é
+// confidencial: o /token exige client_secret. Não existe "cliente público" no Google Cloud (existe
+// no IBM/Keycloak), então o secret vai no bundle. O que de fato protege a posse do authorization
+// code continua sendo o PKCE — o secret aqui é segunda camada, não a primeira.
+const CLIENT_SECRET = import.meta.env.VITE_BROWSER_GOOGLE_SECRET ?? '';
+
 function b64(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes));
 }
@@ -85,6 +91,7 @@ export async function trocarCodePorToken(code: string, verifier: string): Promis
     grant_type: 'authorization_code',
     redirect_uri: chrome.identity.getRedirectURL(),
   });
+  if (CLIENT_SECRET) corpo.set('client_secret', CLIENT_SECRET);
   const r = await fetch(ENDPOINT_TOKEN, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: corpo });
   const dados = (await r.json()) as { access_token?: string; refresh_token?: string; error_description?: string };
   if (!r.ok || !dados.access_token) throw new Error(dados.error_description ?? `Google respondeu ${r.status}.`);
@@ -99,6 +106,7 @@ async function renovar(refresh: string): Promise<string> {
       client_id: chrome.runtime.getManifest().oauth2!.client_id,
       refresh_token: refresh,
       grant_type: 'refresh_token',
+      ...(CLIENT_SECRET && { client_secret: CLIENT_SECRET }),
     }),
   });
   const dados = (await r.json()) as { access_token?: string; error_description?: string };
