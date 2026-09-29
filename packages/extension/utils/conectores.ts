@@ -51,17 +51,108 @@ export function conectorConfigurado(): boolean {
   return Boolean(oauth2?.client_id);
 }
 
+const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
+const ENDPOINT_TOKEN = 'https://oauth2.googleapis.com/token';
+const CHAVE_REFRESH = 'conector:refresh';
+
+// ponytail: sem access_type=offline o Google dá token de 1 hora e obriga a autorizar de novo a
+// cada hora. O refresh token fica em chrome.storage.local (nesta máquina, nunca sai no pedido) e
+// some no desconectar. Se um dia der problema de segurança aqui, trocar por access_type=online
+// custa uma linha e devolve o "nada guardado" ao custo de reautorização.
+const ACCESS_TYPE = 'offline';
+
+function b64(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes));
+}
+
+/** SHA-256 do verifier, em base64url — o code_challenge S256 que o Google exige. */
+export async function codeChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  return b64(new Uint8Array(digest)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function paramDaUrl(url: string, nome: string): string | null {
+  // O code volta na query; o token, no fragment. Os dois vêm no redirect do chromiumapp.org.
+  const m = new RegExp(`[?&#]${nome}=([^&#]+)`).exec(url);
+  return m ? decodeURIComponent(m[1]!) : null;
+}
+
+export async function trocarCodePorToken(code: string, verifier: string): Promise<{ token: string; refresh: string }> {
+  const corpo = new URLSearchParams({
+    client_id: chrome.runtime.getManifest().oauth2!.client_id,
+    code,
+    code_verifier: verifier,
+    grant_type: 'authorization_code',
+    redirect_uri: chrome.identity.getRedirectURL(),
+  });
+  const r = await fetch(ENDPOINT_TOKEN, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: corpo });
+  const dados = (await r.json()) as { access_token?: string; refresh_token?: string; error_description?: string };
+  if (!r.ok || !dados.access_token) throw new Error(dados.error_description ?? `Google respondeu ${r.status}.`);
+  return { token: dados.access_token, refresh: dados.refresh_token ?? '' };
+}
+
+async function renovar(refresh: string): Promise<string> {
+  const r = await fetch(ENDPOINT_TOKEN, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: chrome.runtime.getManifest().oauth2!.client_id,
+      refresh_token: refresh,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const dados = (await r.json()) as { access_token?: string; error_description?: string };
+  if (!r.ok || !dados.access_token) throw new Error(dados.error_description ?? `Google respondeu ${r.status}.`);
+  return dados.access_token;
+}
+
+/**
+ * Access token do Drive.
+ *
+ * Não usa chrome.identity.getAuthToken: o Google descontinuou o fluxo em extensões (custom URI
+ * scheme dá "400: unsupported_response_type") e o Brave ainda patcha a API para falhar. O
+ * launchWebAuthFlow funciona em Chrome, Edge, Brave e Arc, que é o que importa aqui.
+ */
 export async function tokenGoogle(escopos: string[], interactive: boolean): Promise<string> {
-  // O Chrome puro devolve a string; o wrapper `browser` do WXT embrulha em { token }. Aceita os
-  // dois porque a extensão muda de runtime sem o código mudar (bug silencioso se só um passar).
-  const r: unknown = await chrome.identity.getAuthToken({ scopes: escopos, interactive });
-  const token = typeof r === 'string' ? r : (r as { token?: string } | undefined)?.token;
-  if (!token) throw new Error('Google não devolveu token.');
+  const guardado = await chrome.storage.local.get(CHAVE_REFRESH);
+  const refresh = guardado[CHAVE_REFRESH] as string | undefined;
+  if (refresh) {
+    // access_token dura 1 hora; renova é rede pura e não mostra nada na tela.
+    try {
+      return await renovar(refresh);
+    } catch {
+      await chrome.storage.local.remove(CHAVE_REFRESH); // refresh revogado:Authorize de novo
+    }
+  }
+  if (!interactive) throw new Error('Google Drive não está conectado.');
+
+  const verifier = b64(crypto.getRandomValues(new Uint8Array(32)));
+  const url = `${AUTH}?${new URLSearchParams({
+    client_id: chrome.runtime.getManifest().oauth2!.client_id,
+    redirect_uri: chrome.identity.getRedirectURL(),
+    response_type: 'code',
+    scope: escopos.join(' '),
+    code_challenge: await codeChallenge(verifier),
+    code_challenge_method: 'S256',
+    access_type: ACCESS_TYPE,
+    prompt: 'consent',
+  })}`;
+
+  const voltei = await chrome.identity.launchWebAuthFlow({ url, interactive: true });
+  if (!voltei) throw new Error('Autorização cancelada.');
+  if (new URL(voltei).searchParams.get('error')) {
+    throw new Error(new URL(voltei).searchParams.get('error_description') ?? 'O Google recusou a autorização.');
+  }
+  const code = paramDaUrl(voltei, 'code');
+  if (!code) throw new Error('O Google não devolveu o código de autorização.');
+
+  const { token, refresh: novoRefresh } = await trocarCodePorToken(code, verifier);
+  if (novoRefresh) await chrome.storage.local.set({ [CHAVE_REFRESH]: novoRefresh });
   return token;
 }
 
-export async function desconectarGoogle(token: string): Promise<void> {
-  await chrome.identity.removeCachedAuthToken({ token });
+export async function desconectarGoogle(): Promise<void> {
+  await chrome.storage.local.remove(CHAVE_REFRESH);
 }
 
 export async function listarDrive(token: string, pastaId?: string): Promise<ArquivoDrive[]> {
