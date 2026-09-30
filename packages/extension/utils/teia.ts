@@ -61,7 +61,15 @@ export function deformacao(dx: number, dy: number, raio: number): number {
 
 // ── Tudo abaixo roda dentro da página ──
 export function iniciarTeia(cfg: ConfigTeia) {
-  const w = window as unknown as { __bRowserTeia?: { start(): void; stop(): void; destroy(): void; updateStatus(t: string): void } };
+  // `w` é a referência capturada na criação, e o cleanup adiado depende dela: `window` no
+  // bare só é resolvido no momento da leitura, e o setTimeout de destroy() roda 500ms depois —
+  // quando o global já pode ter sumido (no teste, o mock é derrubado antes dos 500ms). Ler
+  // `window` ali dentro dava ReferenceError e o erro aparecia atribuído ao teste que estivesse
+  // rodando, o que faz um teste de timeout parecer quebrado sem ele ter nada a ver.
+  const w = window as unknown as {
+    __bRowserTeia?: { start(): void; stop(): void; destroy(): void; updateStatus(t: string): void };
+    removeEventListener?: (t: string, f: (e: Event) => void, o?: unknown) => void;
+  };
   if (w.__bRowserTeia) {
     w.__bRowserTeia.start();
     return;
@@ -399,9 +407,10 @@ export function iniciarTeia(cfg: ConfigTeia) {
       setTimeout(() => {
         host!.remove();
         delete w.__bRowserTeia;
-        window.removeEventListener('pointermove', aoMover);
-        window.removeEventListener('pointerleave', aoSair);
-        window.removeEventListener('resize', aoRedimensionar);
+        // Via `w`, não via `window`: o callback é adiado e a referência capturada continua válida.
+        w.removeEventListener?.('pointermove', aoMover);
+        w.removeEventListener?.('pointerleave', aoSair);
+        w.removeEventListener?.('resize', aoRedimensionar);
       }, 500);
     },
   };
