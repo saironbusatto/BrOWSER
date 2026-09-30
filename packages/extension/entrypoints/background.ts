@@ -350,13 +350,49 @@ async function garantirAnexado(tabId: number) {
   }
 }
 
+/**
+ * Injetada na aba: é a ÚNICA parte que roda no contexto da página, então é a única que pode
+ * ler `window`. Fica separada porque é serializada via toString() e não pode capturar nada
+ * do módulo.
+ */
+function medirEIniciar() {
+  const w = window as unknown as {
+    innerWidth: number;
+    innerHeight: number;
+    devicePixelRatio: number;
+    __bRowserConfigTeia: (l: number, a: number, d: number) => unknown;
+    __bRowserIniciarTeia: (cfg: unknown) => void;
+  };
+  w.__bRowserIniciarTeia(w.__bRowserConfigTeia(w.innerWidth, w.innerHeight, w.devicePixelRatio));
+}
+
+/**
+ * Publica as funções do módulo como globais da aba.
+ *
+ * `Runtime.evaluate` roda um trecho por vez e não guarda estado entre chamadas, então a
+ * alternativa seria concatenar as duas em uma string só — que quebra a linha de 80 colunas e
+ * deixa a matemática testável do lado do host inacessível ao teia.test.ts. Globais na aba é o
+ * que permite a config ser calculada no lugar certo: dentro da página, que é quem tem `window`.
+ */
+async function injetarFuncoesDaPagina(tabId: number, pares: [string, (...a: never[]) => unknown][]) {
+  await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+    expression: pares.map(([nome, fn]) => `globalThis[${JSON.stringify(nome)}]=${fn.toString()};`).join('\n'),
+  });
+}
+
 async function ligarTeia(tabId: number, status?: string) {
   try {
     await garantirAnexado(tabId);
+    // O service worker não tem `window`, então as duas funções que dependem da página vão por
+    // EvaluatingGlobalProperties: injetadas uma vez e chamadas de dentro do outro evaluate.
+    // A alternativa — ler window.innerWidth aqui — dá ReferenceError (o matrix antigo media
+    // dentro da aba, e a inversão quebrou o efeito inteiro sem erro visível).
+    await injetarFuncoesDaPagina(tabId, [
+      ['__bRowserConfigTeia', configTeia],
+      ['__bRowserIniciarTeia', iniciarTeia],
+    ]);
     const r = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      // A função é injetada serializada: tem de ser autossuficiente, e a config vai por
-      // parâmetro justamente para a matemática testável ficar do lado do host.
-      expression: `(${iniciarTeia.toString()})(${JSON.stringify(configTeia(window.innerWidth, window.innerHeight, window.devicePixelRatio))})`,
+      expression: `(${medirEIniciar.toString()})()`,
       returnByValue: true,
     })) as any;
     if (r?.exceptionDetails) {
