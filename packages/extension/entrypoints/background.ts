@@ -1,6 +1,6 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
-import { clicarDom, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
+import { clicarDom, fecharLeitura, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
 import { expressaoIniciar, expressoesInjetar, gerarScriptStatus, PARES_TEIA, SCRIPT_PARAR_TEIA } from '../utils/teia';
 
@@ -62,13 +62,6 @@ async function lerIframesDeOutraOrigem(tabId: number, urlTopo: string): Promise<
 /** refs marcadas como sensíveis na última leitura: impede ecoar a senha no HUD e no retorno. */
 let sensiveis = new Set<number>();
 
-/** Registra quais refs são sensíveis e devolve a lista de campos, já sem o valor de senha. */
-function registrarCampos(campos: Campo[]): Campo[] {
-  sensiveis = new Set(campos.filter((c) => c.sensivel).map((c) => c.ref));
-  // Defence in depth: mesmo que um caminho futuro esqueça a checagem, o valor não é devolvido.
-  return campos.map((c) => (c.sensivel ? { ...c, valor: undefined } : c));
-}
-
 async function lerCamposComPlanoB() {
   const tabId = await abaAlvo();
   await reidratarRefs();
@@ -77,7 +70,9 @@ async function lerCamposComPlanoB() {
     try {
       const leitura = await lerCampos();
       const deOutraOrigem = await lerIframesDeOutraOrigem(tabId, leitura.url);
-      return registrarCampos(deOutraOrigem.length ? { ...leitura, campos: [...leitura.campos, ...deOutraOrigem] } : leitura);
+      const fechada = fecharLeitura(leitura, deOutraOrigem);
+      sensiveis = new Set(fechada.sensiveis);
+      return fechada.leitura;
     } catch (e) {
       if (!BLOQUEIO_DEBUGGER.test(String(e))) throw e;
       abasSemDebugger.add(tabId); // não insiste no CDP nesta aba
@@ -86,7 +81,9 @@ async function lerCamposComPlanoB() {
   }
   const { principal, campos } = await lerViaDom(tabId);
   await salvarRefs();
-  return { ...registrarCampos(campos), url: principal?.url ?? '', titulo: principal?.titulo ?? '', modo: 'dom' };
+  const fechada = fecharLeitura({ url: principal?.url ?? '', titulo: principal?.titulo ?? '', campos }, [], 'dom');
+  sensiveis = new Set(fechada.sensiveis);
+  return fechada.leitura;
 }
 
 async function naPaginaDom<A extends unknown[], R>(ref: number, func: (refLocal: number, ...args: A) => R, args: A): Promise<R> {
@@ -623,7 +620,7 @@ async function lerPagina(limite?: number): Promise<{ url: string; titulo: string
   return { url, ...r };
 }
 
-async function lerCampos() {
+async function lerCampos(): Promise<LeituraDom> {
   // Só atualiza o texto: ligar/desligar o efeito é do ciclo do pedido. Religar aqui deixava o
   // Tecido preso depois do fim (a ponte lê a página de novo para salvar o blueprint).
   if (alvo) atualizarTeia(alvo, 'Mapeando campos do formulário…');
@@ -680,8 +677,14 @@ async function lerCampos() {
       ...(info.obrigatorio && { obrigatorio: true }),
     });
   }
-  const { result } = await cdp('Runtime.evaluate', { expression: '({url: location.href, titulo: document.title})', returnByValue: true });
-  return { ...result.value, campos };
+  // O `cdp` volta `any`, e o spread desse `any` transformava a leitura inteira em `any` — foi o
+  // que deixou o TypeScript calar sobre o formato de retorno errado de `ler_campos`. Aqui o
+  // título vem nomeado, e o tipo declara o que a leitura de fato é.
+  const titulo = await cdp<{ result: { value: { url: string; titulo: string } } }>('Runtime.evaluate', {
+    expression: '({url: location.href, titulo: document.title})',
+    returnByValue: true,
+  });
+  return { url: titulo.result.value.url, titulo: titulo.result.value.titulo, campos };
 }
 
 /** `valor` com a senha trocada por um marcador: nunca ecoa o segredo no HUD da página. */

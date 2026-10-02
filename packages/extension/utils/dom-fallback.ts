@@ -7,6 +7,36 @@ export const ATRIBUTO_REF = 'data-browser-ref';
 
 export type LeituraDom = { url: string; titulo: string; campos: Campo[] };
 
+/**
+ * Fecha uma leitura de campos: junta os campos que vieram de frames de outra origem e tira o
+ * valor dos campos sensíveis. Devolve a leitura no formato que a ponte consome
+ * (`{url, titulo, campos}`) e, à parte, as refs sensíveis — que é o que impede o `preencher` de
+ * ecoar a senha.
+ *
+ * Isso é função pura e separada porque o formato da leitura é contrato com a ponte, e o
+ * contratempo foi de slippery: o `registrarCampos` recebia a leitura inteira em vez da lista de
+ * campos, e o `ler_campos` devolvia um objeto sem `campos`. No caminho do CDP isso era um
+ * `TypeError` — `ler_campos` não funcionava em nenhuma página. O TypeScript não viu porque o
+ * retorno do `cdp` é `any` e o spread desse `any` lavava o tipo da leitura inteira.
+ */
+export function fecharLeitura(
+  leitura: LeituraDom,
+  extra: Campo[] = [],
+  modo?: string,
+): { leitura: LeituraDom & { modo?: string }; sensiveis: number[] } {
+  const campos = extra.length ? [...leitura.campos, ...extra] : leitura.campos;
+  const sensiveis = campos.filter((c) => c.sensivel).map((c) => c.ref);
+  return {
+    leitura: {
+      ...leitura,
+      // Defence in depth: mesmo que um caminho futuro esqueça a checagem, o valor não é devolvido.
+      campos: campos.map((c) => (c.sensivel ? { ...c, valor: undefined } : c)),
+      ...(modo ? { modo } : {}),
+    },
+    sensiveis,
+  };
+}
+
 export function lerCamposDom(): LeituraDom {
   const SELETOR = [
     'input:not([type=hidden])',
