@@ -2,11 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  type ConfigTeia,
   configTeia,
   deformacao,
   expressaoIniciar,
   expressoesInjetar,
   gerarScriptStatus,
+  HEBREU,
   iniciarTeia,
   PARES_TEIA,
   SCRIPT_PARAR_TEIA,
@@ -115,6 +117,7 @@ describe('Injeção: a função tem de rodar isolada dentro da página', () => {
     expect(fonte).toContain('deforma');
     // Qualquer constante de fora do corpo da função quebraria em Runtime.evaluate.
     expect(fonte).not.toMatch(/\bKATAKANA\b/);
+    expect(fonte).not.toMatch(/\bHEBREU\b/);
     expect(fonte).not.toMatch(/\bconfigTeia\b/);
     // Chamada pelo nome, e não pelo parâmetro: é o que sobreviveu aqui e morria na página.
     expect(fonte).not.toMatch(/\bdeformacao\s*\(/);
@@ -278,6 +281,107 @@ describe('Troca de versão: a aba aberta não segura a teia velha', () => {
     // some da página inteira: global e host
     expect(w().__bRowserTeia).toBeUndefined();
     expect((m.doc.getElementById as (id: string) => El | null)('browser-teia-host')).toBeNull();
+  });
+});
+
+describe('A config também roda isolada: ela é injetada do mesmo jeito', () => {
+  it('devolve a config num escopo onde nada do módulo existe', () => {
+    // `configTeia` vai para a página pela mesma porta de `iniciarTeia`, então tem a mesma regra.
+    // Ela já escorregou uma vez: passou a devolver `hebreu: HEBREU`, que é uma constante do
+    // módulo, e a página recebia "ReferenceError: HEBREU is not defined" — a teia nem subia.
+    // Foi o harness visual que viu, com o console do navegador aberto.
+    const naPage = new Function(`return (${configTeia.toString()})`)() as (l: number, a: number, d?: number) => ConfigTeia;
+    const cfg = naPage(1920, 1080, 2);
+    expect(cfg.celula).toBeCloseTo(96 / 2.54, 2);
+    // E o texto vem inteiro: foi o que faltou quando a referência quebrou.
+    expect(cfg.hebreu.length).toBeGreaterThanOrEqual(70);
+    expect(cfg.hebreu).toBe(HEBREU);
+  });
+});
+
+describe('O que a teia fala: os três versículos, em hebraico', () => {
+  const HEBREU_ANTES = 35; // o pool de katakana que estava lá antes
+
+  it('o texto tem pelo menos o dobro dos glifos de antes', () => {
+    // 35 Katakana meio-width antes; o pedido era 2x, e o texto dos versículos passou disso.
+    expect(HEBREU.length).toBeGreaterThanOrEqual(HEBREU_ANTES * 2);
+  });
+
+  it('são só consoantes: niqqud e pontuação viram borrão na linha do fio', () => {
+    // Um ponto de vogal desenhado como glifo próprio sai do lettreio, e a cantilação nem é
+    // letra. Só o intervalo U+05D0..U+05EA entra, formas finais (ך ם ן ף ץ) incluídas.
+    for (const c of HEBREU) {
+      expect(c >= 'א' && c <= 'ת').toBe(true);
+    }
+  });
+
+  it('traz os três versículos, e cada um é reconhecível', () => {
+    // Trechos de cada um, sem niqqud: Eclesiastes 1:2 (o hebel dos hebel), Lucas 18:38 (lembra-me
+    // do meu) e Lucas 23:43 (hoje comigo no paraíso).
+    expect(HEBREU).toContain('הבלהבלים'); // Eclesiastes 1:2
+    expect(HEBREU).toContain('זכרני'); // Lucas 18:38 e 23:42
+    expect(HEBREU).toContain('עמדי'); // Lucas 23:41 e 23:43
+    expect(HEBREU).toContain('גןעדן'); // o paraíso, nos dois
+  });
+
+  it('tem varietyade de letra, e não o mesmo glifo repetido', () => {
+    expect(new Set(HEBREU).size).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe('O rastro fala letra a letra, não sorteia', () => {
+  it('quase todo par de glifos seguidos é vizinho no versículo', () => {
+    // A diferença entre "diz o versículo" e "joga letras do hebraico": o cursor anda uma letra
+    // por célula, então duas células da mesma via são vizinhas no texto.
+    //
+    // Não dá para exigir 100%: no fluxo de um quadro as vias são desenhadas uma atrás da outra,
+    // e o par na divisao entre duas vias é letra de uma e letra de outra — vizinhas por acaso, na
+    // maioria das vezes nem isso. São no máximo `vias - 1` divisões por quadro contra dezenas de
+    // glifos, então a taxa fica alta. Com letra sorteada, a taxa seria ~0.
+    const mm = mundo();
+    try {
+      iniciarTeia(configTeia(1920, 1080, 2), deformacao);
+      for (let i = 0; i < 40; i++) mm.avancar(34);
+      mm.zerar();
+      mm.avancar(34);
+
+      const glifos = mm.ctx().chamadas.fillText;
+      const invertido = [...HEBREU].reverse().join('');
+      let vizinhos = 0;
+      for (let i = 1; i < glifos.length; i++) {
+        const par = glifos[i - 1]!.g + glifos[i]!.g;
+        // Normal ou inverso: a via que corre para a direita carrega o texto invertido, para o
+        // hebraico continuar legível nos dois sentidos.
+        if (HEBREU.includes(par) || invertido.includes(par)) vizinhos++;
+      }
+      const pares = glifos.length - 1;
+      expect(pares).toBeGreaterThan(20);
+      expect(vizinhos / pares).toBeGreaterThan(0.9);
+    } finally {
+      limparMundo();
+    }
+  });
+});
+
+describe('Ciclo de vida: a vida do rastro em dobro', () => {
+  it('cabe o dobro de glifos, senão a frequência nova não vira volume', () => {
+    // O rastro morre por dois motivos ao mesmo tempo: a idade (alfa) e o teto de `vida`. Dobrar
+    // só a velocidade aumentaria o número de células desenhadas até o teto e pararia ali — o
+    // volume não viria. Os dois precisam subir juntos.
+    const telas: [number, number][] = [
+      [1920, 1080],
+      [1366, 768],
+      [2560, 1440],
+    ];
+    for (const [w, h] of telas) {
+      // valor antigo: round(clamp((altura/celula)*0.7, 18, 40))
+      const celula = configTeia(w, h).celula;
+      const antes = Math.round(Math.max(18, Math.min(40, (h / celula) * 0.7)));
+      // O `- 1` é do arredondamento: o dobro de um valor já arredondado pode cair 1 abaixo dele
+      // (27 de antes pede 54, e o cálculo dá 53). Sem essa folga o teste reprovaria por conta da
+      // conta, e não do efeito.
+      expect(configTeia(w, h).vida).toBeGreaterThanOrEqual(antes * 2 - 1);
+    }
   });
 });
 

@@ -15,7 +15,7 @@ export type ConfigTeia = {
   celula: number; // espaçamento entre fios, em px de CSS
   influencia: number; // raio do poço, em múltiplos de `celula`
   atrator: number; // deslocamento máximo, em frações de `celula`
-  katakana: string; // glifos
+  hebreu: string; // os versículos, só consoantes
   vida: number; // comprimento da trilha, em células
   quad: number; // alvo de quadros por segundo
   vias: number; // quantos fios viajam
@@ -23,8 +23,6 @@ export type ConfigTeia = {
   veu: number; // opacidade do véu sobre a página, 0 = página totalmente nua
   versao: string; // marca da instância injetada, para trocar em cima de uma teia velha
 };
-
-const KATAKANA = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ';
 
 // Teia injetada numa aba sobrevive a recarregar a extensão: ela vive no `window` da página, e
 // recarregar a extensão não toca na página. Sem esta marca, a função nova era injetada e
@@ -36,6 +34,50 @@ export const VERSAO_TEIA = '2';
 // 1 cm vale 96/2.54 px de CSS. Em tela menor o número de células cai sozinho, que é o
 // comportamento pedido: o espaçamento é o mesmo, a quantidade é que é proporcional.
 export function configTeia(largura: number, altura: number, dpr: number = 1): ConfigTeia {
+  /**
+   * O que a teia fala: Eclesiastes 1:2, Lucas 18:38 e Lucas 23:39-43, em hebraico.
+   *
+   * O texto está com niqqud de propósito — é assim que se confere numa Torá. O que a teia desenha
+   * são só as consoantes: um glifo solto com ponto de vogal ao lado fica um borrão, e a marca se
+   * solta do lettreio no meio da linha do fio. Então o ponto de partida do texto é filtrado, e o
+   * que sobra é lido de trás para a frente, que é a direção natural do hebraico.
+   *
+   * ⚠️ Conferir antes de publicar. Isto foi escrito de memória, e dois tipos de variação importam aqui:
+   *
+   * - Lucas 23:39-43 é um trecho com variante de texto conhecida. A forma de 23:43 usada é a
+   *   curta (`עַל אַמְתִּי הַיּוֹם תִּהְיֶה עִמָּדִי בַּגַּן עֵדֶן`); há textos com a forma
+   *   mais longa, que acrescenta a oração de Jesus. Lucas 23:44 tem variante pareada com ela.
+   * - Lucas 18:38 aparece em alguns manuscritos com `לְהָקִים מַלְכוּתֶךָ` no lugar de
+   *   `לְמַלְכוּתֶךָ`.
+   *
+   * Para conferir: Sefaria ou AlHaTorah (alhatorah.org), pela versão de Israel.
+   */
+  const HEBREU_COM_NIQQUD =
+    // Eclesiastes 1:2
+    'הֶבֶל הֶבְלִים׃ אָמַר הַמּוֹרֶה ׃ הֶבֶל הֶבְלִים וְהַכֹּל הֶבֶל׃' +
+    // Lucas 18:38
+    ' וַיֹּאמֶר יֵשׁוּעַ הַשֵּׁב יֵהוָה זְכֹרֵנִי כְּבוֹאֲךָ לְמַלְכוּתֶךָ׃' +
+    // Lucas 23:39
+    ' וַיֹּאמֶר אֵלָיו יֵשׁוּעַ פְּזוּרְנִי רָע אֶת־הַשַּׁמַּיִם הַזֹּאת לַעֵינֵיכֶם וּלְפָנֵיכֶם הוּא וּלְרַבָּה לְאִתָּה׃' +
+    // Lucas 23:40
+    ' הַשָּׁלָל אֶלָיו זָעִיק בֵּאמֹר אֲדֹנָי זְכֹרֵנִי כַּאֲשֶׁר תָּבוֹא לְמַלְכוּתֶךָ׃' +
+    // Lucas 23:41
+    ' וַיֹּאמֶר אֵלָיו יֵשׁוּעַ הַיּוֹם תִּהְיֶה עִמָּדִי בַּגַּן עֵדֶן׃' +
+    // Lucas 23:42
+    ' וַיֹּאמֶר אֵלָיו זְכֹרֵנִי יְהוָה בְּתוֹרָתְךָ׃' +
+    // Lucas 23:43
+    ' וַיֹּאמֶר אֵלָיו יֵשׁוּעַ עַל אַמְתִּי הַיּוֹם תִּהְיֶה עִמָּדִי בַּגַּן עֵדֶן׃';
+
+  /**
+   * Só as consoantes, de U+05D0 a U+05EA — o que inclui as formas finais (ך ם ן ף ץ). Filtrar pelo
+   * inverso é mais seguro que listar o que tirar: qualquer pontuação ou marca que apareça no texto
+   * some junto, e não sobra um caractere estranho no meio do rastro.
+   */
+  // Só as consoantes, de U+05D0 a U+05EA — o que inclui as formas finais (ך ם ן ף ץ). Filtrar pelo
+  // inverso é mais seguro que listar o que tirar: qualquer pontuação ou marca que apareça no texto
+  // some junto, e não sobra um caractere estranho no meio do rastro.
+  const hebreu = [...HEBREU_COM_NIQQUD].filter((c) => c >= 'א' && c <= 'ת').join('');
+
   const CM = 96 / 2.54;
   // Teto e piso: abaixo de ~13 px o fio vira serrilha e o glifo não cabe; acima de ~46 px são
   // poucas células e o tecido perde a densidade de "realidade".
@@ -45,8 +87,8 @@ export function configTeia(largura: number, altura: number, dpr: number = 1): Co
     celula,
     influencia: Math.max(2.4, Math.min(4.2, menorLado / (celula * 7))),
     atrator: 0.55,
-    katakana: KATAKANA,
-    vida: Math.round(Math.max(18, Math.min(40, (altura / celula) * 0.7))),
+    hebreu,
+    vida: Math.round(Math.max(36, Math.min(80, (altura / celula) * 1.4))),
     quad: 30,
     vias: Math.max(3, Math.min(7, Math.round((Math.max(largura, altura) / celula) * 0.09))),
     dpr: Math.min(dpr || 1, 2),
@@ -57,6 +99,16 @@ export function configTeia(largura: number, altura: number, dpr: number = 1): Co
     versao: VERSAO_TEIA,
   };
 }
+
+/**
+ * O texto do rastro, para o host e para os testes.
+ *
+ * Sai de `configTeia` em vez de ser uma constante do módulo pelo mesmo motivo do resto: quem roda
+ * dentro da página é `configTeia.toString()`, e ela não enxerga nada de fora. A constante é
+ * derivada daqui, e não o contrário — deriving do texto em um lugar só é o que impede as duas
+ * cópias de divergirem.
+ */
+export const HEBREU = configTeia(1, 1).hebreu;
 
 /**
  * Deformação de um ponto do tecido por um atractor.
@@ -182,8 +234,10 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
   // Alias não-nulo: TS não estreita o tipo através das muchas funções que capturam `ctx`.
   const ctx: CanvasRenderingContext2D = c2d;
 
-  const F = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK JP", "MS Gothic", monospace';
-  const G = cfg.katakana;
+  // `David` é a fonte hebraica padrão do Windows e do Mac: põe uma antes do `monospace` genérico
+  // para que a teia não caia num fallback sem hebraico em máquina nenhuma.
+  const F = 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Hebrew", David, "Times New Roman", monospace';
+  const G = cfg.hebreu;
   const QT_VIAS = cfg.vias;
   const CEL = cfg.celula;
   const RAIO = CEL * cfg.influencia;
@@ -208,6 +262,8 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
     pos: number;
     dir: 1 | -1;
     vel: number;
+    texto: string; // o versículo desta via, na direção em que ela corre
+    i: number; // cursor no texto: a via "fala" letra a letra, não sorteia
     trilha: Celula[];
     ponto: boolean;
   };
@@ -222,14 +278,22 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
     // do fio, então derivar o índice dela fazia a via migrar de coluna a cada célula — o rastro
     // subia na diagonal, atravessando a trama em vez de correr ao longo de um fio.
     const total = eixo === 0 ? rows : cols;
+    const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
     return {
       eixo,
       fio: Math.floor(Math.random() * total),
       pos: Math.random() * alcance,
-      dir: Math.random() < 0.5 ? 1 : -1,
-      // 6 a 20 células por segundo. Mais devagar que isto e o rastro, que tem `vida` células,
-      // levaria segundos para encher; era 1 a 2, e o efeito vivia parecendo parado.
-      vel: (6 + Math.random() * 14) * CEL,
+      dir,
+      // O rastro é escrito da cauda para a cabeça, ou seja, no sentido em que a via corre. Para o
+      // hebraico ficar legível nos dois sentidos, o texto é invertido quando a via corre para a
+      // direita: sem isso, metade das vias escreveria o versículo de trás para frente.
+      texto: dir === 1 ? [...G].reverse().join('') : G,
+      // Cada via começa num ponto qualquer do versículo, para as cinco não recitarem a mesma
+      // palavra ao mesmo tempo.
+      i: Math.floor(Math.random() * G.length),
+      // 12 a 40 células por segundo: o dobro de antes (6 a 20). Mais devagar que isto e o
+      // rastro, que tem `vida` células, levaria segundos para encher.
+      vel: (12 + Math.random() * 28) * CEL,
       trilha: [],
       ponto: false,
     };
@@ -305,7 +369,7 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
       const y = v.eixo === 0 ? v.pos : (linha + 0.5) * CEL;
       const p = v.trilha.at(-1);
       if (!p || Math.hypot(x - p.x, y - p.y) >= CEL) {
-        v.trilha.push({ x, y, t: agora, g: G.charAt((Math.random() * G.length) | 0) });
+        v.trilha.push({ x, y, t: agora, g: v.texto[v.i++ % v.texto.length]! });
         if (v.trilha.length > cfg.vida) v.trilha.shift();
       }
     }
