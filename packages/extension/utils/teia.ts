@@ -60,7 +60,20 @@ export function deformacao(dx: number, dy: number, raio: number): number {
 }
 
 // ── Tudo abaixo roda dentro da página ──
-export function iniciarTeia(cfg: ConfigTeia) {
+
+/**
+ * @param deforma A mesma `deformacao` do módulo, recebida por parâmetro como a config.
+ *
+ * Ela entra por parâmetro pelo mesmo motivo da config: o corpo desta função é serializado com
+ * `toString()` e avaliado dentro da página, onde nenhum identificador do módulo existe. Deixando
+ * `deformacao` ser chamada pelo nome, a página levantava `ReferenceError: deformacao is not
+ * defined` no primeiro `ponto()` de cada quadro — e como o erro subia até `passo()`, nenhum fio,
+ * nenhum rastro e nenhum brilho chegavam a ser desenhados. Só o fundo e o HUD apareciam, e o
+ * defeito era invisível para os testes, que importam o módulo e portanto têm `deformacao` no
+ * escopo. É a razão de `test/teia.test.ts` avaliar esta função num escopo isolado, e não só
+ * compilar.
+ */
+export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, raio: number) => number) {
   // `w` é a referência capturada na criação, e o cleanup adiado depende dela: `window` no
   // bare só é resolvido no momento da leitura, e o setTimeout de destroy() roda 500ms depois —
   // quando o global já pode ter sumido (no teste, o mock é derrubado antes dos 500ms). Ler
@@ -151,7 +164,15 @@ export function iniciarTeia(cfg: ConfigTeia) {
   // percorrimento, então a célula mais antiga é a do começo da corrida — é ela que morre primeiro,
   // e a dissolução viaja do início até a cabeça, exatamente como o rastro foi feito.
   type Celula = { x: number; y: number; t: number; g: string };
-  type Via = { eixo: 0 | 1; pos: number; dir: 1 | -1; vel: number; trilha: Celula[]; ponto: boolean };
+  type Via = {
+    eixo: 0 | 1;
+    fio: number; // índice do fio, fixo enquanto a via vive
+    pos: number;
+    dir: 1 | -1;
+    vel: number;
+    trilha: Celula[];
+    ponto: boolean;
+  };
   const vias: Via[] = [];
 
   function nascimentar(): Via {
@@ -159,8 +180,13 @@ export function iniciarTeia(cfg: ConfigTeia) {
     // `pos` é uma coordenada em pixels, ao longo do fio. Seedar com um índice de célula (e não
     // com a posição) botava as cinco vias no canto superior esquerdo, todas no mesmo lugar.
     const alcance = eixo === 0 ? H : W;
+    // O fio é sorteado uma vez, aqui, e derivado de `pos`: `pos` é a coordenada AO LONGO
+    // do fio, então derivar o índice dela fazia a via migrar de coluna a cada célula — o rastro
+    // subia na diagonal, atravessando a trama em vez de correr ao longo de um fio.
+    const total = eixo === 0 ? rows : cols;
     return {
       eixo,
+      fio: Math.floor(Math.random() * total),
       pos: Math.random() * alcance,
       dir: Math.random() < 0.5 ? 1 : -1,
       // 6 a 20 células por segundo. Mais devagar que isto e o rastro, que tem `vida` células,
@@ -222,12 +248,13 @@ export function iniciarTeia(cfg: ConfigTeia) {
         Object.assign(v, nova, { ponto: v.ponto });
         continue;
       }
-      // Índice do fio fixo em que a via corre, mantido dentro da malha.
+      // Índice do fio, o mesmo que nasceu com a via. Só o limite é reamarrado, porque um
+      // redimensionar pode ter encolhido a malha e deixado o índice antigo fora dela.
       const total = v.eixo === 0 ? rows : cols;
-      const linha = Math.max(0, Math.min(total - 1, Math.floor(v.pos / CEL)));
-      const p = v.trilha.at(-1);
+      const linha = Math.max(0, Math.min(total - 1, v.fio));
       const x = v.eixo === 0 ? (linha + 0.5) * CEL : v.pos;
       const y = v.eixo === 0 ? v.pos : (linha + 0.5) * CEL;
+      const p = v.trilha.at(-1);
       if (!p || Math.hypot(x - p.x, y - p.y) >= CEL) {
         v.trilha.push({ x, y, t: agora, g: G.charAt((Math.random() * G.length) | 0) });
         if (v.trilha.length > cfg.vida) v.trilha.shift();
@@ -238,6 +265,11 @@ export function iniciarTeia(cfg: ConfigTeia) {
 
     // Tecido: fios horizontais e verticais, cruzando. Cada ponto é puxado pelos dois
     // atractor (o BrOWSER e o mouse) e ainda respira numa onda lenta — o tecido é vivo.
+    //
+    // A onda é função do NÓ da malha, e não do fio: o horizontal e o vertical que se cruzam num
+    // nó têm de cair no mesmo lugar, ou a trama não fecha. Com uma onda por fio, os dois
+    // discordavam em até ~4 px no mesmo ponto e o tecido virava uma grade de segmentos soltos,
+    // sem trama. Uma onda só, as duas caem no mesmo lugar e o tecido fica tecido.
     ctx.lineWidth = 1;
     for (let r = 0; r < rows; r++) {
       const y0 = (r + 0.5) * CEL;
@@ -248,8 +280,7 @@ export function iniciarTeia(cfg: ConfigTeia) {
       let luz = 0;
       for (let c = 0; c < cols; c++) {
         const x0 = (c + 0.5) * CEL;
-        const onda = Math.sin((x0 + s * 26) * 0.012) * 1.3 + Math.sin((y0 - s * 18) * 0.009) * 0.9;
-        const p = ponto(x0, y0, onda);
+        const p = ponto(x0, y0, s);
         if (p.luz > luz) luz = p.luz;
         if (primeiro) {
           ctx.moveTo(p.x, p.y);
@@ -266,8 +297,7 @@ export function iniciarTeia(cfg: ConfigTeia) {
       let luz = 0;
       for (let r = 0; r < rows; r++) {
         const y0 = (r + 0.5) * CEL;
-        const onda = Math.sin((y0 - s * 22) * 0.011) * 1.3 + Math.sin((x0 + s * 15) * 0.008) * 0.9;
-        const p = ponto(x0, y0, onda);
+        const p = ponto(x0, y0, s);
         if (p.luz > luz) luz = p.luz;
         if (primeiro) {
           ctx.moveTo(p.x, p.y);
@@ -311,11 +341,19 @@ export function iniciarTeia(cfg: ConfigTeia) {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  // Deslocamento de um ponto do tecido, e o quanto ele está perto de um atractor (a "luz" que
+  // Deslocamento de um nó do tecido, e o quanto ele está perto de um atractor (a "luz" que
   // o faz brilhar mais, para o olho ir junto com a curvatura).
-  function ponto(x0: number, y0: number, onda: number): { x: number; y: number; luz: number } {
+  //
+  // `s` é o tempo do quadro, o mesmo para todos os nós: é o que garante que o nó tenha UM lugar
+  // só. Deixar a onda ser calculada dentro também funciona, mas seriam ~3000 chamadas de relógio
+  // por quadro; e passar a onda por fora obrigava cada fio a inventar a sua, e o cruzamento não
+  // fechava.
+  function ponto(x0: number, y0: number, s: number): { x: number; y: number; luz: number } {
     let dx = 0;
-    let dy = onda;
+    // Duas ondas cruzadas, de frequências incomensuráveis: o nó vagueia sem nunca repetir o
+    // mesmo desenho, e a amplitude (~2,2 px) fica bem abaixo do meio espaçamento, então a malha
+    // continua legível como malha.
+    let dy = Math.sin((x0 + s * 26) * 0.012) * 1.3 + Math.sin((y0 - s * 18) * 0.009) * 0.9;
     let luz = 0;
     for (const v of vias) {
       const cab = v.trilha.at(-1);
@@ -324,7 +362,7 @@ export function iniciarTeia(cfg: ConfigTeia) {
       const ey = y0 - cab.y;
       const d = Math.hypot(ex, ey);
       if (d >= RAIO * 1.9) continue;
-      const k = deformacao(ex, ey, RAIO) * ATRA * CEL;
+      const k = deforma(ex, ey, RAIO) * ATRA * CEL;
       if (d < 0.5) continue;
       dx += (ex / d) * k;
       dy += (ey / d) * k;
@@ -336,7 +374,7 @@ export function iniciarTeia(cfg: ConfigTeia) {
       const d = Math.hypot(ex, ey);
       if (d < RAIO * 1.9) {
         if (d > 0.5) {
-          const k = deformacao(ex, ey, RAIO) * ATRA * CEL * 1.15;
+          const k = deforma(ex, ey, RAIO) * ATRA * CEL * 1.15;
           dx += (ex / d) * k;
           dy += (ey / d) * k;
         }
@@ -428,3 +466,54 @@ export function gerarScriptStatus(texto: string): string {
 }
 
 export const SCRIPT_PARAR_TEIA = `(window.__bRowserTeia?.stop(),0);`;
+
+// ── Injeção: as expressões que o `Runtime.evaluate` envia para a aba ──
+//
+// Vivem aqui, e não no background, porque é este módulo que define o contrato: quem chama a
+// injeção de fora (o service worker, e o harness visual de scripts/teia-visual.ts) tem de mandar
+// exatamente as mesmas expressões que a extensão manda. Reproduzir a receita em dois lugares já
+// custou um defeito silencioso — o harness dizia que a teia desenhava, a extensão não desenhava.
+
+/**
+ * Publica as funções do módulo como globais da aba.
+ *
+ * `Runtime.evaluate` roda um trecho por vez e não guarda estado entre chamadas, então a
+ * alternativa seria concatenar tudo em uma string só — que quebra a linha de 80 colunas e
+ * deixa a matemática testável do lado do host inacessível ao teia.test.ts. Globais na aba é o
+ * que permite a config ser calculada no lugar certo: dentro da página, que é quem tem `window`.
+ */
+export function expressoesInjetar(pares: [string, (...a: never[]) => unknown][]): string {
+  return pares.map(([nome, fn]) => `globalThis[${JSON.stringify(nome)}]=${fn.toString()};`).join('\n');
+}
+
+/** As funções que precisam existir na aba antes de `iniciarTeia` poder rodar. */
+export const PARES_TEIA: [string, (...a: never[]) => unknown][] = [
+  ['__bRowserConfigTeia', configTeia],
+  ['__bRowserDeformacao', deformacao],
+  ['__bRowserIniciarTeia', iniciarTeia],
+];
+
+/**
+ * Injetada na aba: é a ÚNICA parte que mede a tela, então é a única que pode ler `window`. Fica
+ * separada porque é serializada via toString() e não pode capturar nada do módulo.
+ *
+ * `deformacao` entra por parâmetro, e não como chamada solta pelo nome: `iniciarTeia` é
+ * serializada e avaliada aqui dentro, onde identificadores do módulo não existem. Referenciá-la
+ * pelo nome levantava `ReferenceError` a cada quadro, e o efeito inteiro não desenhava.
+ */
+function medirEIniciar() {
+  const w = window as unknown as {
+    innerWidth: number;
+    innerHeight: number;
+    devicePixelRatio: number;
+    __bRowserConfigTeia: (l: number, a: number, d: number) => unknown;
+    __bRowserDeformacao: (dx: number, dy: number, raio: number) => number;
+    __bRowserIniciarTeia: (cfg: unknown, deforma: (dx: number, dy: number, r: number) => number) => void;
+  };
+  w.__bRowserIniciarTeia(w.__bRowserConfigTeia(w.innerWidth, w.innerHeight, w.devicePixelRatio), w.__bRowserDeformacao);
+}
+
+/** A expressão que mede a tela e sobe o efeito, depois de `expressoesInjetar`. */
+export function expressaoIniciar(): string {
+  return `(${medirEIniciar.toString()})()`;
+}

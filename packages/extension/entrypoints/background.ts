@@ -2,7 +2,7 @@ import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensa
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
 import { clicarDom, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
-import { configTeia, gerarScriptStatus, iniciarTeia, SCRIPT_PARAR_TEIA } from '../utils/teia';
+import { expressaoIniciar, expressoesInjetar, gerarScriptStatus, PARES_TEIA, SCRIPT_PARAR_TEIA } from '../utils/teia';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
 // refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
@@ -351,48 +351,32 @@ async function garantirAnexado(tabId: number) {
 }
 
 /**
- * Injetada na aba: é a ÚNICA parte que roda no contexto da página, então é a única que pode
- * ler `window`. Fica separada porque é serializada via toString() e não pode capturar nada
- * do módulo.
- */
-function medirEIniciar() {
-  const w = window as unknown as {
-    innerWidth: number;
-    innerHeight: number;
-    devicePixelRatio: number;
-    __bRowserConfigTeia: (l: number, a: number, d: number) => unknown;
-    __bRowserIniciarTeia: (cfg: unknown) => void;
-  };
-  w.__bRowserIniciarTeia(w.__bRowserConfigTeia(w.innerWidth, w.innerHeight, w.devicePixelRatio));
-}
-
-/**
  * Publica as funções do módulo como globais da aba.
  *
  * `Runtime.evaluate` roda um trecho por vez e não guarda estado entre chamadas, então a
  * alternativa seria concatenar as duas em uma string só — que quebra a linha de 80 colunas e
  * deixa a matemática testável do lado do host inacessível ao teia.test.ts. Globais na aba é o
  * que permite a config ser calculada no lugar certo: dentro da página, que é quem tem `window`.
+ *
+ * O texto das expressões mora em `utils/teia.ts`, junto com o contrato, para que o harness visual
+ * injete exatamente o mesmo que a extensão injeta.
  */
 async function injetarFuncoesDaPagina(tabId: number, pares: [string, (...a: never[]) => unknown][]) {
   await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-    expression: pares.map(([nome, fn]) => `globalThis[${JSON.stringify(nome)}]=${fn.toString()};`).join('\n'),
+    expression: expressoesInjetar(pares),
   });
 }
 
 async function ligarTeia(tabId: number, status?: string) {
   try {
     await garantirAnexado(tabId);
-    // O service worker não tem `window`, então as duas funções que dependem da página vão por
+    // O service worker não tem `window`, então as funções que dependem da página vão por
     // EvaluatingGlobalProperties: injetadas uma vez e chamadas de dentro do outro evaluate.
     // A alternativa — ler window.innerWidth aqui — dá ReferenceError (o matrix antigo media
     // dentro da aba, e a inversão quebrou o efeito inteiro sem erro visível).
-    await injetarFuncoesDaPagina(tabId, [
-      ['__bRowserConfigTeia', configTeia],
-      ['__bRowserIniciarTeia', iniciarTeia],
-    ]);
+    await injetarFuncoesDaPagina(tabId, PARES_TEIA);
     const r = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-      expression: `(${medirEIniciar.toString()})()`,
+      expression: expressaoIniciar(),
       returnByValue: true,
     })) as any;
     if (r?.exceptionDetails) {

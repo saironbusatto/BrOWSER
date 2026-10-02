@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'bun:test';
-import { configTeia, deformacao, gerarScriptStatus, iniciarTeia, SCRIPT_PARAR_TEIA } from '../utils/teia';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  configTeia,
+  deformacao,
+  expressaoIniciar,
+  expressoesInjetar,
+  gerarScriptStatus,
+  iniciarTeia,
+  PARES_TEIA,
+  SCRIPT_PARAR_TEIA,
+} from '../utils/teia';
+import { limparMundo, mundo } from './canvas-falso';
 
 describe('Malha: espaçamento de 1 cm, proporcional ao tamanho da tela', () => {
   const CM = 96 / 2.54;
@@ -95,15 +107,43 @@ describe('Injeção: a função tem de rodar isolada dentro da página', () => {
   });
 
   it('é JavaScript válido por conta própria', () => {
-    // Se a função dependesse de algo do módulo, isto levantaria ReferenceError aqui.
     expect(() => new Function(`return (${fonte})`)).not.toThrow();
   });
 
-  it('não usa identificadores do módulo: a config chega por parâmetro', () => {
+  it('não usa identificadores do módulo: a config e a deformação chegam por parâmetro', () => {
     expect(fonte).toContain('cfg');
+    expect(fonte).toContain('deforma');
     // Qualquer constante de fora do corpo da função quebraria em Runtime.evaluate.
     expect(fonte).not.toMatch(/\bKATAKANA\b/);
     expect(fonte).not.toMatch(/\bconfigTeia\b/);
+    // Chamada pelo nome, e não pelo parâmetro: é o que sobreviveu aqui e morria na página.
+    expect(fonte).not.toMatch(/\bdeformacao\s*\(/);
+  });
+
+  it('desenha a trama num escopo onde nada do módulo existe (a página de verdade)', () => {
+    // Compilar não prova nada disso: identificador livre só é resolvido na chamada, e aí o escopo
+    // já é o global — que, na página, não tem nada do módulo. `new Function` reproduz exatamente
+    // essa situação, porque a função nasce no escopo global. Chamar `iniciarTeia` importada, como
+    // fazia o resto da suíte, não pegaria nada: o módulo inteiro está no escopo e `deformacao`
+    // resolvia.
+    //
+    // Foi esta a lacuna: a página recebia "ReferenceError: deformacao is not defined" a cada
+    // quadro, o erro subia de `ponto()` até `passo()`, e nenhum fio, rastro ou brilho era
+    // desenhado — só o fundo e o HUD. Os testes passavam limpos porque enxergavam o módulo.
+    const naPage = new Function(`return (${fonte})`)() as (cfg: unknown, deforma: (dx: number, dy: number, raio: number) => number) => void;
+
+    const m = mundo(1920, 1080);
+    try {
+      naPage(configTeia(1920, 1080, 2), deformacao);
+      // O ReferenceError vinha no desenho, não na entrada: é preciso rodar quadro.
+      m.avancar(34);
+      m.avancar(34);
+      const c = m.ctx().chamadas;
+      expect(c.stroke).toBeGreaterThan(20);
+      expect(c.fillText.length).toBeGreaterThan(0);
+    } finally {
+      limparMundo();
+    }
   });
 
   it('os scripts de status e parada são expressões, não declarações soltas', () => {
@@ -157,5 +197,32 @@ describe('Injeção: a função tem de rodar isolada dentro da página', () => {
     // Várias abas do BrOWSER no mesmo pedido não podem empilhar dois canvas.
     expect(fonte).toContain('document.getElementById(ID)');
     expect(fonte).toContain('__bRowserTeia');
+  });
+});
+
+describe('Injeção: as expressões que o Runtime.evaluate envia', () => {
+  it('publica as três funções como globais, incluindo a deformação', () => {
+    // `deformacao` fora daqui é o defeito que apagou a teia na tela: injetada só a
+    // `iniciarTeia`, a chamada por nome dela levantava ReferenceError dentro da página.
+    const expr = expressoesInjetar(PARES_TEIA);
+    for (const nome of ['__bRowserConfigTeia', '__bRowserDeformacao', '__bRowserIniciarTeia']) {
+      expect(expr).toContain(`globalThis["${nome}"]=`);
+    }
+    expect(PARES_TEIA.map(([n]) => n)).toEqual(['__bRowserConfigTeia', '__bRowserDeformacao', '__bRowserIniciarTeia']);
+  });
+
+  it('as expressões são executáveis de verdade, não só texto', () => {
+    expect(() => new Function(expressoesInjetar(PARES_TEIA))).not.toThrow();
+    expect(() => new Function(expressaoIniciar())).not.toThrow();
+    // Compilam como expressão, que é o que o Runtime.evaluate recebe.
+    expect(() => new Function(`void ${expressaoIniciar()}`)).not.toThrow();
+  });
+
+  it('a expressão de inicio mede a tela e passa a deformação por parâmetro', () => {
+    const expr = expressaoIniciar();
+    expect(expr).toContain('innerWidth');
+    expect(expr).toContain('__bRowserDeformacao');
+    // Se `deformacao` fosse chamada pelo nome dentro da página, isto seria a linha do defeito.
+    expect(expr).not.toMatch(/\bdeformacao\s*\(/);
   });
 });
