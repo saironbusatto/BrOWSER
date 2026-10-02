@@ -35,10 +35,41 @@ const alturaHud = 130; // ~60 px de CSS; com dpr 2, o dobro em pixels de disposi
 
 const pagina = `<!doctype html><meta charset="utf-8">
 <title>teia</title>
-<style>body{margin:0;background:#1b1b1b;color:#ddd;font:15px system-ui;padding:20px}
-h1{font-size:17px}input{padding:7px;font:inherit;margin:6px}</style>
-<h1>Página de teste — o tecido cobre tudo</h1>
-<p>Campo: <input placeholder="digite aqui"></p>`;
+<style>body{margin:0;background:#f2f2f0;color:#111;font:15px system-ui;padding:20px}
+h1{font-size:17px}input{padding:7px;font:inherit;margin:6px}
+#selo{position:fixed;right:12px;bottom:12px;width:120px;height:120px;background:#e11d48;border-radius:8px}</style>
+<h1>Página clara de teste — precisa aparecer atrás</h1>
+<p>Campo: <input placeholder="digite aqui"></p>
+<div id="selo"></div>`;
+
+/**
+ * O quanto a página aparece através do tecido.
+ *
+ * A tela tem que mostrar o que está sendo preenchido: o efeito é pano de vidro sobre a página,
+ * não cortina. O que decide isso é o ALFA do canvas — é o navegador que compõe o canvas sobre a
+ * página, e alfa baixo é o que deixa a página aparecer. `getImageData` devolve o pixel do
+ * próprio canvas, que é exatamente o canal certo para isto.
+ *
+ * Com o fundo opaco antigo, alfa 255 em toda a parte. Com o véu, quase todo o canvas fica baixo
+ * (só o véu) e só os fios e o brilho ficam altos.
+ */
+async function transparencia(page: Page) {
+  return page.evaluate(() => {
+    const h = document.getElementById('browser-teia-host');
+    const c = h?.shadowRoot?.querySelector('canvas') as HTMLCanvasElement | null;
+    if (!c) return { opaco: -1, alfaMedio: -1 };
+    const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+    let opaco = 0;
+    let soma = 0;
+    const n = d.length / 4;
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3]!;
+      soma += a;
+      if (a >= 250) opaco++;
+    }
+    return { opaco: opaco / n, alfaMedio: soma / n / 255 };
+  });
+}
 
 /**
  * Conta os pixels acesos do canvas, que é o que distingue "o efeito desenhou a trama" de "o
@@ -92,6 +123,7 @@ await page.waitForTimeout(2500);
 await page.screenshot({ path: join(saida, 'com-mouse.png') });
 
 const comMouse = await pixelsAcesos(page);
+const vidro = await transparencia(page);
 
 // E o caminho de parar, que o background usa quando a IA termina.
 await page.evaluate(SCRIPT_PARAR_TEIA);
@@ -111,10 +143,14 @@ if (erros.length) falhas.push(`${erros.length} erro(s) de console; o primeiro: $
 if (comMouse.total < 0) falhas.push('o canvas da teia não apareceu na página');
 // Só o fundo pintado dá ~0 pixel aceso; a trama acesa dá dezenas de milhares.
 if (comMouse.foraDoHud < 5000) falhas.push(`pouca trama acesa fora do HUD: ${comMouse.foraDoHud} px`);
+// O tecido tem que ser vidro, não cortina: se quase tudo for opaco, a página some de novo.
+if (vidro.opaco > 0.02) falhas.push(`canvas ${(vidro.opaco * 100).toFixed(1)}% opaco: a página não aparece atrás`);
+if (vidro.alfaMedio > 0.55) falhas.push(`alfa medio ${vidro.alfaMedio.toFixed(2)}: véu forte demais, virou cortina`);
 if (!parado.teia) falhas.push('parar removeu o global antes da hora');
 if (parado.opacidade !== '0') falhas.push(`parar não esmaeceu o host: opacidade ${parado.opacidade}`);
 
 console.log(`pixels acesos: ${comMouse.total} (fora do HUD: ${comMouse.foraDoHud})`);
+console.log(`canvas: ${(vidro.opaco * 100).toFixed(1)}% opaco, alfa medio ${vidro.alfaMedio.toFixed(2)}`);
 console.log(`erros de console: ${erros.length}`);
 console.log(`após parar: teia=${parado.teia} opacidade=${parado.opacidade}`);
 console.log(`fotos em ${saida}/`);

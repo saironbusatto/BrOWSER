@@ -12,10 +12,24 @@ export type Chamadas = {
   fillRect: number;
   stroke: number;
   fill: number;
+  /** Quantas vezes o quadro foi APAGADO, e não coberto. O fundo opaco antigo era o que escondia
+   * a página; apagar é o que deixa a página aparecer. */
+  clearRect: number;
+  /** O `fillStyle` de cada `fillRect`, para o teste ver que nenhum deles é opaco. */
+  fillRects: string[];
 };
 
 class Ctx2D {
-  chamadas: Chamadas = { fillText: [], moveTo: [], lineTo: [], fillRect: 0, stroke: 0, fill: 0 };
+  chamadas: Chamadas = {
+    fillText: [],
+    moveTo: [],
+    lineTo: [],
+    fillRect: 0,
+    stroke: 0,
+    fill: 0,
+    clearRect: 0,
+    fillRects: [],
+  };
   // Só `fillStyle` tem accessor: é o canal por onde o teste lê o alfa de cada glifo. Declarar um
   // campo com o mesmo nome sobrescreveria o accessor (useDefineForClassFields) e o setter nunca
   // rodaria — foi exatamente o que aconteceu na primeira versão deste harness.
@@ -31,18 +45,33 @@ class Ctx2D {
   // que o teste do fade do rastro mede.
   private rgbaAtual = 'rgba(255,255,255,1)';
 
-  /** Só os gradientes importam; devolvem algo que aceite addColorStop. */
+  /** Só os gradientes importam, mas eles guardam as cores: é delas que o teste tira o alfa,
+   * para provar que nenhum fundo pintado pelo efeito é opaco. `toString` existe porque o
+   * registrador guarda o `fillStyle` como texto. */
+  private gradiente(par: string) {
+    const stops: string[] = [];
+    return {
+      stops,
+      addColorStop: (_p: number, cor: string) => {
+        stops.push(cor);
+      },
+      toString: () => `${par}(${stops.join('|')})`,
+    };
+  }
   createLinearGradient() {
-    return { addColorStop: () => {} };
+    return this.gradiente('gradiente-linear');
   }
   createRadialGradient() {
-    return { addColorStop: () => {} };
+    return this.gradiente('gradiente-radial');
   }
   setTransform() {}
-  clearRect() {}
+  clearRect() {
+    this.chamadas.clearRect++;
+  }
   beginPath() {}
   fillRect() {
     this.chamadas.fillRect++;
+    this.chamadas.fillRects.push(String(this._fillStyle));
   }
   moveTo(x: number, y: number) {
     this.chamadas.moveTo.push({ x, y });
@@ -177,7 +206,16 @@ export function mundo(largura = 1920, altura = 1080): Mundo {
     quadros: 0,
     ctx: () => ctxUnico,
     zerar: () => {
-      ctxUnico.chamadas = { fillText: [], moveTo: [], lineTo: [], fillRect: 0, stroke: 0, fill: 0 };
+      ctxUnico.chamadas = {
+        fillText: [],
+        moveTo: [],
+        lineTo: [],
+        fillRect: 0,
+        stroke: 0,
+        fill: 0,
+        clearRect: 0,
+        fillRects: [],
+      };
     },
     // Avança o relógio e roda o que estiver na fila: como advance é chamado N vezes, isso simula
     // N quadros, e é assim que se prova que o rastro cresce e depois morre.

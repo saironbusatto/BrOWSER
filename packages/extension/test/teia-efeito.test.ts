@@ -363,6 +363,53 @@ describe('A trama fecha: o fio corre no seu lugar e o cruzamento não abre', () 
   });
 });
 
+describe('O tecido é vidro, não cortina: a página aparece atrás', () => {
+  const alfaDe = (estilo: string) => {
+    // `fillStyle` pode ser gradiente (o registrador guarda o texto, e o gradiente falso imprime
+    // as próprias paradas) ou rgba direto.
+    const rgba = /rgba\(([^)]+)\)/.exec(estilo);
+    if (!rgba) return 1; // sem rgba no texto: trata como opaco, que é o caso perigoso
+    const partes = rgba[1]!.split(',').map((p) => p.trim());
+    return partes.length === 4 ? Number(partes[3]) : 1;
+  };
+
+  it('o quadro é apagado, não coberto', () => {
+    // O fundo opaco antigo pintava a tela inteira a cada quadro e apagava de quebra, sem dar
+    // para pedir transparency: quem estava sendo preenchido sumia de trás do BrOWSER. Apagar
+    // resolve os dois de uma vez — some o quadro anterior sem pintar nada.
+    iniciar();
+    m.zerar();
+    m.avancar(34);
+    expect(m.ctx().chamadas.clearRect).toBeGreaterThan(0);
+  });
+
+  it('nada que o efeito pinta é opaco', () => {
+    iniciar();
+    m.moverMouse(960, 540);
+    m.zerar();
+    m.avancar(34);
+    const { fillRects } = m.ctx().chamadas;
+    expect(fillRects.length).toBeGreaterThan(0);
+    for (const estilo of fillRects) {
+      expect(alfaDe(estilo)).toBeLessThan(1);
+    }
+  });
+
+  it('com o véu em zero, o efeito não pinta fundo nenhum', () => {
+    // O ajuste máximo: a página some de baixo do tecido, e ainda se vê o que está acontecendo.
+    const cfg = { ...configTeia(1920, 1080, 2), veu: 0 };
+    iniciarTeia(cfg, deformacao);
+    m.moverMouse(960, 540);
+    m.zerar();
+    m.avancar(34);
+    const c = m.ctx().chamadas;
+    expect(c.clearRect).toBeGreaterThan(0);
+    // Só o halo do mouse pinta, e ele é translúcido. Nenhum fundo.
+    expect(c.fillRects.length).toBeLessThanOrEqual(1);
+    for (const estilo of c.fillRects) expect(alfaDe(estilo)).toBeLessThan(0.5);
+  });
+});
+
 describe('Ciclo de vida', () => {
   it('parar cancela o quadro seguinte, na hora', () => {
     const teia = iniciar();

@@ -20,6 +20,7 @@ export type ConfigTeia = {
   quad: number; // alvo de quadros por segundo
   vias: number; // quantos fios viajam
   dpr: number; // devicePixelRatio, limitado
+  veu: number; // opacidade do véu sobre a página, 0 = página totalmente nua
 };
 
 const KATAKANA = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ';
@@ -41,6 +42,10 @@ export function configTeia(largura: number, altura: number, dpr: number = 1): Co
     quad: 30,
     vias: Math.max(3, Math.min(7, Math.round((Math.max(largura, altura) / celula) * 0.09))),
     dpr: Math.min(dpr || 1, 2),
+    // Véu: o quanto o tecido escurece a página sem cobri-la. Baixo demais e os fios somem em
+    // página clara (o fio é luz somada, e luz em cima de branco não aparece); alto demais e
+    // volta a ser cortina. 0,22 é o meio-termo em que a página continua legível e o fio aparece.
+    veu: 0.22,
   };
 }
 
@@ -221,15 +226,26 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
     ultimoPasso = agora;
     const s = (agora - t0) / 1000;
 
-    // Fundo: azul profundo, mais um halo suave onde o mouse está — a névoa do sonho.
-    const fundo = ctx.createLinearGradient(0, 0, 0, H);
-    fundo.addColorStop(0, '#060a16');
-    fundo.addColorStop(0.5, '#0a1226');
-    fundo.addColorStop(1, '#05080f');
+    // Quadro transparente: apaga o anterior em vez de cobrir com azul. O `fillRect` opaco fazia
+    // as duas coisas — apagar e pintar o fundo — e era ele que escondia a página: o BrOWSER
+    // fecha a tela inteira e a pessoa deixa de ver o formulário sendo preenchido, que é
+    // justamente o que ela precisa ver. `clearRect` apaga igual, sem cor, e a página aparece
+    // através do tecido.
+    //
+    // O véu translúcido vem depois, e não no lugar do clear: pintar alfa sem apagar antes
+    // empilha a cada quadro e satura em menos de um segundo — voltaria a ser opaco, só mais
+    // devagar.
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    ctx.fillStyle = fundo;
-    ctx.fillRect(0, 0, W, H);
+    ctx.clearRect(0, 0, W, H);
+    if (cfg.veu > 0) {
+      const fundo = ctx.createLinearGradient(0, 0, 0, H);
+      fundo.addColorStop(0, `rgba(6,10,22,${cfg.veu})`);
+      fundo.addColorStop(0.5, `rgba(10,18,38,${cfg.veu})`);
+      fundo.addColorStop(1, `rgba(5,8,15,${cfg.veu})`);
+      ctx.fillStyle = fundo;
+      ctx.fillRect(0, 0, W, H);
+    }
     if (mouse.ativo) {
       const raio = RAIO * 3.2;
       const halo = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, raio);
