@@ -147,8 +147,12 @@ for (const k of Object.keys(expected)) {
 console.log(`\nresposta da IA:\n${execucao.texto.slice(0, 600)}`);
 
 // A teia precisa ter aparecido E pintado trama. `pico` é o maior número de pixels acesos visto
-// numa faixa do meio da tela: com a trama parada por ReferenceError, o fundo e o HUD sozinhos
-// deixam a faixa quase preta.
+// numa faixa de 800x500 px de dispositivo no meio da tela.
+//
+// Limiar calibrado, não chutado: com a trama parada pelo ReferenceError a faixa dá 0; com a
+// trama viva, o pior caso medido em 1920x1080, 1366x768 e 2560x1440 foi 22.024. O 2.000 fica
+// uma ordem de grandeza abaixo do pior caso e muito acima do zero, então não dá falso negativo
+// nem falso positivo.
 const teiaDesenhou = teia.pico >= 2000;
 console.log(
   `\nteia: ${teia.viuHost ? '✓ apareceu' : '✗ nunca apareceu'} · ` +
