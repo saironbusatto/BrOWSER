@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -11,7 +11,7 @@ import {
   PARES_TEIA,
   SCRIPT_PARAR_TEIA,
 } from '../utils/teia';
-import { limparMundo, mundo } from './canvas-falso';
+import { El, limparMundo, type Mundo, mundo } from './canvas-falso';
 
 describe('Malha: espaçamento de 1 cm, proporcional ao tamanho da tela', () => {
   const CM = 96 / 2.54;
@@ -194,9 +194,90 @@ describe('Injeção: a função tem de rodar isolada dentro da página', () => {
   });
 
   it('o nome do host é reaproveitado entre chamadas em vez de duplicar camadas', () => {
-    // Várias abas do BrOWSER no mesmo pedido não podem empilhar dois canvas.
-    expect(fonte).toContain('document.getElementById(ID)');
+    // Várias abas do BrOWSER no mesmo pedido não podem empilhar dois canvas. O teste olha o
+    // padrão e o id, não o nome da variável: o transpilador pode converter a constante já no
+    // fonte, e o teste anterior quebrava sem o defeito ter mudado.
+    expect(fonte).toMatch(/document\.getElementById\(/);
+    expect(fonte).toContain('browser-teia-host');
     expect(fonte).toContain('__bRowserTeia');
+  });
+});
+
+describe('Troca de versão: a aba aberta não segura a teia velha', () => {
+  // A teia injetada vive no `window` da página, e recarregar a extensão não toca na página. Com
+  // o atalho de reuso sem comparação, a função nova chegava, era descartada (a antiga já estava
+  // lá) e o efeito antigo continuava na tela: "recarreguei a extensão e não mudou nada".
+  type Instancia = {
+    versao?: string;
+    start(): void;
+    stop(): void;
+    destruirAgora?(): void;
+    updateStatus(t: string): void;
+  };
+
+  let m: Mundo;
+  const w = () => m.world as unknown as { __bRowserTeia?: Instancia };
+  const contarHosts = () => {
+    let n = 0;
+    const acha = (x: El) => {
+      if (x.id === 'browser-teia-host') n++;
+      for (const c of x.children) acha(c);
+    };
+    acha(m.host);
+    return n;
+  };
+
+  beforeEach(() => {
+    m = mundo();
+  });
+  afterEach(() => {
+    limparMundo();
+  });
+
+  it('com a mesma versão, reaproveita a instância em vez de montar outra', () => {
+    iniciarTeia(configTeia(1920, 1080, 2), deformacao);
+    const primeira = w().__bRowserTeia!;
+    m.avancar(34);
+    // Segunda chamada, mesma versão: tem de ser o mesmo objeto, senão empilha canvas.
+    iniciarTeia(configTeia(1920, 1080, 2), deformacao);
+    expect(w().__bRowserTeia).toBe(primeira);
+    expect(contarHosts()).toBe(1);
+  });
+
+  it('com versão diferente, desmonta a velha e monta a nova', () => {
+    // Uma instância velha, de quando a extensão ainda não sabia se desfazer.
+    w().__bRowserTeia = {
+      versao: 'antiga',
+      start: () => {},
+      stop: () => {},
+      updateStatus: () => {},
+    };
+    const hostVelho = new El('div');
+    hostVelho.id = 'browser-teia-host';
+    m.host.appendChild(hostVelho);
+
+    iniciarTeia(configTeia(1920, 1080, 2), deformacao);
+
+    const nova = w().__bRowserTeia!;
+    expect(nova.versao).toBe(configTeia(1920, 1080, 2).versao);
+    // O host velho saiu e o novo foi montado no lugar: um só, não dois.
+    expect(contarHosts()).toBe(1);
+    expect(m.ctx().chamadas.clearRect).toBe(0);
+    m.avancar(34);
+    // E a nova desenha de verdade, que é o que faltava para a correção aparecer na aba aberta.
+    expect(m.ctx().chamadas.clearRect).toBeGreaterThan(0);
+  });
+
+  it('a instância nova sabe se desmontar na hora', () => {
+    iniciarTeia(configTeia(1920, 1080, 2), deformacao);
+    const teia = w().__bRowserTeia!;
+    const desmontar = teia.destruirAgora;
+    expect(typeof desmontar).toBe('function');
+    m.avancar(34);
+    desmontar!();
+    // some da página inteira: global e host
+    expect(w().__bRowserTeia).toBeUndefined();
+    expect((m.doc.getElementById as (id: string) => El | null)('browser-teia-host')).toBeNull();
   });
 });
 

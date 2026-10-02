@@ -106,15 +106,24 @@ class El {
   shadowRoot: El | null = null;
   textContent = '';
   tag = '';
+  id = '';
+  /** Ligação de volta, para o `remove` saber de onde se desencaçar. */
+  pai: El | null = null;
   constructor(tag = 'div') {
     this.tag = tag;
   }
   appendChild(el: El | El[]) {
-    for (const e of Array.isArray(el) ? el : [el]) this.children.push(e);
+    for (const e of Array.isArray(el) ? el : [el]) {
+      this.children.push(e);
+      e.pai = this;
+    }
     return el;
   }
   append(...els: El[]) {
-    this.children.push(...els);
+    for (const e of els) {
+      this.children.push(e);
+      e.pai = this;
+    }
   }
   removeChild(el: El) {
     this.children = this.children.filter((c) => c !== el);
@@ -126,7 +135,11 @@ class El {
     this.shadowRoot = new El('shadow');
     return this.shadowRoot;
   }
-  remove() {}
+  remove() {
+    if (!this.pai) return;
+    this.pai.children = this.pai.children.filter((c) => c !== this);
+    this.pai = null;
+  }
   querySelector(sel: string): El | null {
     const achar = (n: El): El | null => {
       for (const c of n.children) {
@@ -166,9 +179,16 @@ export function mundo(largura = 1920, altura = 1080): Mundo {
   const ctxUnico = new Ctx2D();
   canvas.getContext = (() => ctxUnico) as unknown as El['getContext'];
 
+  /** `getElementById` de verdade: a teia reaproveita o host pelo id para não empilhar canvas,
+   * e é esse reaproveitamento que a troca de versão precisa desfazer. */
+  const porId = (id: string): El | null => {
+    const acha = (n: El): El | null => (n.id === id ? n : n.children.reduce<El | null>((r, c) => r ?? acha(c), null));
+    return acha(docRoot);
+  };
+
   const doc: Record<string, unknown> = {
     createElement: (t: string) => (t === 'canvas' ? canvas : new El(t)),
-    getElementById: () => null,
+    getElementById: porId,
     documentElement: docRoot,
     title: 'x',
   };

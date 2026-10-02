@@ -21,9 +21,17 @@ export type ConfigTeia = {
   vias: number; // quantos fios viajam
   dpr: number; // devicePixelRatio, limitado
   veu: number; // opacidade do véu sobre a página, 0 = página totalmente nua
+  versao: string; // marca da instância injetada, para trocar em cima de uma teia velha
 };
 
 const KATAKANA = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾂﾃﾅﾆﾇﾈﾊﾋﾎﾏﾐﾑﾒﾓﾔﾕﾗﾘﾜ';
+
+// Teia injetada numa aba sobrevive a recarregar a extensão: ela vive no `window` da página, e
+// recarregar a extensão não toca na página. Sem esta marca, a função nova era injetada e
+// descartada (a antiga estava lá, então o atalho de reuso a mantinha), e o efeito velho
+// continuava na tela — "recarreguei e não mudou nada". A marca mora na config porque a função
+// injetada não lê nada do módulo: quem compara são as duas instâncias, via `cfg`.
+export const VERSAO_TEIA = '2';
 
 // 1 cm vale 96/2.54 px de CSS. Em tela menor o número de células cai sozinho, que é o
 // comportamento pedido: o espaçamento é o mesmo, a quantidade é que é proporcional.
@@ -46,6 +54,7 @@ export function configTeia(largura: number, altura: number, dpr: number = 1): Co
     // página clara (o fio é luz somada, e luz em cima de branco não aparece); alto demais e
     // volta a ser cortina. 0,22 é o meio-termo em que a página continua legível e o fio aparece.
     veu: 0.22,
+    versao: VERSAO_TEIA,
   };
 }
 
@@ -85,15 +94,39 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
   // `window` ali dentro dava ReferenceError e o erro aparecia atribuído ao teste que estivesse
   // rodando, o que faz um teste de timeout parecer quebrado sem ele ter nada a ver.
   const w = window as unknown as {
-    __bRowserTeia?: { start(): void; stop(): void; destroy(): void; updateStatus(t: string): void };
+    __bRowserTeia?: {
+      start(): void;
+      stop(): void;
+      destroy(): void;
+      destruirAgora?(): void;
+      updateStatus(t: string): void;
+      versao?: string;
+    };
     removeEventListener?: (t: string, f: (e: Event) => void, o?: unknown) => void;
   };
-  if (w.__bRowserTeia) {
-    w.__bRowserTeia.start();
-    return;
-  }
 
   const ID = 'browser-teia-host';
+  const anterior = w.__bRowserTeia;
+  if (anterior && anterior.versao === cfg.versao) {
+    anterior.start();
+    return;
+  }
+  // Versão diferente: a aba foi aberta com a extensão antiga, e a teia injetada antes é um
+  // objeto vivo que segura o canvas e o `window`. Reusá-lo era o que fazia "recarreguei a
+  // extensão e não mudou nada": a função nova chegava, via o atalho acima, e a velha continuava
+  // desenhando por cima. Só recarregar a extensão não alcança a aba, então sem esta troca a
+  // correção só apareceria em aba recarregada — e o efeito antigo continuaria até lá.
+  if (anterior) {
+    // A instância velha pode ser de uma versão que não tinha `destruirAgora`; nesse caso o
+    // próprio código novo faz a limpeza mínima, senão o canvas antigo ficaria na tela para
+    // sempre e os ouvintes de `pointermove` se acumulariam a cada atualização.
+    if (typeof anterior.destruirAgora === 'function') anterior.destruirAgora();
+    else {
+      document.getElementById(ID)?.remove();
+      delete w.__bRowserTeia;
+    }
+  }
+
   let host = document.getElementById(ID);
   if (!host) {
     host = document.createElement('div');
@@ -433,9 +466,36 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
   };
   const aoRedimensionar = () => measure();
 
+  /** Cancela o quadro e esmaece. O esmaecimento é a transição de opacidade do CSS, e não precisa
+   * de quadros: cancelar na hora economiza CPU e faz o efeito sumir no instante do clique, em vez
+   * de meio segundo depois. O último quadro fica no canvas, apagando sozinho.
+   *
+   * Vive fora do objeto global de propósito: `destruirAgora` é chamado em cima de uma instância
+   * criada por OUTRA versão da extensão, e um método que depende de `this` depende de quem o
+   * chama — `this` aqui seria o objeto velho, não o novo. */
+  function parar() {
+    if (anim) {
+      window.cancelAnimationFrame(anim);
+      anim = 0;
+    }
+    accum = 0;
+    host!.style.opacity = '0';
+  }
+
+  /** Tira a teia da página: canvas, global e ouvintes. Compartilhado por `destroy` (que espera
+   * a transição de opacidade terminar) e por `destruirAgora` (que não espera). */
+  function limpar() {
+    host!.remove();
+    delete w.__bRowserTeia;
+    // Via `w`, não via `window`: a referência capturada continua válida mesmo se o global sumir.
+    w.removeEventListener?.('pointermove', aoMover);
+    w.removeEventListener?.('pointerleave', aoSair);
+    w.removeEventListener?.('resize', aoRedimensionar);
+  }
+
   w.__bRowserTeia = {
     start() {
-      host!.style.opacity = '1';
+      host.style.opacity = '1';
       if (!anim) {
         measure();
         ultimo = window.performance.now();
@@ -446,27 +506,22 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
       if (texto) status.textContent = texto;
     },
     stop() {
-      // O esmaecimento é a transição de opacidade do CSS, e não precisa de quadros: cancelar na
-      // hora economiza CPU e faz o efeito sumir no instante do clique, em vez de meio segundo
-      // depois. O último quadro fica no canvas, apagando sozinho.
-      if (anim) {
-        window.cancelAnimationFrame(anim);
-        anim = 0;
-      }
-      accum = 0;
-      host!.style.opacity = '0';
+      parar();
     },
     destroy() {
-      this.stop();
-      setTimeout(() => {
-        host!.remove();
-        delete w.__bRowserTeia;
-        // Via `w`, não via `window`: o callback é adiado e a referência capturada continua válida.
-        w.removeEventListener?.('pointermove', aoMover);
-        w.removeEventListener?.('pointerleave', aoSair);
-        w.removeEventListener?.('resize', aoRedimensionar);
-      }, 500);
+      parar();
+      setTimeout(limpar, 500);
     },
+    /**
+     * Desmonta sem esperar, e é o que permite trocar de versão em cima de uma aba que já tem
+     * teia. `destroy` não serve para isso: os 500 ms dele deixariam a instância velha remover,
+     * no fim da transição, o host que a nova instância acabou de montar.
+     */
+    destruirAgora() {
+      parar();
+      limpar();
+    },
+    versao: cfg.versao,
   };
 
   window.addEventListener('pointermove', aoMover, { passive: true });
