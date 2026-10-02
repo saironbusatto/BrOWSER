@@ -6,6 +6,9 @@ dist/
 .env*
 .spike-logs/
 
+# Fotos do harness visual da teia: são artefato local, não documentação.
+.teia-visual/
+
 # Fotos geradas fora do projeto: nao entram no repo.
 imgs/Gemini_Generated_Image_*
 dist-site/

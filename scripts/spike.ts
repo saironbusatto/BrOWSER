@@ -60,6 +60,60 @@ async function garantirFormulario() {
 
 const normalizar = (k: string, v: unknown) => (k === 'telefone' || k === 'cep' ? String(v ?? '').replace(/\D/g, '') : v);
 
+// Conta pixels acesos do canvas da teia, numa faixa no meio da tela.
+//
+// Sem isto o spike passa com a teia morta, e foi assim que o defeito da `deformacao` passou:
+// `iniciarTeia` é serializada e a chamada por nome levantava ReferenceError dentro da página,
+// o erro subia até `passo()` e abortava o quadro no primeiro laço da trama. O fundo e o HUD
+// apareciam, nenhum fio. A tela ficava bonita e vazia, o formulário era preenchido certo, e o
+// spike approving. Contar pixel aceso é o que pega esse caso.
+const PROBE_TEIA = `(function(){
+  const h = document.getElementById('browser-teia-host');
+  if (!h || !h.shadowRoot) return { acesos: -1, host: false };
+  const c = h.shadowRoot.querySelector('canvas');
+  if (!c) return { acesos: -1, host: true };
+  const w = Math.min(c.width, 800), hh = Math.min(c.height, 500);
+  const x0 = (c.width - w) / 2 | 0, y0 = (c.height - hh) / 2 | 0;
+  const d = c.getContext('2d').getImageData(x0, y0, w, hh).data;
+  let acesos = 0;
+  for (let i = 0; i < d.length; i += 4) if (d[i] + d[i+1] + d[i+2] > 210) acesos++;
+  return { acesos: acesos, host: true };
+})()`;
+
+type Teia = { pico: number; viuHost: boolean; sondas: number };
+
+/**
+ * Vigia a teia enquanto a IA trabalha. Ela só existe durante o pedido — o background liga no
+ * começo e desliga no fim — então medir depois não prova nada. `avaliar` não entra na fila do
+ * pedido: vai direto por CDP, então dá para sondar durante.
+ */
+function vigiarTeia(): { vivo: Promise<Teia>; parar(): void } {
+  const estado = { parado: false };
+  const vivo = (async (): Promise<Teia> => {
+    let pico = 0;
+    let viuHost = false;
+    let sondas = 0;
+    while (!estado.parado) {
+      try {
+        const r = (await controle('avaliar', { expr: PROBE_TEIA })) as { acesos: number; host: boolean };
+        viuHost = viuHost || r.host;
+        pico = Math.max(pico, r.acesos);
+        sondas++;
+      } catch {
+        // A aba pode estar navegando; sondar de novo é o certo.
+      }
+      if (!estado.parado) await Bun.sleep(700);
+    }
+    return { pico, viuHost, sondas };
+  })();
+  return {
+    vivo,
+    parar() {
+      estado.parado = true;
+    },
+  };
+}
+
 // ---- execução ----
 const servidor = await garantirFormulario();
 await controle('abrir', { url: FORM_URL });
@@ -72,7 +126,10 @@ if (!(await controle('avaliar', { expr: '!!document.querySelector("[name=telefon
 
 console.log(`▶ ${ia}: preenchendo…`);
 const inicio = performance.now();
+const vigia = vigiarTeia();
 const execucao = (await controle('executar', { texto: pedido, ia })) as { ok: boolean; ia?: Ia; texto: string };
+vigia.parar();
+const teia = await vigia.vivo;
 const duracaoS = Math.round((performance.now() - inicio) / 1000);
 
 let valores: Record<string, unknown> = {};
@@ -89,12 +146,21 @@ for (const k of Object.keys(expected)) {
 }
 console.log(`\nresposta da IA:\n${execucao.texto.slice(0, 600)}`);
 
+// A teia precisa ter aparecido E pintado trama. `pico` é o maior número de pixels acesos visto
+// numa faixa do meio da tela: com a trama parada por ReferenceError, o fundo e o HUD sozinhos
+// deixam a faixa quase preta.
+const teiaDesenhou = teia.pico >= 2000;
+console.log(
+  `\nteia: ${teia.viuHost ? '✓ apareceu' : '✗ nunca apareceu'} · ` +
+    `${teia.sondas} sondas · pico de ${teia.pico} px acesos ${teiaDesenhou ? '✓' : '✗ (trama não desenhou)'}`,
+);
+
 const logDir = join(raiz, '.spike-logs');
 mkdirSync(logDir, { recursive: true });
 const logFile = join(logDir, `${ia}-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`);
-writeFileSync(logFile, JSON.stringify({ ia, duracaoS, execucao, valores, esperado: expected, falhas }, null, 2));
+writeFileSync(logFile, JSON.stringify({ ia, duracaoS, execucao, valores, esperado: expected, falhas, teia }, null, 2));
 
-const aprovado = execucao.ok && falhas.length === 0;
+const aprovado = execucao.ok && falhas.length === 0 && teia.viuHost && teiaDesenhou;
 console.log(`\n${aprovado ? '✅ APROVADO' : '❌ REPROVADO'}: ${ia} em ${duracaoS}s · log: ${logFile}`);
 servidor?.kill();
 process.exit(aprovado ? 0 : 1);

@@ -225,4 +225,14 @@ describe('Injeção: as expressões que o Runtime.evaluate envia', () => {
     // Se `deformacao` fosse chamada pelo nome dentro da página, isto seria a linha do defeito.
     expect(expr).not.toMatch(/\bdeformacao\s*\(/);
   });
+
+  it('o harness visual injeta o que a extensão injeta, em vez de reescrever a receita', () => {
+    // O harness de packages/extension/scripts/teia-visual.ts chama `expressoesInjetar(PARES_TEIA)` e
+    // `expressaoIniciar()`, então usa o que o módulo produz e não tem como divergir. O que
+    // precisa guardar é a ausência da receita escrita à mão: foi assim que o defeito da
+    // `deformacao` passou — o harness dizia que a teia desenhava, a extensão não desenhava.
+    const fonteHarness = readFileSync(join(import.meta.dir, '..', 'scripts', 'teia-visual.ts'), 'utf8');
+    expect(fonteHarness).toMatch(/from '\.\.\/utils\/teia'/);
+    expect(fonteHarness).not.toContain('globalThis[');
+  });
 });
