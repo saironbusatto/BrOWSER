@@ -1277,8 +1277,7 @@ textarea#texto::placeholder {
   line-height: 1.35;
 }
 
-.legal-micro-footer button.link-btn,
-.first-run-banner button.link-btn {
+.legal-micro-footer button.link-btn {
   background: none;
   border: none;
   color: var(--accent);
@@ -1289,49 +1288,8 @@ textarea#texto::placeholder {
   display: inline;
 }
 
-.legal-micro-footer button.link-btn:hover,
-.first-run-banner button.link-btn:hover {
+.legal-micro-footer button.link-btn:hover {
   color: var(--accent-hover);
-}
-
-.first-run-banner {
-  background: var(--surface-secondary);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 14px;
-  font-size: 11.5px;
-  color: var(--fg-secondary);
-  animation: banner-in var(--duration-normal) var(--ease-smooth);
-}
-
-@keyframes banner-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.first-run-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  line-height: 1.35;
-}
-
-.btn-agree-sm {
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-  padding: 5px 12px;
-  border-radius: 12px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--duration-fast), transform var(--duration-fast);
-}
-
-.btn-agree-sm:hover {
-  background: var(--accent-hover);
-  transform: scale(1.02);
 }
 
 /* ---- Login oficial sem janela (link + código vindos da ponte) ---- */
@@ -1529,18 +1487,6 @@ textarea#texto::placeholder {
   .plan-switch[aria-busy='true']::after { animation: none; }
 }
 
-/* Liga/desliga do aprendizado passivo (política de privacidade / SignPath) */
-.sheet-toggle {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 12px 16px 0;
-  font-size: 12.5px;
-  color: var(--fg-secondary);
-  cursor: pointer;
-}
-.sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
-.sheet-toggle small { display: block; color: var(--fg-tertiary); }
 
 
 /* ── Conectores do Google (abaixo do card do Google AI Pro) ── */
@@ -1900,3 +1846,71 @@ textarea#texto::placeholder {
   .aviso { filter: none; }
   .roda-item { animation: none; }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Portão dos Termos — primeira vez na vida da extensão
+   Cobre o painel inteiro; o resto fica inert por baixo. O texto rola, o botão de aceitar não:
+   ele mora num rodapé fixo, sempre ao alcance, como o botão principal de um sheet.
+   ────────────────────────────────────────────────────────────────────────── */
+.portao {
+  position: fixed;
+  inset: 0;
+  z-index: 900; /* acima do painel, abaixo dos sheets (o modal dos Termos abre por cima) */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.portao-corpo {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px 16px;
+  text-align: center;
+}
+.portao-logo {
+  border-radius: 16px;
+  outline: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  outline-offset: -1px;
+}
+.portao h2 { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: var(--fg); text-wrap: balance; }
+.portao p { margin: 0; max-width: 34ch; font-size: 14px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+.portao .link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.portao .link-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: 2px; }
+.portao-rodape {
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+.portao-aceitar {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, transform;
+  transition-duration: var(--duration-fast);
+}
+.portao-aceitar:hover { background: var(--accent-hover); }
+.portao-aceitar:active { transform: scale(0.98); }
+.portao-aceitar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.termos-acoes { margin-top: 14px; }

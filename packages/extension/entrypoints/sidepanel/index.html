@@ -40,14 +40,6 @@
           <span>Login oficial direto pelo navegador. Zero chaves de API, com sua própria assinatura.</span>
         </div>
 
-        <label class="sheet-toggle">
-          <!-- Desligado por padrão. "Aprender" guarda dados do que você preencheu, e a pessoa
-               precisa escolher isso: vir marcado significa que ela precisa lembrar de DESMARCAR
-               algo que não pediu, e o inverso é o estado que o produto devia ter. -->
-          <input type="checkbox" id="toggle-aprendizado">
-          <span>Aprender a estrutura dos formulários que eu preencho <small>(só rótulos e botões, sem os valores; fica neste computador)</small></span>
-        </label>
-
         <div class="sheet-footer">
           <button id="btn-desconectar-todas" class="btn-quiet-danger">Desconectar todas as contas</button>
         </div>
@@ -112,13 +104,13 @@
             <span class="termos-item-icon">🔒</span>
             <div>
               <strong>Garantia Zero PII & Privacidade</strong>
-              <p>Nenhum valor digitado, senha ou número de cartão é gravado ou compartilhado. Os mapas de sites aprendidos contêm apenas a estrutura anônima do HTML.</p>
+              <p>Nenhum valor digitado, senha ou número de cartão é gravado ou compartilhado. Ao aceitar, o BrOWSER aprende a estrutura dos formulários que você preenche (só rótulos e botões, nunca os valores) e guarda isso neste computador. Páginas de login e de pagamento nunca são aprendidas.</p>
             </div>
           </div>
         </div>
 
-        <div style="margin-top: 14px; display: flex; gap: 8px;">
-          <button id="btn-concordar-modal" class="plan-action-btn btn-connect" style="flex: 1; padding: 10px; border-radius: 10px; font-size: 13px;">Concordo com os Termos</button>
+        <div class="termos-acoes">
+          <button type="button" id="btn-concordar-modal" class="portao-aceitar">Aceitar e começar</button>
         </div>
       </div>
     </div>
@@ -137,7 +129,7 @@
     </div>
 
     <!-- Header -->
-    <header class="app-header">
+    <header class="app-header" inert>
       <div class="brand-wrap">
         <div class="logo-icon" aria-hidden="true"><img src="/icon/128.png" alt=""></div>
         <h1 class="brand-title"><span>Br</span>OWSER</h1>
@@ -166,13 +158,27 @@
       </div>
     </header>
 
-    <!-- First-Run Legal Consent Banner -->
-    <div id="first-run-banner" class="first-run-banner" style="display:none;">
-      <div class="first-run-content">
-        <span>🛡️ <strong>Uso Gratuito &amp; Assistivo:</strong> O preenchimento por IA requer sua conferência prévia. Ao utilizar, você aceita os <button type="button" id="link-termos-banner" class="link-btn">Termos de Uso</button>.</span>
-        <button type="button" id="btn-concordar-termos" class="btn-agree-sm">Entendi</button>
+    <!-- Portão dos termos: primeira vez na vida da extensão, nada funciona antes do aceite.
+         Nasce VISÍVEL e o resto do painel nasce inert: se o JS falhar ou o storage demorar, o
+         painel fica fechado, nunca aberto (main.ts › liberarPainel). -->
+    <section id="portao-termos" class="portao" aria-labelledby="portao-titulo">
+      <div class="portao-corpo">
+        <img class="portao-logo" src="/icon/128.png" alt="" width="64" height="64">
+        <h2 id="portao-titulo">Antes de começar</h2>
+        <p>
+          O BrOWSER preenche formulários com a IA que você já assina, e você confere tudo antes de
+          enviar. Ele também aprende a estrutura dos formulários que você preenche: só rótulos e
+          botões, nunca o que você digita, e isso fica neste computador.
+        </p>
+        <p>
+          Para usar, leia e aceite os
+          <button type="button" id="link-termos-portao" class="link-btn">Termos de Uso e Privacidade</button>.
+        </p>
       </div>
-    </div>
+      <div class="portao-rodape">
+        <button type="button" id="btn-aceitar-portao" class="portao-aceitar">Aceitar e começar</button>
+      </div>
+    </section>
 
     <!-- Aviso: cápsula de vidro no topo. role=status (educado); o erro troca aria-live para
          assertive em main.ts › showToast. -->
@@ -190,7 +196,7 @@
     </div>
 
     <!-- Conversation Stream -->
-    <main id="chat-stream" class="chat-stream">
+    <main id="chat-stream" class="chat-stream" inert>
       <div id="welcome-card" class="welcome-card">
         <img class="welcome-logo" src="/icon/128.png" alt="BrOWSER" width="72" height="72">
         <p id="welcome-hint" class="welcome-hint">Para começar, conecte a IA que você já assina.</p>
@@ -199,7 +205,7 @@
     </main>
 
     <!-- Bottom Input Section -->
-    <footer class="input-section">
+    <footer class="input-section" inert>
       <div class="trabalho-barra" id="trabalho-barra" hidden><i></i></div>
       <form id="chat-form" autocomplete="off">
         <div class="input-box-wrap">

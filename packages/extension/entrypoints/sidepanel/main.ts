@@ -28,6 +28,7 @@ import {
   respostaDeOpcao,
 } from './perguntas';
 import { rodaModelo } from './roda-modelo';
+import { CHAVE_TERMOS, registroDeAceite, termosAceitos } from './termos';
 
 iniciarCampoPontos(document.getElementById('campo-pontos') as HTMLCanvasElement);
 
@@ -66,9 +67,7 @@ const termosModal = document.getElementById('termos-modal');
 const closeTermosBtn = document.getElementById('close-termos-btn');
 const btnConcordarModal = document.getElementById('btn-concordar-modal');
 const linkTermosFooter = document.getElementById('link-termos-footer');
-const linkTermosBanner = document.getElementById('link-termos-banner');
-const firstRunBanner = document.getElementById('first-run-banner');
-const btnConcordarTermos = document.getElementById('btn-concordar-termos');
+const portaoTermos = document.getElementById('portao-termos')!;
 
 let pedidoAtual: string | undefined;
 let cardAtivo: HTMLElement | null = null;
@@ -194,6 +193,7 @@ document.addEventListener('drop', (e) => {
   e.preventDefault();
   dragCounter = 0;
   dropOverlay.classList.remove('drag-active');
+  if (portaoTermos.isConnected) return; // antes do aceite, nada entra
   if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
     processarArquivos(e.dataTransfer.files);
   }
@@ -694,18 +694,30 @@ function fecharTermos() {
   termosModal.setAttribute('aria-hidden', 'true');
 }
 
-function concordarTermos() {
-  localStorage.setItem('browser_termos_aceitos_v2', 'true');
-  if (firstRunBanner) firstRunBanner.style.display = 'none';
+// O portão: primeira vez na vida da extensão, nada funciona antes do aceite. O HTML já nasce
+// trancado (portão visível, resto inert); aqui só se destranca, nunca o contrário.
+const TRANCADOS = ['.app-header', '#chat-stream', '.input-section'];
+
+function liberarPainel() {
+  portaoTermos.remove();
+  for (const sel of TRANCADOS) document.querySelector(sel)?.removeAttribute('inert');
+  texto.focus();
+}
+
+async function concordarTermos() {
+  // O aprendizado faz parte dos Termos (decisão do produto): aceitar liga os dois juntos.
+  await chrome.storage.local.set({ [CHAVE_TERMOS]: registroDeAceite(new Date()), aprendizadoPassivo: true });
+  localStorage.removeItem('browser_termos_aceitos_v2'); // banner antigo; não vale mais
   fecharTermos();
+  liberarPainel();
 }
 
 if (btnTermos) btnTermos.addEventListener('click', abrirTermos);
 if (closeTermosBtn) closeTermosBtn.addEventListener('click', fecharTermos);
 if (linkTermosFooter) linkTermosFooter.addEventListener('click', abrirTermos);
-if (linkTermosBanner) linkTermosBanner.addEventListener('click', abrirTermos);
-if (btnConcordarModal) btnConcordarModal.addEventListener('click', concordarTermos);
-if (btnConcordarTermos) btnConcordarTermos.addEventListener('click', concordarTermos);
+if (btnConcordarModal) btnConcordarModal.addEventListener('click', () => void concordarTermos());
+document.getElementById('link-termos-portao')!.addEventListener('click', abrirTermos);
+document.getElementById('btn-aceitar-portao')!.addEventListener('click', () => void concordarTermos());
 
 if (termosModal) {
   termosModal.addEventListener('click', (ev) => {
@@ -713,10 +725,15 @@ if (termosModal) {
   });
 }
 
-// Banner de consentimento no primeiro uso
-if (!localStorage.getItem('browser_termos_aceitos_v2') && firstRunBanner) {
-  firstRunBanner.style.display = 'block';
-}
+chrome.storage.local.get(CHAVE_TERMOS).then((r) => {
+  if (termosAceitos(r[CHAVE_TERMOS])) {
+    liberarPainel();
+    return;
+  }
+  // Sem aceite: o portão e o modal dos Termos são as únicas coisas clicáveis, e o "Aceitar" dos
+  // dois libera do mesmo jeito.
+  document.getElementById('btn-aceitar-portao')!.focus();
+});
 
 // Card de login oficial: só o link e o código que a ponte extraiu do CLI escondido.
 let loginTimer: ReturnType<typeof setInterval> | null = null;
@@ -976,21 +993,3 @@ chrome.storage.local.get(CHAVE_CONTAS).then((r) => {
   pintarCabecalho(undefined);
   chrome.runtime.sendMessage({ tipo: 'consultar_assinaturas' }).catch(() => {});
 });
-
-// ── Aprendizado passivo (liga/desliga; o background respeita a mesma chave) ──
-//
-// Default agora é DESLIGADO. Antes, "ausente = ligado" significava que instalar a extensão já
-// autorizava a coleta de estrutura de formulário de todas as páginas — consentimento por omissão,
-// que é o contrário do que os Termos prometem (privacy by default).
-const CHAVE_APRENDIZADO = 'aprendizadoPassivo';
-const toggleAprendizado = document.getElementById('toggle-aprendizado') as HTMLInputElement;
-const ligarAprendizado = (ligado: boolean) => chrome.storage.local.set({ [CHAVE_APRENDIZADO]: ligado });
-
-(async () => {
-  const { aprendizadoPassivo } = await chrome.storage.local.get(CHAVE_APRENDIZADO);
-  const ligado = aprendizadoPassivo === true; // opt-in: só liga quem já escolheu ligar
-  toggleAprendizado.checked = ligado;
-  if (aprendizadoPassivo === undefined) await ligarAprendizado(false);
-})();
-
-toggleAprendizado.addEventListener('change', () => ligarAprendizado(toggleAprendizado.checked));
