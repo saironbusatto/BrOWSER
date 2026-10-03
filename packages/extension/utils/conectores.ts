@@ -269,3 +269,77 @@ export function formatarTamanho(bytes: number): string {
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), un.length - 1);
   return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${un[i]}`;
 }
+
+// ---- Busca no conteúdo (tools buscar_no_drive / ler_arquivo_drive da ponte) ----
+//
+// A pergunta "qual o CPF de fulano no meu Drive" não se responde abrindo contrato por contrato: o
+// Drive já indexou o texto de tudo. `fullText contains` busca no CONTEÚDO (e no nome), pela API,
+// sem depender da interface — que é o que a skill do Drive ensina a fazer pela tela.
+
+const LIMITE_TEXTO = 60_000;
+// Nativos do Google saem por /export no formato que a IA lê melhor.
+const EXPORTAR_COMO: Record<string, string> = {
+  'application/vnd.google-apps.document': 'text/plain',
+  'application/vnd.google-apps.spreadsheet': 'text/csv',
+  'application/vnd.google-apps.presentation': 'text/plain',
+};
+const TEXTO_PURO = /^(text\/|application\/(json|xml|csv))/;
+
+export type ResultadoBusca = { id: string; nome: string; tipo: string; modificadoEm: string; link: string };
+
+/** `q` do Drive. Aspas e barras escapadas: um nome como D'Ávila quebrava a consulta ou virava filtro. */
+export function consultaConteudo(texto: string): string {
+  const seguro = texto.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `fullText contains '${seguro}' and trashed = false`;
+}
+
+export async function buscarNoDrive(token: string, texto: string, limite = 20): Promise<ResultadoBusca[]> {
+  const r = await fetch(
+    `${RAIZ}/files?${new URLSearchParams({
+      q: consultaConteudo(texto),
+      fields: 'files(id,name,mimeType,modifiedTime,webViewLink)',
+      pageSize: String(limite),
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+    })}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!r.ok) throw await erroDrive(r, 'não buscou');
+  const { files = [] } = (await r.json()) as {
+    files: { id: string; name: string; mimeType: string; modifiedTime?: string; webViewLink?: string }[];
+  };
+  return files.map((f) => ({ id: f.id, nome: f.name, tipo: f.mimeType, modificadoEm: f.modifiedTime ?? '', link: f.webViewLink ?? '' }));
+}
+
+export type TextoDrive = { nome: string; tipo: string; link: string; texto?: string; truncado?: boolean; motivo?: string };
+
+/**
+ * Texto de um arquivo do Drive. PDF, Word e imagem não têm texto pela API (precisariam de
+ * conversor): devolve o link, e a IA abre com `navegar` e lê pela página, como uma pessoa faria.
+ */
+export async function textoDoDrive(token: string, id: string): Promise<TextoDrive> {
+  const auth = { headers: { Authorization: `Bearer ${token}` } };
+  const base = `${RAIZ}/files/${encodeURIComponent(id)}`;
+  const m = await fetch(`${base}?${new URLSearchParams({ fields: 'id,name,mimeType,webViewLink', supportsAllDrives: 'true' })}`, auth);
+  if (!m.ok) throw await erroDrive(m, 'não achou o arquivo');
+  const meta = (await m.json()) as { name: string; mimeType: string; webViewLink?: string };
+  const info = { nome: meta.name, tipo: meta.mimeType, link: meta.webViewLink ?? '' };
+
+  const formato = EXPORTAR_COMO[meta.mimeType];
+  const url = formato
+    ? `${base}/export?${new URLSearchParams({ mimeType: formato })}`
+    : TEXTO_PURO.test(meta.mimeType)
+      ? `${base}?alt=media`
+      : '';
+  if (!url) {
+    return {
+      ...info,
+      motivo:
+        'Este tipo de arquivo (PDF, Word, imagem) não vira texto pela API. Abra o link com navegar e leia com ler_pagina ou ver_tela.',
+    };
+  }
+  const r = await fetch(url, auth);
+  if (!r.ok) throw await erroDrive(r, `não leu ${meta.name}`);
+  const texto = await r.text();
+  return texto.length > LIMITE_TEXTO ? { ...info, texto: texto.slice(0, LIMITE_TEXTO), truncado: true } : { ...info, texto };
+}

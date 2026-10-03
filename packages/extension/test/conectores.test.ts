@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'bun:test';
-import { CONECTORES, codeChallenge, formatarTamanho, listarDrive, paramDaUrl } from '../utils/conectores';
+import {
+  buscarNoDrive,
+  CONECTORES,
+  codeChallenge,
+  consultaConteudo,
+  formatarTamanho,
+  listarDrive,
+  paramDaUrl,
+  textoDoDrive,
+} from '../utils/conectores';
 
 // O chrome.runtime só existe dentro da extensão; o módulo chama isso no import.
 (globalThis as any).chrome = { runtime: { getManifest: () => ({}) } };
@@ -163,5 +172,93 @@ describe('query do Drive: parâmetro malformado é 400, não lista vazia', () =>
     const params = new URL(url).searchParams;
     expect(params.get('fields')).toBe('files(id,name,mimeType,size,modifiedTime)');
     expect(params.get('q')).toBe("'abc123' in parents and trashed = false");
+  });
+});
+
+describe('buscarNoDrive: procura no CONTEÚDO dos arquivos, não só no nome', () => {
+  it('a consulta escapa aspas e barra (senão "D\'Ávila" quebra a busca ou injeta filtro)', () => {
+    expect(consultaConteudo('Ana Souza')).toBe("fullText contains 'Ana Souza' and trashed = false");
+    expect(consultaConteudo("D'Ávila")).toBe("fullText contains 'D\\'Ávila' and trashed = false");
+    expect(consultaConteudo('a\\b')).toBe("fullText contains 'a\\\\b' and trashed = false");
+  });
+
+  it('pede fullText, devolve o link de cada resultado e respeita o limite', async () => {
+    let url = '';
+    globalThis.fetch = ((u: string) => {
+      url = u;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            files: [
+              {
+                id: 'x1',
+                name: 'Contrato Ana',
+                mimeType: 'application/vnd.google-apps.document',
+                webViewLink: 'https://docs.google.com/document/d/x1/edit',
+              },
+            ],
+          }),
+        ),
+      );
+    }) as any;
+    const r = await buscarNoDrive('t', 'Ana Souza', 5);
+    expect(new URL(url).searchParams.get('q')).toBe("fullText contains 'Ana Souza' and trashed = false");
+    expect(new URL(url).searchParams.get('pageSize')).toBe('5');
+    expect(r).toEqual([
+      {
+        id: 'x1',
+        nome: 'Contrato Ana',
+        tipo: 'application/vnd.google-apps.document',
+        modificadoEm: '',
+        link: 'https://docs.google.com/document/d/x1/edit',
+      },
+    ]);
+  });
+});
+
+describe('textoDoDrive: o texto que a IA lê sem abrir a interface', () => {
+  const meta = (mimeType: string) => JSON.stringify({ id: 'x1', name: 'Arq', mimeType, webViewLink: 'https://docs.google.com/x1' });
+  const servir = (mimeType: string, corpo = 'CPF 123.456.789-00') => {
+    const pedidos: string[] = [];
+    globalThis.fetch = ((u: string) => {
+      pedidos.push(u);
+      return Promise.resolve(new Response(u.includes('fields=') ? meta(mimeType) : corpo));
+    }) as any;
+    return pedidos;
+  };
+
+  it('Google Docs sai por /export em texto puro', async () => {
+    const pedidos = servir('application/vnd.google-apps.document');
+    const r = await textoDoDrive('t', 'x1');
+    expect(r.texto).toContain('CPF 123.456.789-00');
+    expect(pedidos.at(-1)).toContain('/export?mimeType=text%2Fplain');
+  });
+
+  it('Planilha Google sai em CSV', async () => {
+    const pedidos = servir('application/vnd.google-apps.spreadsheet', 'nome,cpf');
+    expect((await textoDoDrive('t', 'x1')).texto).toBe('nome,cpf');
+    expect(pedidos.at(-1)).toContain('mimeType=text%2Fcsv');
+  });
+
+  it('arquivo de texto vai por alt=media', async () => {
+    const pedidos = servir('text/plain');
+    await textoDoDrive('t', 'x1');
+    expect(pedidos.at(-1)).toContain('alt=media');
+  });
+
+  it('PDF e Word não viram texto: devolve o link e o caminho (abrir e ler a página)', async () => {
+    const pedidos = servir('application/pdf');
+    const r = await textoDoDrive('t', 'x1');
+    expect(r.texto).toBeUndefined();
+    expect(r.link).toBe('https://docs.google.com/x1');
+    expect(r.motivo).toContain('navegar');
+    expect(pedidos).toHaveLength(1); // nem tenta baixar o binário
+  });
+
+  it('texto longo é cortado e avisa', async () => {
+    servir('text/plain', 'a'.repeat(80_000));
+    const r = await textoDoDrive('t', 'x1');
+    expect(r.truncado).toBe(true);
+    expect(r.texto!.length).toBeLessThan(80_000);
   });
 });

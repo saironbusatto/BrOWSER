@@ -3,6 +3,12 @@
 No Drive, procurar é o caminho normal. Abrir documento por documento é o último recurso: cada
 arquivo custa uma leitura, e quem já indexou o conteúdo de tudo é a própria busca do Drive.
 
+## 0. Busca pela API, se o Drive estiver conectado
+
+Antes da tela: `buscar_no_drive` procura no **conteúdo** de todos os arquivos (nome, CPF, número de
+contrato) e devolve os resultados com link. `ler_arquivo_drive` lê o texto de um Doc, Planilha ou
+Apresentação sem abrir nada. Se elas responderem que o Drive não está conectado, siga pela tela.
+
 ## 1. A caixa de busca do Drive
 
 - Escreva com `preencher` no campo "Buscar no Drive". O Drive filtra enquanto a pessoa digita:

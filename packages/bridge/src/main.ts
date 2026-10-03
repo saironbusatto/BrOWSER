@@ -35,6 +35,7 @@ import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
 import { escolherSkills, type Skill } from './skills';
+import { registrarToolsDrive } from './tools-drive';
 import { registrarToolsNavegador } from './tools-navegador';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
@@ -612,6 +613,13 @@ function criarMcp() {
     paginaMudou: () => {
       camposConhecidos = new Map();
     },
+  });
+  registrarToolsDrive(s, {
+    enviar,
+    status: (t) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
+    },
+    conversa: () => conversaAtual,
   });
   return s;
 }

@@ -1,5 +1,6 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import * as acoes from '../utils/acoes-aba';
+import { buscarNoDrive, CONECTORES, conectorConfigurado, textoDoDrive, tokenGoogle } from '../utils/conectores';
 import {
   anotarNaConversa,
   ehEventoDoPedido,
@@ -424,6 +425,20 @@ async function encerrarPedidoOrfao() {
   if (alvo !== undefined) desligarTeia(alvo).catch(() => {});
 }
 
+/**
+ * Token do conector do Drive SEM abrir janela: no meio de um pedido, um popup de login do Google
+ * surgiria do nada. Sem conexão, a IA ouve isso e usa a busca pela interface (skill do Drive).
+ */
+async function tokenDoDrive(): Promise<string> {
+  if (!conectorConfigurado())
+    throw new Error('o conector do Google Drive não existe nesta instalação; use a busca do Drive pela interface');
+  return tokenGoogle([CONECTORES[0]!.escopo], false).catch(() => {
+    throw new Error(
+      'o Google Drive não está conectado no BrOWSER; use a busca do Drive pela interface (ou peça para a pessoa ligar o Drive em Planos)',
+    );
+  });
+}
+
 async function executar(p: Pedido): Promise<unknown> {
   switch (p.cmd) {
     case 'abrir':
@@ -466,6 +481,12 @@ async function executar(p: Pedido): Promise<unknown> {
       return acoes.rolar(depsAba, (p.args as Comandos['rolar']['args']).direcao);
     case 'links':
       return acoes.links(depsAba);
+    case 'buscar_drive': {
+      const a = p.args as Comandos['buscar_drive']['args'];
+      return { arquivos: await buscarNoDrive(await tokenDoDrive(), a.texto, a.limite) };
+    }
+    case 'ler_drive':
+      return textoDoDrive(await tokenDoDrive(), (p.args as Comandos['ler_drive']['args']).id);
     case 'avaliar':
       return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar':

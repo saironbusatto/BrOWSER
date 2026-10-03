@@ -287,7 +287,9 @@ describe('sessão: a segunda mensagem lembra da primeira', () => {
 
 describe('TOOLS: o allowlist do Claude bate com o MCP', () => {
   it('toda tool registrada na ponte está liberada, e nada além delas', () => {
-    const fonte = ['main.ts', 'tools-navegador.ts'].map((f) => readFileSync(join(import.meta.dir, '../src', f), 'utf8')).join('\n');
+    const fonte = ['main.ts', 'tools-navegador.ts', 'tools-drive.ts']
+      .map((f) => readFileSync(join(import.meta.dir, '../src', f), 'utf8'))
+      .join('\n');
     const registradas = [...fonte.matchAll(/registerTool\(\s*'(\w+)'/g)].map((m) => m[1]).sort();
     expect([...TOOLS].sort()).toEqual(registradas);
   });

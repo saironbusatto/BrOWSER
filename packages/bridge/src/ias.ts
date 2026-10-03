@@ -36,6 +36,9 @@ export const TOOLS = [
   'esperar',
   'teclar',
   'rolar',
+  // Drive pela API (tools-drive.ts)
+  'buscar_no_drive',
+  'ler_arquivo_drive',
 ];
 const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
 

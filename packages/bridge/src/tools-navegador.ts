@@ -35,7 +35,8 @@ async function liberarNavegacao(d: DepsNavegador, bruta: string): Promise<{ url:
   const c = d.conversa();
   if (!c) return { erro: 'Nenhum pedido ativo no momento' };
   const { links } = await d.enviar('links', {}).catch(() => ({ links: [] as string[] }));
-  const contexto = { linksDaPagina: links, hostsDaPessoa: c.hostsDaPessoa, hostsAprovados: c.hostsAprovados };
+  // Links da página + os que vieram da API do Drive (tools-drive.ts): nenhum foi montado pela IA.
+  const contexto = { linksDaPagina: [...links, ...c.linksConhecidos], hostsDaPessoa: c.hostsDaPessoa, hostsAprovados: c.hostsAprovados };
   if (navegacaoLiberada(v.url, contexto)) return { url: v.url.href };
   const host = semWww(v.url.hostname);
   const resposta = await d.perguntar(`A IA quer abrir ${host}, um site que você não citou. Permitir?`, [PERMITIR, NAO_PERMITIR]);
