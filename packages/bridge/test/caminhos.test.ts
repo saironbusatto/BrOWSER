@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { HOST_NAME } from '@browser/shared';
-import { comandoExecutavel, pathComIAs } from '../src/caminhos';
+import { comandoExecutavel, pathComIAs, which } from '../src/caminhos';
 import { registrarHost, removerHost } from '../src/instalar';
 
 // Estes testes rodam no CI em Linux e em Windows, então nada aqui pode assumir `:` como separador
@@ -162,5 +163,21 @@ describe.skipIf(process.platform === 'win32')('removerHost: a desinstalação n�
   it('não quebra quando o navegador nunca foi registrado', () => {
     expect(() => removerHost(FAKE)).not.toThrow();
     expect(removerHost(FAKE)).toEqual([]);
+  });
+});
+
+describe('which: o PATH de agora, não o de quando a ponte subiu', () => {
+  it.skipIf(process.platform === 'win32')('acha executável numa pasta posta no PATH depois', () => {
+    const pasta = mkdtempSync(join(tmpdir(), 'which-'));
+    writeFileSync(join(pasta, 'cli-que-nao-existe-x9'), '#!/bin/sh\n');
+    chmodSync(join(pasta, 'cli-que-nao-existe-x9'), 0o755);
+    const antes = process.env.PATH;
+    try {
+      expect(which('cli-que-nao-existe-x9')).toBeNull();
+      process.env.PATH = `${pasta}:${antes}`;
+      expect(which('cli-que-nao-existe-x9')).toBe(join(pasta, 'cli-que-nao-existe-x9'));
+    } finally {
+      process.env.PATH = antes;
+    }
   });
 });

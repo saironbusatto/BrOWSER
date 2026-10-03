@@ -23,13 +23,23 @@ export function pathComIAs(pathAtual = process.env.PATH ?? ''): string {
 }
 
 /**
+ * Acha um executável no PATH ATUAL. `Bun.which` sozinho lê o PATH de quando o processo subiu e
+ * ignora `process.env.PATH = …` feito depois — o que anulava o `pathComIAs()` do main.ts (CLI
+ * instalado depois de o navegador abrir não era achado) e fazia os testes rodarem o CLI de verdade
+ * no lugar do falso. Todo lugar da ponte procura executável por aqui.
+ */
+export function which(nome: string): string | null {
+  return Bun.which(nome, { PATH: process.env.PATH ?? '' });
+}
+
+/**
  * Comando pronto para Bun.spawn. No Windows, codex/claude instalados via npm são shims `.cmd`,
  * que só rodam via cmd.exe. Os argumentos que passamos não têm aspas nem & | < > ^ %
  * (o prompt vai por stdin e o JSON do MCP do claude vai por arquivo), então o cmd.exe não os altera.
  */
 export function comandoExecutavel(args: string[]): string[] {
   const [nome, ...resto] = args;
-  const exe = nome ? Bun.which(nome) : null;
+  const exe = nome ? which(nome) : null;
   if (!exe) return args;
   if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(exe)) return ['cmd.exe', '/d', '/c', exe, ...resto];
   return [exe, ...resto];

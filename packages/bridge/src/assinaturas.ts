@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, ItemAssinatura } from '@browser/shared';
-import { comandoExecutavel } from './caminhos';
+import { comandoExecutavel, which } from './caminhos';
 
 const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
 const log = (...a: unknown[]) => {
@@ -179,7 +179,7 @@ export async function obterStatusAssinaturas(preferida?: Ia): Promise<ItemAssina
   const ias = Object.keys(CATALOGO) as Ia[];
   const lista = await Promise.all(
     ias.map(async (ia): Promise<ItemAssinatura> => {
-      const instalado = Boolean(Bun.which(ia));
+      const instalado = Boolean(which(ia));
       if (!instalado)
         return { ia, nome: CATALOGO[ia].nome, instalado, conectado: false, ativo: false, detalhe: 'ferramenta local não encontrada' };
       const st = await estaLogado(ia);
@@ -245,11 +245,11 @@ function scriptPty(): string | undefined {
 
 /** Comando de login: o oficial, ou embrulhado num pty quando o CLI exige terminal. */
 function comandoLogin(entrada: Entrada): string[] | string {
-  const exe = Bun.which(entrada.login[0]!);
+  const exe = which(entrada.login[0]!);
   if (!exe) return entrada.login;
   const resto = entrada.login.slice(1);
   if (!entrada.viaPty) return [exe, ...resto];
-  if (!Bun.which('python3')) return 'python3 não está instalado (necessário para o login interativo).';
+  if (!which('python3')) return 'python3 não está instalado (necessário para o login interativo).';
   const pty = scriptPty();
   if (!pty) return 'não consegui preparar o pty para o login.';
   return ['python3', pty, exe, ...resto];
@@ -258,7 +258,7 @@ function comandoLogin(entrada: Entrada): string[] | string {
 export function iniciarLogin(ia: Ia, aoDescobrir: (d: DescobertaLogin) => void): { erro?: string } {
   const entrada = CATALOGO[ia];
   if (emAndamento.has(ia)) return { erro: `${entrada.nome}: login já em andamento.` };
-  if (!Bun.which(entrada.login[0]!)) return { erro: `${entrada.login[0]} não está instalado.` };
+  if (!which(entrada.login[0]!)) return { erro: `${entrada.login[0]} não está instalado.` };
   if (!entrada.extrair) {
     return { erro: `${entrada.nome} não expõe login programático. Rode \`${entrada.login.join(' ')}\` uma vez no terminal.` };
   }
@@ -337,7 +337,7 @@ export type PlanoLogout = { ok: true; cmd: string[] } | { ok: false; erro: strin
 export function planejarLogout(ia: Ia): PlanoLogout {
   const cmd = comandoLogout(ia);
   if (!cmd) return { ok: false, erro: `sem comando de logout: rode \`${CATALOGO[ia].login.join(' ')}\` e depois /logout` };
-  if (!Bun.which(cmd[0]!)) return { ok: false, erro: `${cmd[0]} não está instalado` };
+  if (!which(cmd[0]!)) return { ok: false, erro: `${cmd[0]} não está instalado` };
   return { ok: true, cmd };
 }
 

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, SiteBlueprint } from '@browser/shared';
 import { CATALOGO, lerComPrazo, statusConectado } from '../src/assinaturas';
-import { cancelarExecucao, comando, executar, instrucoes, type Mcp, respostaFinal, sessaoDaSaida, TOOLS } from '../src/ias';
+import { acoesNegadas, cancelarExecucao, comando, executar, instrucoes, type Mcp, respostaFinal, sessaoDaSaida, TOOLS } from '../src/ias';
 
 const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
 const tmp = () => mkdtempSync(join(tmpdir(), 'ias-teste-'));
@@ -297,7 +297,7 @@ describe('Parar: vale para o pedido inteiro', () => {
   it.skipIf(process.platform === 'win32')('depois do Parar, o failover não chama a próxima IA', async () => {
     const bin = mkdtempSync(join(tmpdir(), 'cli-falso-'));
     const marca = join(bin, 'codex-rodou');
-    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nsleep 30\n');
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nexec sleep 30\n');
     writeFileSync(join(bin, 'codex'), `#!/bin/sh\ntouch ${marca}\n`);
     chmodSync(join(bin, 'claude'), 0o755);
     chmodSync(join(bin, 'codex'), 0o755);
@@ -308,6 +308,48 @@ describe('Parar: vale para o pedido inteiro', () => {
       const r = await executar('x', MCP, () => {}, undefined, null, ['claude', 'codex']);
       expect(r.ok).toBe(false);
       expect(existsSync(marca)).toBe(false);
+    } finally {
+      process.env.PATH = path;
+    }
+  });
+});
+
+describe('agy: comando negado não pode matar a tarefa', () => {
+  it('lê as ações negadas na saída real do agy (capturada em 03/10/2026)', () => {
+    const saida =
+      '{"event":"init","conversation_id":"5870262c-ddc8-447b-9817-d709f8f1c316"}\n' +
+      '{"event":"result","result":{"conversation_id":"5870262c-ddc8-447b-9817-d709f8f1c316","status":"SUCCESS","response":"","denied_actions":[{"action":"command","display_name":"RunCommand"}]}}';
+    expect(acoesNegadas('agy', saida)).toEqual(['command']);
+    expect(sessaoDaSaida('agy', saida)).toBe('5870262c-ddc8-447b-9817-d709f8f1c316');
+  });
+
+  it('rodada normal não tem negação', () => {
+    expect(acoesNegadas('agy', '{"event":"result","result":{"response":"ok"}}')).toEqual([]);
+    expect(acoesNegadas('claude', 'qualquer coisa')).toEqual([]);
+  });
+});
+
+describe('agy: retomada depois de comando negado', () => {
+  it.skipIf(process.platform === 'win32')('retoma a mesma sessão e a tarefa termina com resposta', async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'agy-falso-'));
+    const ID = '5870262c-ddc8-447b-9817-d709f8f1c316';
+    // 1ª rodada: a trava nega o comando e o agy encerra sem resposta. Retomada (--conversation): conclui.
+    writeFileSync(
+      join(bin, 'agy'),
+      `#!/bin/sh
+case "$*" in mcp*) exit 0;; esac
+case "$*" in *--conversation*) echo '{"event":"result","result":{"conversation_id":"${ID}","response":"Feito so com o navegador."}}'; exit 0;; esac
+echo '{"event":"result","result":{"conversation_id":"${ID}","response":"","denied_actions":[{"action":"command"}]}}'
+`,
+    );
+    chmodSync(join(bin, 'agy'), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      const avisos: string[] = [];
+      const r = await executar('x', MCP, (t) => avisos.push(t), undefined, null, ['agy']);
+      expect(r).toMatchObject({ ok: true, texto: 'Feito so com o navegador.' });
+      expect(avisos.some((a) => a.includes('terminal'))).toBe(true);
     } finally {
       process.env.PATH = path;
     }

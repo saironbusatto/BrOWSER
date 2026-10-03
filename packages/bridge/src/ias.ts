@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { type ArquivoAnexo, IAS, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { formatarBlueprintParaIa } from './blueprints';
-import { comandoExecutavel } from './caminhos';
+import { comandoExecutavel, which } from './caminhos';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 
 // Mesmo log de main.ts e assinaturas.ts: stdout é exclusivo do protocolo do Chrome.
@@ -40,7 +40,8 @@ const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHR
 
 export type Mcp = { url: string; token: string };
 // `sessao`: id da conversa no CLI, para a próxima mensagem retomar em vez de começar do zero.
-export type Execucao = { ok: boolean; ia?: Ia; texto: string; sessao?: string };
+// `negadas`: ações que o CLI tentou e a trava negou (o agy encerra a rodada nisso; ver executar).
+export type Execucao = { ok: boolean; ia?: Ia; texto: string; sessao?: string; negadas?: string[] };
 
 export function instrucoes(
   pedido: string,
@@ -276,14 +277,14 @@ let cancelado = false;
 
 /** Tira da config global do agy o servidor "browser" (e o header com o token da ponte). */
 export function removerServidorMcpAgy() {
-  if (!Bun.which('agy')) return;
+  if (!which('agy')) return;
   Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']), { stdout: 'ignore', stderr: 'ignore' });
 }
 
 /** Desinstalação: tira só a nossa regra e o nosso servidor MCP do agy; o resto da config dele fica. */
 export function removerIntegracaoAgy(): string[] {
   const feito: string[] = [];
-  if (Bun.which('agy')) {
+  if (which('agy')) {
     const r = Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']));
     if (r.exitCode === 0) feito.push('servidor MCP "browser" removido do agy');
   }
@@ -313,7 +314,7 @@ function garantirPermissaoAgy(): string | undefined {
   }
 }
 
-function eventoResultadoAgy(saida: string): { status?: string; response?: string } | undefined {
+function eventoResultadoAgy(saida: string): { status?: string; response?: string; denied_actions?: { action?: string }[] } | undefined {
   for (const linha of saida.trim().split('\n').reverse()) {
     try {
       const e = JSON.parse(linha);
@@ -321,6 +322,16 @@ function eventoResultadoAgy(saida: string): { status?: string; response?: string
     } catch {}
   }
   return undefined;
+}
+
+/**
+ * Ações que a trava negou nesta rodada. Hoje só o agy reporta: no modo sem janela ele não tem a
+ * quem pedir permissão, nega o terminal sozinho e ENCERRA a rodada sem resposta, mesmo no meio de
+ * uma tarefa longa. Os outros dois devolvem a negação ao modelo, que segue.
+ */
+export function acoesNegadas(ia: Ia, saida: string): string[] {
+  if (ia !== 'agy') return [];
+  return (eventoResultadoAgy(saida)?.denied_actions ?? []).map((a) => a.action ?? '?');
 }
 
 // Texto final da IA, a partir da saída JSON de cada ferramenta.
@@ -414,7 +425,15 @@ async function rodar(
   }
 
   const texto = respostaFinal(ia, saida);
-  if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
+  if (codigo !== 0 || !texto) {
+    return {
+      ok: false,
+      ia,
+      texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}`,
+      sessao: sessaoDaSaida(ia, saida),
+      negadas: acoesNegadas(ia, saida),
+    };
+  }
   return { ok: true, ia, texto, sessao: sessaoDaSaida(ia, saida) };
 }
 
@@ -428,6 +447,10 @@ export function cancelarExecucao() {
 export function definirCancelamento(f: (() => void) | null) {
   cancelarAtual = f ?? undefined;
 }
+
+const MAX_RETOMADAS_NEGADAS = 2;
+const AVISO_SEM_TERMINAL =
+  'AVISO DO BrOWSER (não é a pessoa): a ação que você tentou foi negada. Aqui não existe terminal, comando de shell nem acesso a arquivos, e insistir encerra o atendimento. Continue a MESMA tarefa de onde parou, usando só as ferramentas do servidor MCP "browser" (ler_pagina, ler_campos, ver_tela, navegar, abrir_aba, usar_aba, preencher, clicar...). Se a tarefa realmente exigir algo fora do navegador, diga à pessoa o que conseguiu fazer e o que faltou.';
 
 // Failover (Q8): tenta as IAs instaladas na ordem; passa para a próxima quando uma falha.
 export async function executar(
@@ -443,7 +466,7 @@ export async function executar(
   /** Sessão desta conversa naquela IA, se já houver. Cada IA tem a sua: sessão não migra. */
   sessaoDe: (ia: Ia) => string | undefined = () => undefined,
 ): Promise<Execucao> {
-  const instaladas = ordem.filter((ia) => Bun.which(ia));
+  const instaladas = ordem.filter((ia) => which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
   const falhas: string[] = [];
   cancelado = false;
@@ -452,13 +475,25 @@ export async function executar(
     avisar(`Conectando ${ia}…`, 'geral');
     aoConectar(ia);
     const sessao = sessaoDe(ia);
-    let r = await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), sessao);
+    // A trava negou o terminal e o CLI parou no meio: retoma a MESMA sessão (o trabalho feito até
+    // ali está nela) dizendo que terminal não existe aqui. Sem isso, 7 minutos de tarefa viravam
+    // "erro" por uma tentativa de comando.
+    const recuperar = async (r: Execucao): Promise<Execucao> => {
+      for (let t = 0; !r.ok && r.negadas?.length && r.sessao && t < MAX_RETOMADAS_NEGADAS; t++) {
+        log(`${ia} parou por ação negada (${r.negadas.join(', ')}); retomando a sessão ${r.sessao}`);
+        avisar('A IA tentou usar o terminal, que não existe aqui. Continuando só com o navegador…', 'geral');
+        r = await rodar(ia, AVISO_SEM_TERMINAL, mcp, undefined, null, modeloDe(ia), r.sessao);
+        if (cancelado) return parado;
+      }
+      return r;
+    };
+    let r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), sessao));
     if (cancelado) return parado;
     // Sessão expirada ou apagada pelo CLI: perde a memória, não o pedido. Tenta do zero na mesma IA
     // antes de passar para a próxima.
-    if (!r.ok && sessao) {
+    if (!r.ok && sessao && !r.negadas?.length) {
       log(`retomar ${ia} ${sessao} falhou; rodando sem sessão`);
-      r = await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia));
+      r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia)));
       if (cancelado) return parado;
     }
     aoConectar(undefined);

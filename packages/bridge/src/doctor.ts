@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { HOST_NAME, type Ia } from '@browser/shared';
 import { obterStatusAssinaturas } from './assinaturas';
-import { pastasDasIAs } from './caminhos';
+import { pastasDasIAs, which } from './caminhos';
 import { EXTENSION_ID, pastasDeNavegador } from './instalar';
 
 const ok = (t: string) => `  ✓ ${t}`;
@@ -57,7 +57,7 @@ const EXECUTAVEIS: Record<string, string[]> = {
 
 export type Ambiente = { which: (exe: string) => string | null; existe: (c: string) => boolean };
 
-const AMBIENTE_REAL: Ambiente = { which: (exe) => Bun.which(exe), existe: (c) => existsSync(c) };
+const AMBIENTE_REAL: Ambiente = { which: (exe) => which(exe), existe: (c) => existsSync(c) };
 
 export function navegadorInstalado(nome: string, amb: Ambiente = AMBIENTE_REAL): boolean {
   return (EXECUTAVEIS[nome] ?? []).some((exe) => amb.which(exe) !== null || amb.existe(exe));
@@ -70,7 +70,7 @@ export function navegadorInstalado(nome: string, amb: Ambiente = AMBIENTE_REAL):
  */
 function python3Instalado(): boolean {
   if (process.env.PYTHON !== undefined) return true;
-  return ['python3', 'python'].some((exe) => Bun.which(exe) !== null);
+  return ['python3', 'python'].some((exe) => which(exe) !== null);
 }
 
 export function diagnosticar(base = homedir()): Diagnostico {
