@@ -34,6 +34,7 @@ import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
+import { escolherSkills, type Skill } from './skills';
 import { registrarToolsNavegador } from './tools-navegador';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
@@ -310,6 +311,7 @@ async function rodarPedido(
   blueprint: SiteBlueprint | null,
   avisar: (t: string, agente?: PapelAgente) => void,
   ordem?: Ia[],
+  skills: Skill[] = [],
 ): Promise<Execucao> {
   if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
@@ -340,6 +342,7 @@ async function rodarPedido(
       },
       (ia) => modelosEscolhidos[ia] ?? '',
       (ia) => conversa.sessoes[ia],
+      skills,
     ).then((r) => {
       if (r.ok && r.ia && r.sessao) conversa.sessoes[r.ia] = r.sessao;
       return r;
@@ -392,10 +395,22 @@ async function atenderPedido(p: Pedir) {
     // Consulta silenciosa de Blueprint comunitário / cache
     let blueprint: SiteBlueprint | null = null;
     let urlAba: string | undefined;
+    // Skill de site (nível 2): escolhe pelo domínio da aba e pelo pedido, e entra no prompt como o
+    // blueprint. Ela vai junto no pedido de continuação, porque a aba pode ter mudado.
+    let skills: Skill[] = [];
     try {
       const infoAba = (await enviar('ler_campos', {}).catch(() => null)) as { url: string; titulo: string; campos: Campo[] } | null;
       if (infoAba?.url) {
         urlAba = infoAba.url;
+        skills = escolherSkills({ url: urlAba, pedido: p.texto });
+        if (skills.length) {
+          emitir({
+            tipo: 'status',
+            pedidoId: p.pedidoId,
+            texto: `Skill de site carregada (${skills.map((s) => s.nome).join(', ')})`,
+            agente: 'scout',
+          });
+        }
         blueprint = await obterBlueprint(infoAba.url);
         if (blueprint) {
           emitir({
@@ -413,6 +428,7 @@ async function atenderPedido(p: Pedir) {
       blueprint,
       (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }),
       p.ias?.filter((ia) => IAS.includes(ia)),
+      skills,
     ).catch((e): Execucao => ({ ok: false, texto: String(e) }));
 
     // Pedido parado no meio: a IA foi morta, então o resultado não diz nada — quem decide a

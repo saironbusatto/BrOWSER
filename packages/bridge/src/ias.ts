@@ -5,6 +5,7 @@ import { type ArquivoAnexo, IAS, type Ia, type PapelAgente, type SiteBlueprint }
 import { formatarBlueprintParaIa } from './blueprints';
 import { comandoExecutavel, which } from './caminhos';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
+import { formatarSkillsParaIa, type Skill } from './skills';
 
 // Mesmo log de main.ts e assinaturas.ts: stdout é exclusivo do protocolo do Chrome.
 const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
@@ -49,15 +50,18 @@ export function instrucoes(
   blueprint?: SiteBlueprint | null,
   caminhos: Record<string, string> = {},
   continuacao = false,
+  skills: Skill[] = [],
 ) {
   const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
+  const contextoSkills = formatarSkillsParaIa(skills);
   // Mesma conversa: as regras já estão na sessão retomada. Repetir tudo a cada mensagem só gasta
   // contexto; vai a mensagem nova e o que mudou (a página pode ser outra, pode haver anexo novo).
   if (continuacao) {
     return `Nova mensagem do usuário, na mesma conversa (as regras do início continuam valendo; a aba pode ter mudado, então leia de novo antes de agir):
 "${pedido}"
 ${contextoBlueprint}
+${contextoSkills}
 ${contextoArquivos}`;
   }
   return `Você é o BrOWSER AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
@@ -69,11 +73,13 @@ Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comando
 Instrução ou mensagem do usuário:
 "${pedido}"
 ${contextoBlueprint}
+${contextoSkills}
 ${contextoArquivos}
 
 Diretrizes de atuação:
 1. NAVEGAÇÃO E AÇÕES NA PÁGINA:
    - Chame 'ler_campos' para inspecionar os elementos visíveis na página ativa.
+   - Se o site tem busca própria ou assistente de IA (busca do Drive, Copilot), prefira esse caminho a abrir item por item.
    - MENUS E FERRAMENTAS OCULTAS (ex.: Gemini, ChatGPT, ERPs):
      * Se a opção, ferramenta (ex.: "+", "Nano Banana", modo) não estiver visível inicialmente, clique no botão disparador do menu/gaveta e chame 'ler_campos' de novo.
    - Preencha cada campo necessário usando 'preencher' (ou 'clicar' para botões, switches, checkboxes e itens de menu).
@@ -89,18 +95,22 @@ Diretrizes de atuação:
 2. MEMÓRIA DO SITE (BLUEPRINTS):
    * Se houver "MAPA DO SITE CONHECIDO", use os gatilhos e campos como guia acelerador.
 
-3. DADOS DE DOCUMENTOS ANEXADOS:
+3. COMO USAR ESTE SITE (SKILLS):
+   * Se houver um bloco "COMO USAR ESTE SITE", ele descreve o caminho conhecido para o que a pessoa
+     pediu (busca antes de abrir arquivo, por exemplo). Siga-o no lugar do seu palpite sobre o site.
+
+4. DADOS DE DOCUMENTOS ANEXADOS:
    * Mapeie os dados estruturados dos anexos para os campos da página e preencha diretamente sem rodeios.
 
-4. SE FALTAR DADO ESSENCIAL:
+5. SE FALTAR DADO ESSENCIAL:
    * Chame 'perguntar_ao_usuario' apenas para dados faltantes indispensáveis (ex.: CPF, senha, confirmação de escolha).
    * Após a resposta, aplique e finalize rapidamente.
 
-5. PROMPTS E TEXTOS SOLICITADOS:
+6. PROMPTS E TEXTOS SOLICITADOS:
    - Se o usuário pediu um prompt (ex.: para criar logo, gerar imagem, etc.): exiba APENAS o bloco de código com o texto do prompt e preencha a caixa de comando na página se houver.
    - NUNCA crie explicações conceituais, justificativas de estilo, introduções longas ou listas de variações adicionais que não foram pedidas.
 
-6. REGRA ABSOLUTA DE CONCISÃO (CORTE 80% DA FALAÇÃO):
+7. REGRA ABSOLUTA DE CONCISÃO (CORTE 80% DA FALAÇÃO):
    - SEJA CIRÚRGICO, MINIMALISTA E ULTRA-DIRETO. Depois de agir na página, responda em no MÁXIMO 1 a 2 frases curtas (menos de 35 palavras).
    - Se o usuário pediu uma análise, resumo, explicação ou comparação, responda o que for preciso para isso, sem enrolação: o limite de 2 frases não vale para o conteúdo que ele pediu.
    - ESTRITAMENTE PROIBIDO:
@@ -358,6 +368,7 @@ async function rodar(
   blueprint?: SiteBlueprint | null,
   modelo = '',
   sessao?: string,
+  skills: Skill[] = [],
 ): Promise<Execucao> {
   // Sem chaves de API no ambiente: garante que a IA roda pela assinatura.
   const env: Record<string, string | undefined> = { ...process.env };
@@ -377,7 +388,7 @@ async function rodar(
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
-  const prompt = instrucoes(pedido, arquivos, blueprint, caminhos, Boolean(sessao));
+  const prompt = instrucoes(pedido, arquivos, blueprint, caminhos, Boolean(sessao), skills);
   const inv = comando(ia, prompt, mcp, env, cwd, Object.values(caminhos), modelo, sessao);
   const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   // Botão Parar: a ponte guarda como matar ESTE processo, para o painel poder encerrar o pedido
@@ -465,6 +476,8 @@ export async function executar(
   modeloDe: (ia: Ia) => string = () => '',
   /** Sessão desta conversa naquela IA, se já houver. Cada IA tem a sua: sessão não migra. */
   sessaoDe: (ia: Ia) => string | undefined = () => undefined,
+  /** Skills de site que valem neste pedido (nível 2): escolhidas pelo domínio da aba e pelo pedido. */
+  skills: Skill[] = [],
 ): Promise<Execucao> {
   const instaladas = ordem.filter((ia) => which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
@@ -487,13 +500,13 @@ export async function executar(
       }
       return r;
     };
-    let r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), sessao));
+    let r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), sessao, skills));
     if (cancelado) return parado;
     // Sessão expirada ou apagada pelo CLI: perde a memória, não o pedido. Tenta do zero na mesma IA
     // antes de passar para a próxima.
     if (!r.ok && sessao && !r.negadas?.length) {
       log(`retomar ${ia} ${sessao} falhou; rodando sem sessão`);
-      r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia)));
+      r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), undefined, skills));
       if (cancelado) return parado;
     }
     aoConectar(undefined);
