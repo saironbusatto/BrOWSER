@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { conversaDe, registrarMensagem } from '../src/conversas';
 import { type DepsNavegador, registrarToolsNavegador } from '../src/tools-navegador';
 
-type Handler = (args: Record<string, unknown>) => Promise<{ content: { type: string; text?: string }[] }>;
+type Handler = (args: Record<string, unknown>) => Promise<{ content: { type: string; text?: string; data?: string; mimeType?: string }[] }>;
 
 /** Monta as tools com uma ponte falsa e devolve o que cada uma fez. */
 function montar(opcoes: { links?: string[]; resposta?: string; pedido?: string; abas?: { id: number; url: string }[] }) {
@@ -74,5 +74,42 @@ describe('abas: a fronteira é o grupo, não uma pergunta', () => {
     await t.chamar('fechar_aba', { id: 4 });
     expect(t.perguntas).toHaveLength(0);
     expect(t.enviados).toEqual(['usar_aba 3', 'fechar_aba 4']);
+  });
+});
+
+describe('as demais tools só repassam à extensão, com a forma certa', () => {
+  it('voltar, esperar, teclar e rolar chegam à extensão; ver_tela devolve imagem', async () => {
+    const handlers = new Map<string, Handler>();
+    const enviados: { cmd: string; args: unknown }[] = [];
+    const status: string[] = [];
+    let mudou = 0;
+    const deps: DepsNavegador = {
+      enviar: (async (cmd: string, args: unknown) => {
+        enviados.push({ cmd, args });
+        return cmd === 'ver_tela' ? { mime: 'image/jpeg', base64: 'AAAA' } : { ok: true };
+      }) as DepsNavegador['enviar'],
+      status: (t) => status.push(t),
+      perguntar: async () => '',
+      conversa: () => conversaDe(new Map(), 'c'),
+      paginaMudou: () => {
+        mudou++;
+      },
+    };
+    registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
+
+    await handlers.get('voltar')!({});
+    expect(mudou).toBe(1); // voltar troca a página: as refs antigas não valem
+
+    const foto = await handlers.get('ver_tela')!({});
+    expect(foto.content[0]).toEqual({ type: 'image', data: 'AAAA', mimeType: 'image/jpeg' });
+
+    await handlers.get('esperar')!({ texto: 'Pedido gerado', segundos: 5 });
+    await handlers.get('esperar')!({});
+    await handlers.get('teclar')!({ tecla: 'ArrowDown' });
+    await handlers.get('rolar')!({ direcao: 'fim' });
+    expect(enviados.map((e) => e.cmd)).toEqual(['voltar', 'ver_tela', 'esperar', 'esperar', 'teclar', 'rolar']);
+    expect(enviados[2]!.args).toEqual({ texto: 'Pedido gerado', segundos: 5 });
+    expect(enviados[3]!.args).toEqual({});
+    expect(status.some((t) => t.includes('Pedido gerado'))).toBe(true);
   });
 });
