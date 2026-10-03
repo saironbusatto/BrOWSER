@@ -28,6 +28,35 @@ describe('escolherSkills: a skill entra quando o domínio ou o pedido batem', ()
   });
 });
 
+describe('excel-web: o Excel abre dentro do SharePoint, junto de Word e PowerPoint', () => {
+  const nomes = (url: string, pedido = '') => escolherSkills({ url, pedido }).map((s) => s.nome);
+
+  test('planilha no SharePoint/OneDrive recebe o manual do Excel', () => {
+    expect(nomes('https://rfonsecaadv-my.sharepoint.com/:x:/g/personal/a/EXCEL?e=1')).toEqual(['excel-web']);
+    expect(
+      nomes('https://rfonsecaadv-my.sharepoint.com/personal/a/_layouts/15/Doc.aspx?sourcedoc=x&file=Presentes.xlsx&action=default'),
+    ).toEqual(['excel-web']);
+    expect(nomes('https://excel.cloud.microsoft/open/x')).toEqual(['excel-web']);
+  });
+
+  test('documento Word no mesmo SharePoint NÃO recebe o manual do Excel', () => {
+    expect(nomes('https://rfonsecaadv-my.sharepoint.com/:w:/g/personal/a/WORD?e=1')).toEqual([]);
+    expect(nomes('https://rfonsecaadv-my.sharepoint.com/personal/a/_layouts/15/Doc.aspx?file=Contrato.docx')).toEqual([]);
+  });
+
+  test('pedir "no excel" de outra aba também aciona; "planilha" sozinha não (pode ser Google Sheets)', () => {
+    expect(nomes('https://exemplo.com', 'soma a coluna B no Excel')).toEqual(['excel-web']);
+    expect(nomes('https://docs.google.com/spreadsheets/d/x', 'soma a coluna B da planilha')).toEqual([]);
+  });
+
+  test('o manual ensina a ler pela barra de fórmulas e a gravar no ✓, sem Enter', () => {
+    const [excel] = escolherSkills({ url: 'https://excel.cloud.microsoft/' });
+    expect(excel!.corpo).toContain('formula bar');
+    expect(excel!.corpo).toContain('commit edit');
+    expect(formatarSkillsParaIa([excel!]).length).toBeLessThan(5000);
+  });
+});
+
 describe('formatarSkillsParaIa: o texto entra no prompt como instrução do site', () => {
   test('sem skill não devolve nada (o prompt não muda)', () => {
     expect(formatarSkillsParaIa([])).toBe('');

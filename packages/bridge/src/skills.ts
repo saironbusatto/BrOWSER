@@ -1,11 +1,25 @@
 import driveGoogle from '../../../skills/drive-google/SKILL.md' with { type: 'text' };
+import excelWeb from '../../../skills/excel-web/SKILL.md' with { type: 'text' };
 import { normalizarDominio } from './blueprints';
 
-export type Skill = { nome: string; dominios: string[]; palavras: string[]; corpo: string };
+// `enderecos`: para quando o domínio não basta. O Excel na web abre dentro do SharePoint, que também
+// abre Word e PowerPoint: só o endereço (.xlsx, /:x:/) diz que é planilha.
+export type Skill = { nome: string; dominios: string[]; palavras: string[]; corpo: string; enderecos?: RegExp };
 
 // "Quando" de cada skill: o domínio da aba e/ou as palavras do pedido. O corpo (skills/<nome>/SKILL.md)
 // entra no binário da ponte no build, então a skill chega para quem instalou a extensão.
-const SKILLS: Skill[] = [{ nome: 'drive-google', dominios: ['drive.google.com'], palavras: ['drive'], corpo: driveGoogle }];
+const SKILLS: Skill[] = [
+  { nome: 'drive-google', dominios: ['drive.google.com'], palavras: ['drive'], corpo: driveGoogle },
+  {
+    nome: 'excel-web',
+    dominios: ['excel.cloud.microsoft', 'excel.officeapps.live.com'],
+    // SharePoint/OneDrive: o tipo do arquivo está no link (/:x:/) ou no nome (.xlsx/.xls/.xlsm).
+    enderecos: /\/:x:\/|\.xls[xmb]?(?:[?&#/]|$)/i,
+    // "planilha" sozinha fica de fora: pode ser Google Planilhas, que é outra interface.
+    palavras: ['excel'],
+    corpo: excelWeb,
+  },
+];
 
 // Teto de quantas skills entram num pedido: cada uma é texto de prompt, e o pedido já carrega
 // blueprint, anexos e as diretrizes.
@@ -31,7 +45,9 @@ export function escolherSkills(opts: { url?: string; pedido?: string }): Skill[]
   const alvo = opts.url ? normalizarDominio(opts.url) : '';
   const pedido = semAcento(opts.pedido ?? '');
   return SKILLS.filter((s) => {
-    const noSite = alvo !== '' && s.dominios.some((d) => alvo === d || alvo.endsWith(`.${d}`));
+    const noSite =
+      (alvo !== '' && s.dominios.some((d) => alvo === d || alvo.endsWith(`.${d}`))) ||
+      (opts.url !== undefined && s.enderecos?.test(opts.url) === true);
     const noPedido = s.palavras.some((p) => pedido.includes(semAcento(p)));
     return noSite || noPedido;
   }).slice(0, MAX_SKILLS);
