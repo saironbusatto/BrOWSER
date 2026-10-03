@@ -69,6 +69,9 @@ export type Pedir = {
   // Contas que a pessoa conectou pelo BrOWSER, a ativa primeiro (ordem do failover). O painel
   // sempre manda; ausente só no caminho de teste/spike, que usa a ordem padrão.
   ias?: Ia[];
+  // Conversa do painel (a lixeira começa outra). Com ela a ponte retoma a sessão do CLI, e a
+  // segunda mensagem sabe o que a primeira pediu.
+  conversaId?: string;
 };
 
 // extensão -> ponte: o usuário respondeu a uma pergunta da IA

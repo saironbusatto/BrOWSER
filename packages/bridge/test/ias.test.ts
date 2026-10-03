@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'bun:test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, SiteBlueprint } from '@browser/shared';
 import { CATALOGO, lerComPrazo, statusConectado } from '../src/assinaturas';
-import { comando, instrucoes, type Mcp, respostaFinal } from '../src/ias';
+import { cancelarExecucao, comando, executar, instrucoes, type Mcp, respostaFinal, sessaoDaSaida, TOOLS } from '../src/ias';
 
 const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
 const tmp = () => mkdtempSync(join(tmpdir(), 'ias-teste-'));
@@ -237,6 +237,79 @@ describe('statusConectado: a tela não pode mentir sobre o que está conectado',
     for (const [ia, entrada] of Object.entries(CATALOGO)) {
       const status = entrada.status.join(' ');
       expect(`${ia}: ${status}`).not.toMatch(/--(status|logged|auth)$/);
+    }
+  });
+});
+
+describe('sessão: a segunda mensagem lembra da primeira', () => {
+  const ID = '958c7f7e-9957-4a74-8894-5e7a1b23c254';
+  const com = (ia: Ia, sessao?: string) => comando(ia, 'P', MCP, {}, tmp(), [], '', sessao).args;
+
+  it('cada CLI retoma pela flag dele', () => {
+    expect(com('claude', ID).join(' ')).toContain(`--resume ${ID}`);
+    expect(com('agy', ID).join(' ')).toContain(`--conversation ${ID}`);
+    const codex = com('codex', ID);
+    expect(codex.slice(0, 3)).toEqual(['codex', 'exec', 'resume']);
+    expect(codex.slice(-2)).toEqual([ID, '-']); // `codex exec resume [OPÇÕES] <id> -`
+  });
+
+  it('sem sessão, nada de retomar', () => {
+    for (const ia of ['agy', 'codex', 'claude'] as Ia[]) {
+      const a = com(ia).join(' ');
+      expect(a).not.toMatch(/--resume|--conversation| resume /);
+    }
+  });
+
+  it('id que não é UUID não vira argumento (injeção de flag)', () => {
+    const mal = '--dangerously-skip-permissions';
+    for (const ia of ['agy', 'codex', 'claude'] as Ia[]) expect(com(ia, mal)).not.toContain(mal);
+  });
+
+  it('lê o id na saída real de cada CLI (capturada em 03/10/2026)', () => {
+    expect(sessaoDaSaida('claude', `{"result":"ok","session_id":"${ID}"}`)).toBe(ID);
+    expect(sessaoDaSaida('codex', `{"type":"thread.started","thread_id":"${ID}"}\n{"type":"turn.started"}`)).toBe(ID);
+    expect(
+      sessaoDaSaida(
+        'agy',
+        `{"event":"init","conversation_id":"${ID}"}\n{"event":"result","result":{"conversation_id":"${ID}","response":"ok"}}`,
+      ),
+    ).toBe(ID);
+    expect(sessaoDaSaida('claude', '{"session_id":"; rm -rf /"}')).toBeUndefined();
+    expect(sessaoDaSaida('agy', 'lixo')).toBeUndefined();
+  });
+
+  it('mensagem seguinte não repete as regras, mas leva a página e os anexos novos', () => {
+    const p = instrucoes('agora o segundo', undefined, null, {}, true);
+    expect(p).toContain('agora o segundo');
+    expect(p).not.toContain('REGRA ABSOLUTA');
+  });
+});
+
+describe('TOOLS: o allowlist do Claude bate com o MCP', () => {
+  it('toda tool registrada na ponte está liberada, e nada além delas', () => {
+    const fonte = readFileSync(join(import.meta.dir, '../src/main.ts'), 'utf8');
+    const registradas = [...fonte.matchAll(/registerTool\(\s*'(\w+)'/g)].map((m) => m[1]).sort();
+    expect([...TOOLS].sort()).toEqual(registradas);
+  });
+});
+
+describe('Parar: vale para o pedido inteiro', () => {
+  it.skipIf(process.platform === 'win32')('depois do Parar, o failover não chama a próxima IA', async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'cli-falso-'));
+    const marca = join(bin, 'codex-rodou');
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nsleep 30\n');
+    writeFileSync(join(bin, 'codex'), `#!/bin/sh\ntouch ${marca}\n`);
+    chmodSync(join(bin, 'claude'), 0o755);
+    chmodSync(join(bin, 'codex'), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      setTimeout(cancelarExecucao, 300);
+      const r = await executar('x', MCP, () => {}, undefined, null, ['claude', 'codex']);
+      expect(r.ok).toBe(false);
+      expect(existsSync(marca)).toBe(false);
+    } finally {
+      process.env.PATH = path;
     }
   });
 });

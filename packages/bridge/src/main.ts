@@ -89,6 +89,12 @@ const paradoEm = new Set<string>();
 // pessoa a entender por que a resposta parou no meio.
 let iaEmCurso: Ia | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
+// Sessão de cada IA por conversa do painel: a próxima mensagem retoma em vez de começar do zero.
+// ponytail: só em memória e sem limite de tempo; some quando a ponte reinicia (fechar o navegador)
+// e cresce uma entrada por conversa. Persistir em disco só se "reabri o navegador e ela esqueceu"
+// virar reclamação.
+const sessoes = new Map<string, Partial<Record<Ia, string>>>();
+const MAX_CONVERSAS = 50;
 // Modelo escolhido por IA. Ausente = default do CLI (que é o rápido).
 const modelosEscolhidos: Partial<Record<Ia, string>> = {};
 
@@ -330,7 +336,11 @@ async function rodarPedido(
         iaEmCurso = ia;
       },
       (ia) => modelosEscolhidos[ia] ?? '',
-    );
+      (ia) => (p.conversaId ? sessoes.get(p.conversaId)?.[ia] : undefined),
+    ).then((r) => {
+      if (r.ok && r.ia && r.sessao && p.conversaId) lembrarSessao(p.conversaId, r.ia, r.sessao);
+      return r;
+    });
   } finally {
     definirCancelamento(null);
     ocupado = false;
@@ -339,6 +349,13 @@ async function rodarPedido(
 }
 
 /** URL + token vigentes; o token gira a cada pedido. */
+function lembrarSessao(conversaId: string, ia: Ia, sessao: string) {
+  const anteriores = sessoes.get(conversaId);
+  sessoes.delete(conversaId); // reinsere no fim: o Map vira uma fila do mais velho ao mais novo
+  sessoes.set(conversaId, { ...anteriores, [ia]: sessao });
+  if (sessoes.size > MAX_CONVERSAS) sessoes.delete(sessoes.keys().next().value!);
+}
+
 function sessaoMcp(): { url: string; token: string } {
   if (!mcp) throw new Error('MCP ainda não subiu');
   tokenAtivo = randomBytes(32).toString('hex');

@@ -70,6 +70,8 @@ const linkTermosFooter = document.getElementById('link-termos-footer');
 const portaoTermos = document.getElementById('portao-termos')!;
 
 let pedidoAtual: string | undefined;
+// A conversa deste painel. A ponte usa para retomar a sessão do CLI; a lixeira começa outra.
+let conversaId = crypto.randomUUID();
 let cardAtivo: HTMLElement | null = null;
 let arquivosAnexados: ArquivoAnexo[] = [];
 
@@ -215,6 +217,7 @@ texto.addEventListener('keydown', (e) => {
 
 // ── Clear Conversation ──
 btnLimpar.addEventListener('click', () => {
+  conversaId = crypto.randomUUID(); // a IA esquece junto com a tela
   chatStream.innerHTML = '';
   chatStream.appendChild(welcomeCard);
   welcomeCard.style.display = 'flex';
@@ -420,6 +423,7 @@ chatForm.addEventListener('submit', async (e) => {
     tabId: aba.id,
     arquivos: arquivosParaEnviar.length > 0 ? arquivosParaEnviar : undefined,
     ias: liberadas,
+    conversaId,
   };
 
   const r = await chrome.runtime.sendMessage(pedido).catch((err) => ({ ok: false, erro: String(err) }));
