@@ -183,40 +183,6 @@ body {
 
 .icon-btn svg { width: 16px; height: 16px; }
 
-/* ── Toast Notification ── */
-.toast-container {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%) translateY(-30px);
-  background: var(--surface-elevated);
-  color: var(--fg);
-  border: 1px solid var(--border);
-  border-radius: 9999px;
-  padding: 8px 16px;
-  font-size: 12.5px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
-  z-index: 1000;
-  opacity: 0;
-  pointer-events: none;
-  transition: transform var(--duration-normal) var(--ease-smooth),
-              opacity var(--duration-normal) var(--ease-smooth);
-}
-
-.toast-container.active {
-  transform: translateX(-50%) translateY(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.toast-icon { width: 14px; height: 14px; flex-shrink: 0; }
-.toast-container.success .toast-icon { color: var(--success); }
-.toast-container.error .toast-icon { color: var(--error); }
-
 /* ── Conversation Stream (Chat) ── */
 .chat-stream {
   flex: 1;
@@ -986,7 +952,8 @@ textarea#texto::placeholder {
   opacity: 0.7;
 }
 
-/* ── Subscription Pill Button (Header) ── */.subscription-pill-btn {
+/* ── Subscription Pill Button (Header) ── */
+.subscription-pill-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1132,7 +1099,10 @@ textarea#texto::placeholder {
   border-radius: var(--radius-md);
   background: var(--surface-secondary);
   border: 1px solid var(--border);
-  transition: all var(--duration-fast) var(--ease-smooth);
+  flex-wrap: wrap;
+  transition-property: background-color, border-color, box-shadow;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-smooth);
 }
 
 .plan-card:hover {
@@ -1307,8 +1277,7 @@ textarea#texto::placeholder {
   line-height: 1.35;
 }
 
-.legal-micro-footer button.link-btn,
-.first-run-banner button.link-btn {
+.legal-micro-footer button.link-btn {
   background: none;
   border: none;
   color: var(--accent);
@@ -1319,49 +1288,8 @@ textarea#texto::placeholder {
   display: inline;
 }
 
-.legal-micro-footer button.link-btn:hover,
-.first-run-banner button.link-btn:hover {
+.legal-micro-footer button.link-btn:hover {
   color: var(--accent-hover);
-}
-
-.first-run-banner {
-  background: var(--surface-secondary);
-  border-bottom: 1px solid var(--border);
-  padding: 8px 14px;
-  font-size: 11.5px;
-  color: var(--fg-secondary);
-  animation: banner-in var(--duration-normal) var(--ease-smooth);
-}
-
-@keyframes banner-in {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.first-run-content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  line-height: 1.35;
-}
-
-.btn-agree-sm {
-  background: var(--accent);
-  color: #ffffff;
-  border: none;
-  padding: 5px 12px;
-  border-radius: 12px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--duration-fast), transform var(--duration-fast);
-}
-
-.btn-agree-sm:hover {
-  background: var(--accent-hover);
-  transform: scale(1.02);
 }
 
 /* ---- Login oficial sem janela (link + código vindos da ponte) ---- */
@@ -1369,8 +1297,9 @@ textarea#texto::placeholder {
   margin-top: 12px;
   padding: 14px;
   border-radius: 12px;
-  background: var(--bg-secondary, #f6f6f7);
-  border: 1px solid var(--border-color, #e2e2e6);
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  color: var(--fg);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1423,8 +1352,7 @@ textarea#texto::placeholder {
   background: #fff;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-.login-ok { border-color: #1fa463; }
-.login-erro { border-color: #d70015; }
+.login-erro { border-color: var(--error); }
 .plan-detalhe { font-size: 10.5px; color: #d70015; margin-top: 2px; }
 
 /* ---- Desconectar todas as contas ---- */
@@ -1528,23 +1456,12 @@ textarea#texto::placeholder {
 
 /* Conectando: o switch trava e treme de leve — sem isso o clique parece não ter pegado. */
 .plan-switch[aria-busy='true'] { opacity: 0.55; cursor: default; }
+.plan-switch:disabled:not([aria-busy='true']) { opacity: 0.35; cursor: not-allowed; }
 .plan-switch[aria-busy='true']::after { animation: switch-pulse 1s ease-in-out infinite; }
 @keyframes switch-pulse {
   0%, 100% { transform: translateX(0); }
   50% { transform: translateX(3px); }
 }
-
-/* A posição do knob já é o sinal; o preenchimento do card é o reforço de cor. */
-.plan-card.com-ativo {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-.plan-card.com-ativo .plan-name,
-.plan-card.com-ativo .plan-card.com-ativo .plan-icon-wrap { background: rgba(255, 255, 255, 0.18); }
-.plan-card.com-ativo .plan-status { color: #ffffff; } /* 0.85 daria 3.83:1 */
-.plan-card.com-ativo .plan-switch { background: rgba(255, 255, 255, 0.55); }
-.plan-card.com-ativo .plan-switch[aria-checked='true'] { background: #ffffff; }
-.plan-card.com-ativo .plan-switch[aria-checked='true']::after { background: var(--accent); }
 
 .plan-status {
   font-size: 11px;
@@ -1565,44 +1482,11 @@ textarea#texto::placeholder {
 .plan-status[data-conectado='sim']::before { background: var(--success); }
 .plan-status[data-conectado='nao']::before { background: var(--fg-tertiary); }
 
-/* Modelo: input quieto, o mesmo peso da linha de status. Não é campo de destaque — só quando a
-   pessoa quer o modelo forte que ela vem até aqui, e aí digita. */
-.plan-model {
-  margin-top: 5px;
-  padding: 2px 6px;
-  width: 100%;
-  max-width: 190px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--fg-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-.plan-model::placeholder { color: var(--fg-tertiary); }
-.plan-model:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.15);
-}
-.plan-model:disabled { opacity: 0.45; cursor: not-allowed; }
 @media (prefers-reduced-motion: reduce) {
   .plan-switch, .plan-switch::after { transition: none; }
   .plan-switch[aria-busy='true']::after { animation: none; }
 }
 
-/* Liga/desliga do aprendizado passivo (política de privacidade / SignPath) */
-.sheet-toggle {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 12px 16px 0;
-  font-size: 12.5px;
-  color: var(--fg-secondary);
-  cursor: pointer;
-}
-.sheet-toggle input { margin-top: 2px; accent-color: var(--accent); }
-.sheet-toggle small { display: block; color: var(--fg-tertiary); }
 
 
 /* ── Conectores do Google (abaixo do card do Google AI Pro) ── */
@@ -1749,15 +1633,6 @@ textarea#texto::placeholder {
 .drive-item-nome { font-size: 13.5px; font-weight: 500; }
 .drive-item-tamanho { font-variant-numeric: tabular-nums; }
 
-/* Seletor de modelo: mesmo vidro, para o card de plano não destoar do picker. */
-.plan-model {
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .drive-item { transition: none; }
   .drive-item:hover:not(:disabled) { transform: none; }
@@ -1768,3 +1643,274 @@ textarea#texto::placeholder {
    atributo vencem e o glifo fica miúdo dentro de um slot de 34px. */
 .drive-item-icone .ms { width: 18px; height: 18px; fill: currentColor; }
 .drive-item:hover:not(:disabled) .drive-item-icone .ms { color: var(--accent); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Aviso (toast) — cápsula de vidro no topo
+   Camada funcional: flutua acima da conversa, então pode ser vidro (liquid-glass.md › The two
+   layers). Variante "regular": tem texto, precisa de legibilidade. A cor fica só no ícone; o
+   fundo é neutro para o mesmo componente servir a sucesso, erro e informação.
+   ────────────────────────────────────────────────────────────────────────── */
+.aviso {
+  position: fixed;
+  top: 12px;
+  inset-inline: 0;
+  margin-inline: auto; /* centro sem transform: o reduce-motion global zera transform */
+  z-index: 1000;
+  width: max-content;
+  max-width: min(360px, calc(100% - 24px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 18px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(24px) saturate(1.5);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 10px 30px rgba(0, 0, 0, 0.16),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+  /* Saída: mais curta e quieta que a entrada (sobe e some). */
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+  filter: blur(4px);
+  pointer-events: none;
+  transition-property: opacity, transform, filter;
+  transition-duration: 150ms;
+  transition-timing-function: ease-in;
+}
+.aviso.active {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  pointer-events: auto;
+  transition-duration: var(--duration-normal);
+  transition-timing-function: var(--ease-smooth);
+}
+.aviso-icone { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.aviso.success .aviso-icone { color: var(--success); }
+.aviso.error .aviso-icone { color: var(--error); }
+.aviso.info .aviso-icone { color: var(--accent); }
+.aviso-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 1px; }
+.aviso-titulo { font-size: 13px; font-weight: 600; line-height: 1.3; text-wrap: balance; }
+.aviso-detalhe { font-size: 12px; line-height: 1.4; color: var(--fg-secondary); text-wrap: pretty; overflow-wrap: anywhere; }
+/* X discreto: 20px visíveis, 32px de área de clique pelo ::before. */
+.aviso-fechar {
+  position: relative;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  transition-property: background-color, color;
+  transition-duration: var(--duration-fast);
+}
+.aviso-fechar::before { content: ''; position: absolute; inset: -6px; }
+.aviso-fechar:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.aviso-fechar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+
+/* ── Primeira vez: nenhuma conta conectada ── */
+.welcome-hint { text-wrap: balance; }
+.welcome-conectar {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 9999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, transform;
+  transition-duration: var(--duration-fast);
+}
+.welcome-conectar:hover { background: var(--accent-hover); }
+.welcome-conectar:active { transform: scale(0.96); }
+.welcome-conectar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.plans-carregando { margin: 8px 2px; font-size: 12.5px; color: var(--fg-secondary); }
+
+/* Card de plano: nome e status em coluna; o switch fica à direita; a roda ocupa a linha de baixo. */
+.plan-details { display: flex; flex-direction: column; }
+.plan-card.active .plan-status { color: var(--fg); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Roda de modelos — picker vertical com lente de vidro
+   A rolagem é a nativa (scroll-snap); a curva do tambor é animation-timeline: view(), então
+   nenhum JS roda por frame. A lente é a única peça de vidro do card: o vidro vale para o
+   controle sendo manipulado (liquid-glass.md › Where the material belongs), não para o card.
+   ────────────────────────────────────────────────────────────────────────── */
+.roda {
+  --roda-item: 30px; /* = ALTURA_ITEM em roda-modelo.ts */
+  --roda-linhas: 5;
+  flex-basis: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  margin-top: 2px;
+  border-top: 1px solid var(--border);
+}
+.roda-rotulo { font-size: 12px; font-weight: 500; color: var(--fg-secondary); }
+.roda-poco { position: relative; min-width: 0; }
+.roda-lente {
+  position: absolute;
+  inset: calc(var(--roda-item) * 2) 0 auto;
+  height: var(--roda-item);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  backdrop-filter: blur(10px) saturate(1.6);
+  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  border: 1px solid color-mix(in srgb, var(--fg) 7%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
+    0 1px 3px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+.roda-lista {
+  position: relative; /* acima da lente: o texto passa sobre o vidro, não por trás dele */
+  height: calc(var(--roda-item) * var(--roda-linhas));
+  margin: 0;
+  padding: calc(var(--roda-item) * 2) 0;
+  list-style: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+  perspective: 240px;
+  border-radius: 10px;
+  mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 32%, #000 68%, transparent);
+}
+.roda-lista::-webkit-scrollbar { display: none; }
+.roda-lista:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.roda-item {
+  height: var(--roda-item);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  scroll-snap-align: center;
+  font-size: 13px;
+  color: var(--fg-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--duration-fast);
+}
+.roda-item[aria-selected='true'] { color: var(--fg); font-weight: 600; }
+.roda-selo {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  color: var(--fg-secondary);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+@supports (animation-timeline: view()) {
+  .roda-item {
+    animation: roda-tambor linear both;
+    animation-timeline: view();
+  }
+  @keyframes roda-tambor {
+    0% { transform: rotateX(-58deg) scale(0.88); opacity: 0.35; }
+    50% { transform: none; opacity: 1; }
+    100% { transform: rotateX(58deg) scale(0.88); opacity: 0.35; }
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .aviso, .roda-lente {
+    background: var(--surface-elevated);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: var(--fg-tertiary);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .aviso { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 10px 30px rgba(0, 0, 0, 0.5); }
+  .roda-lente { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 1px 3px rgba(0, 0, 0, 0.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aviso { filter: none; }
+  .roda-item { animation: none; }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Portão dos Termos — primeira vez na vida da extensão
+   Cobre o painel inteiro; o resto fica inert por baixo. O texto rola, o botão de aceitar não:
+   ele mora num rodapé fixo, sempre ao alcance, como o botão principal de um sheet.
+   ────────────────────────────────────────────────────────────────────────── */
+.portao {
+  position: fixed;
+  inset: 0;
+  z-index: 900; /* acima do painel, abaixo dos sheets (o modal dos Termos abre por cima) */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.portao-corpo {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px 16px;
+  text-align: center;
+}
+.portao-logo {
+  border-radius: 16px;
+  outline: 1px solid color-mix(in srgb, var(--fg) 10%, transparent);
+  outline-offset: -1px;
+}
+.portao h2 { margin: 4px 0 0; font-size: 20px; font-weight: 700; color: var(--fg); text-wrap: balance; }
+.portao p { margin: 0; max-width: 34ch; font-size: 14px; line-height: 1.5; color: var(--fg-secondary); text-wrap: pretty; }
+.portao .link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.portao .link-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; border-radius: 2px; }
+.portao-rodape {
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+}
+.portao-aceitar {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition-property: background-color, transform;
+  transition-duration: var(--duration-fast);
+}
+.portao-aceitar:hover { background: var(--accent-hover); }
+.portao-aceitar:active { transform: scale(0.98); }
+.portao-aceitar:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.termos-acoes { margin-top: 14px; }

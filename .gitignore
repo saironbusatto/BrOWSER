@@ -23,3 +23,7 @@ docs/handoff-*.md
 # Pacotes de release montados localmente por scripts/montar-release.sh: binários de 80 MB,
 # não entram no git.
 Downloads-brOWSER/
+
+# Estudos e análises: material de trabalho, não documentação do produto.
+docs/estudo-*.md
+estudo-*.md

@@ -15,7 +15,7 @@ import {
 
 type Deps = {
   aoAnexar: (arquivos: File[]) => void; // reaproveita processarArquivos() do painel
-  avisar: (mensagem: string, erro?: boolean) => void;
+  avisar: (titulo: string, erro?: boolean, detalhe?: string) => void;
 };
 
 let deps: Deps;
@@ -108,15 +108,17 @@ async function alternar(sw: HTMLButtonElement, status: HTMLElement) {
     if (conectado) {
       await desconectarGoogle();
       pintar(sw, status, false);
-      deps.avisar('Google Drive desconectado.');
+      document.querySelector('.drive-btn')?.remove();
+      deps.avisar('Google Drive desconectado');
     } else {
       tokenAtual = await tokenGoogle([escopoDoDrive()], true);
       pintar(sw, status, true);
-      deps.avisar('Google Drive conectado. Use o botão do clipe no campo de mensagem.');
+      await iniciarConectores(deps);
+      deps.avisar('Google Drive conectado', false, 'Use o botão do Drive, ao lado do clipe, para anexar arquivos.');
     }
   } catch (e) {
     pintar(sw, status, false);
-    deps.avisar(e instanceof Error ? e.message : 'Falha ao conectar o Google Drive.', true);
+    deps.avisar('Não deu para conectar o Google Drive', true, e instanceof Error ? e.message : 'Tente de novo.');
   } finally {
     conectando = false;
     sw.removeAttribute('aria-busy');
@@ -267,10 +269,10 @@ async function abrirSeletor() {
       try {
         deps.aoAnexar([await baixarDrive(tokenAtual, arq)]);
         fechar();
-        deps.avisar(`${arq.nome} anexado do Drive.`);
+        deps.avisar('Arquivo anexado', false, arq.nome);
       } catch (e) {
         b.disabled = false;
-        deps.avisar(e instanceof Error ? e.message : 'Falha ao baixar o arquivo.', true);
+        deps.avisar(`Não deu para anexar ${arq.nome}`, true, e instanceof Error ? e.message : 'Tente de novo.');
       }
     });
     return b;

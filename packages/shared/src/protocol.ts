@@ -25,6 +25,22 @@ export type Comandos = {
     args: { limite?: number };
     result: { url: string; titulo: string; texto: string; truncado: boolean; caracteres: number };
   };
+  // ---- Nível 1: o navegador inteiro (docs/estudo-alcance-do-agente.md) ----
+  // Sempre na aba alvo. Para onde ir é decidido na ponte (navegacao.ts); a extensão só recusa o
+  // que não é http/https, como segunda trava.
+  navegar: { args: { url: string }; result: InfoAba };
+  voltar: { args: Record<string, never>; result: InfoAba };
+  // Só as abas do grupo "BrOWSER" (o espaço da IA); as outras são da pessoa e nem aparecem.
+  listar_abas: { args: Record<string, never>; result: { abas: (InfoAba & { id: number; alvo: boolean })[]; foraDoGrupo: number } };
+  abrir_aba: { args: { url: string }; result: InfoAba & { id: number } };
+  usar_aba: { args: { id: number }; result: InfoAba };
+  fechar_aba: { args: { id: number }; result: { ok: true } };
+  ver_tela: { args: Record<string, never>; result: { mime: string; base64: string } };
+  esperar: { args: { texto?: string; segundos?: number }; result: { achou: boolean; esperouMs: number } };
+  teclar: { args: { tecla: Tecla }; result: { ok: true } };
+  rolar: { args: { direcao: 'cima' | 'baixo' | 'topo' | 'fim' }; result: { y: number; alturaTotal: number } };
+  // Interno da ponte (não vai para o MCP): os links da página, para a regra de navegação.
+  links: { args: Record<string, never>; result: { links: string[] } };
   // Só para o runner do teste conferir o resultado; não é exposto no MCP.
   avaliar: { args: { expr: string }; result: unknown };
   // Dev: recarrega a extensão após um build (a ponte reinicia junto).
@@ -32,6 +48,25 @@ export type Comandos = {
   // Dev/teste: faz a aba alvo usar o plano B (DOM) como se o chrome.debugger estivesse bloqueado.
   forcar_modo_dom: { args: Record<string, never>; result: { ok: true } };
 };
+
+export type InfoAba = { url: string; titulo: string };
+
+// Sem Enter de propósito: Enter num formulário envia, e isso furaria a trava de envio final
+// (envio.ts), que só olha cliques. Para confirmar, a IA clica, e o clique passa pela trava.
+export const TECLAS = [
+  'Tab',
+  'Escape',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+  'Backspace',
+] as const;
+export type Tecla = (typeof TECLAS)[number];
 
 export type Cmd = keyof Comandos;
 
@@ -66,6 +101,12 @@ export type Pedir = {
   texto: string;
   tabId: number;
   arquivos?: ArquivoAnexo[];
+  // Contas que a pessoa conectou pelo BrOWSER, a ativa primeiro (ordem do failover). O painel
+  // sempre manda; ausente só no caminho de teste/spike, que usa a ordem padrão.
+  ias?: Ia[];
+  // Conversa do painel (a lixeira começa outra). Com ela a ponte retoma a sessão do CLI, e a
+  // segunda mensagem sabe o que a primeira pediu.
+  conversaId?: string;
 };
 
 // extensão -> ponte: o usuário respondeu a uma pergunta da IA

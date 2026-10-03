@@ -3,7 +3,7 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { type ArquivoAnexo, IAS, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { formatarBlueprintParaIa } from './blueprints';
-import { comandoExecutavel } from './caminhos';
+import { comandoExecutavel, which } from './caminhos';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 
 // Mesmo log de main.ts e assinaturas.ts: stdout é exclusivo do protocolo do Chrome.
@@ -15,22 +15,54 @@ const log = (...a: unknown[]) => {
 };
 
 const TIMEOUT_MS = 5 * 60_000;
-const TOOLS = ['ler_campos', 'preencher', 'clicar', 'perguntar_ao_usuario', 'consultar_blueprint'];
+// Precisa bater com as tools registradas no MCP (main.ts): o teste confere. Sem isso o
+// `ler_pagina` ficou meses fora do --allowedTools do Claude, e "resume esta página" era negado.
+export const TOOLS = [
+  'ler_campos',
+  'preencher',
+  'clicar',
+  'ler_pagina',
+  'perguntar_ao_usuario',
+  'consultar_blueprint',
+  // Nível 1 (tools-navegador.ts)
+  'navegar',
+  'voltar',
+  'listar_abas',
+  'abrir_aba',
+  'usar_aba',
+  'fechar_aba',
+  'ver_tela',
+  'esperar',
+  'teclar',
+  'rolar',
+];
 const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
 
 export type Mcp = { url: string; token: string };
-export type Execucao = { ok: boolean; ia?: Ia; texto: string };
+// `sessao`: id da conversa no CLI, para a próxima mensagem retomar em vez de começar do zero.
+// `negadas`: ações que o CLI tentou e a trava negou (o agy encerra a rodada nisso; ver executar).
+export type Execucao = { ok: boolean; ia?: Ia; texto: string; sessao?: string; negadas?: string[] };
 
 export function instrucoes(
   pedido: string,
   arquivos?: ArquivoAnexo[],
   blueprint?: SiteBlueprint | null,
   caminhos: Record<string, string> = {},
+  continuacao = false,
 ) {
   const contextoArquivos = formatarContextoArquivos(arquivos, caminhos);
   const contextoBlueprint = blueprint ? formatarBlueprintParaIa(blueprint) : '';
+  // Mesma conversa: as regras já estão na sessão retomada. Repetir tudo a cada mensagem só gasta
+  // contexto; vai a mensagem nova e o que mudou (a página pode ser outra, pode haver anexo novo).
+  if (continuacao) {
+    return `Nova mensagem do usuário, na mesma conversa (as regras do início continuam valendo; a aba pode ter mudado, então leia de novo antes de agir):
+"${pedido}"
+${contextoBlueprint}
+${contextoArquivos}`;
+  }
   return `Você é o BrOWSER AI, um copiloto ultra-conciso e rápido no painel lateral do navegador.
-Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ler_campos, preencher, clicar, perguntar_ao_usuario, consultar_blueprint).
+Você tem acesso à aba ativa do usuário através do servidor MCP "browser" (ferramentas: ${TOOLS.join(', ')}).
+Isto é uma conversa: as próximas mensagens do usuário continuam daqui, então o que ele disser depois pode se referir ao que já foi feito.
 Essas são as ÚNICAS ferramentas disponíveis. Você NÃO tem terminal, comandos de shell nem acesso a arquivos do computador: qualquer tentativa é bloqueada e encerra o atendimento. Tudo o que precisa já está neste texto; a única exceção são arquivos que este texto mandar ler explicitamente (anexos/ no diretório de trabalho).
 
 
@@ -47,7 +79,12 @@ Diretrizes de atuação:
    - Preencha cada campo necessário usando 'preencher' (ou 'clicar' para botões, switches, checkboxes e itens de menu).
    - NUNCA tente resolver captchas ("não sou um robô", desafios de imagem): peça ao usuário para resolver.
    - NUNCA clique em botões de envio final irrevogável ("Enviar", "Submit", "Finalizar") sem autorização explícita do usuário.
-   - Ao concluir: responda em no MÁXIMO 1 a 2 frases curtas. ZERO prolixidade.
+   - Para ler o texto da página (resumir, responder sobre o conteúdo), use 'ler_pagina'.
+   - Você trabalha no grupo de abas "BrOWSER": é o seu espaço. Abra quantas abas precisar ('abrir_aba'), troque ('usar_aba'), feche as que não servem mais ('fechar_aba'). Abas fora do grupo são da pessoa: se precisar de uma, peça que ela arraste a aba para o grupo.
+   - Para ir a uma página: 'navegar' (mesma aba) ou 'abrir_aba'. Sites que a pessoa não citou pedem permissão a ela automaticamente; se ela negar, não insista.
+   - Depois de navegar ou trocar de aba, leia de novo ('ler_campos'/'ler_pagina'): as refs antigas não valem.
+   - Página que carrega aos poucos: 'esperar' por um texto. Quando o texto não basta (imagem, layout, botão sem rótulo): 'ver_tela'. Listas e menus: 'teclar' e 'rolar'.
+   - Ao concluir uma ação na página: responda em no MÁXIMO 1 a 2 frases curtas. ZERO prolixidade.
 
 2. MEMÓRIA DO SITE (BLUEPRINTS):
    * Se houver "MAPA DO SITE CONHECIDO", use os gatilhos e campos como guia acelerador.
@@ -64,7 +101,8 @@ Diretrizes de atuação:
    - NUNCA crie explicações conceituais, justificativas de estilo, introduções longas ou listas de variações adicionais que não foram pedidas.
 
 6. REGRA ABSOLUTA DE CONCISÃO (CORTE 80% DA FALAÇÃO):
-   - SEJA CIRÚRGICO, MINIMALISTA E ULTRA-DIRETO. Responda em no MÁXIMO 1 a 2 frases curtas (menos de 35 palavras).
+   - SEJA CIRÚRGICO, MINIMALISTA E ULTRA-DIRETO. Depois de agir na página, responda em no MÁXIMO 1 a 2 frases curtas (menos de 35 palavras).
+   - Se o usuário pediu uma análise, resumo, explicação ou comparação, responda o que for preciso para isso, sem enrolação: o limite de 2 frases não vale para o conteúdo que ele pediu.
    - ESTRITAMENTE PROIBIDO:
      * Saudações de abertura ("Olá!", "Com certeza!", "Preparei um prompt especial para você...", "Com prazer...").
      * Disclaimers repetitivos ("Como medida de segurança e seguindo nossas diretrizes, não cliquei em Enviar...").
@@ -108,7 +146,11 @@ export function comando(
   cwd: string,
   anexos: string[],
   modelo = '',
+  sessao?: string,
 ): Invocacao {
+  // O id vem da saída do próprio CLI e vira argumento de linha de comando: só passa se tiver
+  // forma de id. Um "--dangerously-skip-permissions" aqui seria injeção de flag.
+  const retomar = sessao && ID_SESSAO.test(sessao) ? sessao : undefined;
   switch (ia) {
     case 'agy': {
       let conteudo = prompt;
@@ -135,6 +177,7 @@ export function comando(
           // --sandbox fecha o terminal. A alternativa seria --dangerously-skip-permissions, que é
           // exatamente o que deixou o agy rodar `find /` e ler a config com o token da ponte.
           '--sandbox',
+          ...(retomar ? ['--conversation', retomar] : []),
           ...flagModelo(ia, modelo),
           '-p',
           '',
@@ -149,6 +192,8 @@ export function comando(
         args: [
           'codex',
           'exec',
+          // `exec resume <id> -`: mesmas opções, o id antes do "-" do stdin.
+          ...(retomar ? ['resume'] : []),
           '--json',
           '--skip-git-repo-check',
           // Valores sem aspas (o codex trata como texto o que não é TOML): nada para o cmd.exe reinterpretar.
@@ -164,6 +209,7 @@ export function comando(
           // Imagens entram como imagem de verdade; PDF o codex lê pelo caminho indicado no prompt.
           ...anexos.filter((a) => /\.(png|jpe?g|webp|gif)$/i.test(a)).flatMap((a) => ['-i', a]),
           ...flagModelo(ia, modelo),
+          ...(retomar ? [retomar] : []),
           '-',
         ],
         stdin: prompt,
@@ -184,10 +230,38 @@ export function comando(
           '--allowedTools',
           [...TOOLS.map((t) => `mcp__browser__${t}`), ...(anexos.length ? ['Read(./anexos/**)'] : [])].join(','),
           ...flagModelo(ia, modelo),
+          ...(retomar ? ['--resume', retomar] : []),
         ],
         stdin: prompt,
       };
   }
+}
+
+const ID_SESSAO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Id da conversa na saída de cada CLI (formatos medidos em 03/10/2026):
+ *   claude  {"session_id": "..."}                    (JSON único)
+ *   codex   {"type":"thread.started","thread_id":"..."} (NDJSON)
+ *   agy     {"event":"result","result":{"conversation_id":"..."}} (NDJSON; também no "init")
+ */
+export function sessaoDaSaida(ia: Ia, saida: string): string | undefined {
+  let id: unknown;
+  for (const linha of saida.trim().split('\n')) {
+    try {
+      const e = JSON.parse(linha);
+      id =
+        ia === 'claude'
+          ? e.session_id
+          : ia === 'codex'
+            ? e.type === 'thread.started'
+              ? e.thread_id
+              : id
+            : (e.result?.conversation_id ?? e.conversation_id ?? id);
+    } catch {}
+    if (ia !== 'agy' && typeof id === 'string') break;
+  }
+  return typeof id === 'string' && ID_SESSAO.test(id) ? id : undefined;
 }
 
 // Libera no agy só as ferramentas do nosso MCP (aditivo: não mexe nas outras regras do usuário).
@@ -197,17 +271,20 @@ const REGRA_MCP = 'mcp(browser/*)';
 // Callback de cancelamento da execução em curso. Vive aqui, em ias.ts, porque é quem tem o
 // handle do processo; a ponte só precisa saber que existe algo para matar.
 let cancelarAtual: (() => void) | undefined;
+// Parar vale para o pedido inteiro, não só para o processo da vez: sem esta marca o failover
+// pegava a próxima IA e rodava o pedido que a pessoa acabou de parar.
+let cancelado = false;
 
 /** Tira da config global do agy o servidor "browser" (e o header com o token da ponte). */
 export function removerServidorMcpAgy() {
-  if (!Bun.which('agy')) return;
+  if (!which('agy')) return;
   Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']), { stdout: 'ignore', stderr: 'ignore' });
 }
 
 /** Desinstalação: tira só a nossa regra e o nosso servidor MCP do agy; o resto da config dele fica. */
 export function removerIntegracaoAgy(): string[] {
   const feito: string[] = [];
-  if (Bun.which('agy')) {
+  if (which('agy')) {
     const r = Bun.spawnSync(comandoExecutavel(['agy', 'mcp', 'remove', 'browser']));
     if (r.exitCode === 0) feito.push('servidor MCP "browser" removido do agy');
   }
@@ -237,7 +314,7 @@ function garantirPermissaoAgy(): string | undefined {
   }
 }
 
-function eventoResultadoAgy(saida: string): { status?: string; response?: string } | undefined {
+function eventoResultadoAgy(saida: string): { status?: string; response?: string; denied_actions?: { action?: string }[] } | undefined {
   for (const linha of saida.trim().split('\n').reverse()) {
     try {
       const e = JSON.parse(linha);
@@ -245,6 +322,16 @@ function eventoResultadoAgy(saida: string): { status?: string; response?: string
     } catch {}
   }
   return undefined;
+}
+
+/**
+ * Ações que a trava negou nesta rodada. Hoje só o agy reporta: no modo sem janela ele não tem a
+ * quem pedir permissão, nega o terminal sozinho e ENCERRA a rodada sem resposta, mesmo no meio de
+ * uma tarefa longa. Os outros dois devolvem a negação ao modelo, que segue.
+ */
+export function acoesNegadas(ia: Ia, saida: string): string[] {
+  if (ia !== 'agy') return [];
+  return (eventoResultadoAgy(saida)?.denied_actions ?? []).map((a) => a.action ?? '?');
 }
 
 // Texto final da IA, a partir da saída JSON de cada ferramenta.
@@ -270,6 +357,7 @@ async function rodar(
   arquivos?: ArquivoAnexo[],
   blueprint?: SiteBlueprint | null,
   modelo = '',
+  sessao?: string,
 ): Promise<Execucao> {
   // Sem chaves de API no ambiente: garante que a IA roda pela assinatura.
   const env: Record<string, string | undefined> = { ...process.env };
@@ -289,7 +377,8 @@ async function rodar(
   const cwd = join(tmpdir(), 'browser-ia'); // fora de qualquer projeto: a IA não mexe em arquivos do usuário
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
   const caminhos = salvarAnexosBinarios(cwd, arquivos);
-  const inv = comando(ia, instrucoes(pedido, arquivos, blueprint, caminhos), mcp, env, cwd, Object.values(caminhos), modelo);
+  const prompt = instrucoes(pedido, arquivos, blueprint, caminhos, Boolean(sessao));
+  const inv = comando(ia, prompt, mcp, env, cwd, Object.values(caminhos), modelo, sessao);
   const proc = Bun.spawn(comandoExecutavel(inv.args), { cwd, env, stdout: 'pipe', stderr: 'pipe', stdin: 'pipe' });
   // Botão Parar: a ponte guarda como matar ESTE processo, para o painel poder encerrar o pedido
   // na hora em vez de esperar o timeout de 5 minutos. Ver `definirCancelamento`.
@@ -336,12 +425,21 @@ async function rodar(
   }
 
   const texto = respostaFinal(ia, saida);
-  if (codigo !== 0 || !texto) return { ok: false, ia, texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}` };
-  return { ok: true, ia, texto };
+  if (codigo !== 0 || !texto) {
+    return {
+      ok: false,
+      ia,
+      texto: `${ia} saiu com código ${codigo}: ${erros.slice(-500) || saida.slice(-500)}`,
+      sessao: sessaoDaSaida(ia, saida),
+      negadas: acoesNegadas(ia, saida),
+    };
+  }
+  return { ok: true, ia, texto, sessao: sessaoDaSaida(ia, saida) };
 }
 
 /** Mata a execução em curso (botão Parar). Sem efeito se não houver nenhuma. */
 export function cancelarExecucao() {
+  cancelado = true;
   cancelarAtual?.();
 }
 
@@ -349,6 +447,10 @@ export function cancelarExecucao() {
 export function definirCancelamento(f: (() => void) | null) {
   cancelarAtual = f ?? undefined;
 }
+
+const MAX_RETOMADAS_NEGADAS = 2;
+const AVISO_SEM_TERMINAL =
+  'AVISO DO BrOWSER (não é a pessoa): a ação que você tentou foi negada. Aqui não existe terminal, comando de shell nem acesso a arquivos, e insistir encerra o atendimento. Continue a MESMA tarefa de onde parou, usando só as ferramentas do servidor MCP "browser" (ler_pagina, ler_campos, ver_tela, navegar, abrir_aba, usar_aba, preencher, clicar...). Se a tarefa realmente exigir algo fora do navegador, diga à pessoa o que conseguiu fazer e o que faltou.';
 
 // Failover (Q8): tenta as IAs instaladas na ordem; passa para a próxima quando uma falha.
 export async function executar(
@@ -361,14 +463,39 @@ export async function executar(
   /** Informa qual CLI entrou em execução (o painel mostra isso ao parar um pedido). */
   aoConectar: (ia: Ia | undefined) => void = () => {},
   modeloDe: (ia: Ia) => string = () => '',
+  /** Sessão desta conversa naquela IA, se já houver. Cada IA tem a sua: sessão não migra. */
+  sessaoDe: (ia: Ia) => string | undefined = () => undefined,
 ): Promise<Execucao> {
-  const instaladas = ordem.filter((ia) => Bun.which(ia));
+  const instaladas = ordem.filter((ia) => which(ia));
   if (!instaladas.length) return { ok: false, texto: `Nenhuma IA instalada. Instale uma destas: ${ordem.join(', ')}.` };
   const falhas: string[] = [];
+  cancelado = false;
+  const parado: Execucao = { ok: false, texto: 'Parado pelo usuário.' };
   for (const ia of instaladas) {
     avisar(`Conectando ${ia}…`, 'geral');
     aoConectar(ia);
-    const r = await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia));
+    const sessao = sessaoDe(ia);
+    // A trava negou o terminal e o CLI parou no meio: retoma a MESMA sessão (o trabalho feito até
+    // ali está nela) dizendo que terminal não existe aqui. Sem isso, 7 minutos de tarefa viravam
+    // "erro" por uma tentativa de comando.
+    const recuperar = async (r: Execucao): Promise<Execucao> => {
+      for (let t = 0; !r.ok && r.negadas?.length && r.sessao && t < MAX_RETOMADAS_NEGADAS; t++) {
+        log(`${ia} parou por ação negada (${r.negadas.join(', ')}); retomando a sessão ${r.sessao}`);
+        avisar('A IA tentou usar o terminal, que não existe aqui. Continuando só com o navegador…', 'geral');
+        r = await rodar(ia, AVISO_SEM_TERMINAL, mcp, undefined, null, modeloDe(ia), r.sessao);
+        if (cancelado) return parado;
+      }
+      return r;
+    };
+    let r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia), sessao));
+    if (cancelado) return parado;
+    // Sessão expirada ou apagada pelo CLI: perde a memória, não o pedido. Tenta do zero na mesma IA
+    // antes de passar para a próxima.
+    if (!r.ok && sessao && !r.negadas?.length) {
+      log(`retomar ${ia} ${sessao} falhou; rodando sem sessão`);
+      r = await recuperar(await rodar(ia, pedido, mcp, arquivos, blueprint, modeloDe(ia)));
+      if (cancelado) return parado;
+    }
     aoConectar(undefined);
     if (r.ok) return r;
     falhas.push(r.texto);

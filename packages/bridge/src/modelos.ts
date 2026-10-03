@@ -14,7 +14,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, ModeloInfo } from '@browser/shared';
-import { comandoExecutavel } from './caminhos';
+import { comandoExecutavel, which } from './caminhos';
 
 const CACHE = join(homedir(), '.config', 'browser-bridge', 'modelos.json');
 // Fora de blueprints/ de propósito: lá, todo .json da pasta tem que estar no index.json
@@ -74,7 +74,7 @@ function gravarCache(a: Arquivo): void {
 
 /** `agy models` em tempo de execução: o que a conta tem hoje, não o que o repo dizia ontem. */
 function aoVivoAgy(): ModeloInfo[] | undefined {
-  if (!Bun.which('agy')) return undefined;
+  if (!which('agy')) return undefined;
   const r = Bun.spawnSync(comandoExecutavel(['agy', 'models']), { timeout: 8_000 });
   if (r.exitCode !== 0) return undefined;
   const itens: ModeloInfo[] = [];

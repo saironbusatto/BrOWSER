@@ -100,7 +100,7 @@ Nos termos do Art. 12 da LGPD e do Considerando 26 da GDPR, os dados anonimizado
 
 ### 5.4. Controle Local e Limpeza de Cache
 O Usuário possui a prerrogativa e a capacidade técnica de, a qualquer momento:
-1. Desativar o **Aprendizado Passivo de Formulários** no painel lateral (por padrão, **desligado**). Enquanto desligado, a extensão não cataloga a estrutura de formulários de página alguma e nada é enviado à ponte. Independentemente do estado da chave, páginas de **login** e de **pagamento** (bancos, corréios e carteiras) nunca são aprendidos, e campos de senha nunca entram no mapa;
+1. Interromper o **Aprendizado Passivo de Formulários** desinstalando a extensão. O aprendizado faz parte do uso do BrOWSER e é ligado **no aceite destes Termos**, que acontece na primeira abertura do painel lateral: antes do aceite, nenhuma função da extensão fica disponível e nada é catalogado. Não há chave separada para ligá-lo ou desligá-lo; a desinstalação apaga o aceite e a configuração, e uma nova instalação pede o aceite outra vez. Em qualquer caso, páginas de **login** e de **pagamento** (bancos, correios e carteiras) nunca são aprendidas, e campos de senha nunca entram no mapa;
 2. Auditar, inspecionar e deletar manualmente todo e qualquer blueprint ou arquivo de cache armazenado localmente em seu disco rígido nos diretórios canônicos:
    * **Linux / macOS:** `~/.config/browser-bridge/`
    * **Windows:** `%LOCALAPPDATA%\BrOWSER\`

@@ -26,6 +26,7 @@ import { desconectar, desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAss
 import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
 import { CONTROLE_ATIVO } from './build';
 import { pathComIAs } from './caminhos';
+import { type Conversa, conversaDe, registrarMensagem } from './conversas';
 import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
@@ -33,6 +34,7 @@ import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
+import { registrarToolsNavegador } from './tools-navegador';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -89,6 +91,10 @@ const paradoEm = new Set<string>();
 // pessoa a entender por que a resposta parou no meio.
 let iaEmCurso: Ia | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
+// O que a ponte lembra de cada conversa do painel (sessões dos CLIs, sites e abas liberados).
+const conversas = new Map<string, Conversa>();
+// A conversa do pedido em curso: as tools de navegação consultam e ampliam o que está liberado.
+let conversaAtual: Conversa | undefined;
 // Modelo escolhido por IA. Ausente = default do CLI (que é o rápido).
 const modelosEscolhidos: Partial<Record<Ia, string>> = {};
 
@@ -314,6 +320,9 @@ async function rodarPedido(
   // cego — que foi exatamente o erro da primeira versão desta instrumentação.
   relogio.zerar();
   const t0 = performance.now();
+  const conversa = conversaDe(conversas, p.conversaId ?? p.pedidoId);
+  registrarMensagem(conversa, p.texto);
+  conversaAtual = conversa;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
     // Token novo a cada execução: o que o agy grava na config global dele fica inútil assim que
@@ -330,8 +339,13 @@ async function rodarPedido(
         iaEmCurso = ia;
       },
       (ia) => modelosEscolhidos[ia] ?? '',
-    );
+      (ia) => conversa.sessoes[ia],
+    ).then((r) => {
+      if (r.ok && r.ia && r.sessao) conversa.sessoes[r.ia] = r.sessao;
+      return r;
+    });
   } finally {
+    conversaAtual = undefined;
     definirCancelamento(null);
     ocupado = false;
     log(relogio.resumo(performance.now() - t0));
@@ -356,6 +370,11 @@ async function atenderPedido(p: Pedir) {
   // `pedidoAtivo` e só depois era rejeitado — os status do primeiro saíam com o id errado.
   if (ocupado) {
     emitirRecusa(p.pedidoId, 'Já existe um pedido em andamento.');
+    return;
+  }
+  // Nunca cai numa conta que a pessoa não conectou: lista vazia é recusa, não "usa a padrão".
+  if (p.ias && !p.ias.some((ia) => IAS.includes(ia))) {
+    emitirRecusa(p.pedidoId, 'Conecte uma IA antes de fazer um pedido.');
     return;
   }
   pedidoAtivo = p.pedidoId;
@@ -389,9 +408,12 @@ async function atenderPedido(p: Pedir) {
       }
     } catch {}
 
-    const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente })).catch(
-      (e): Execucao => ({ ok: false, texto: String(e) }),
-    );
+    const r = await rodarPedido(
+      p,
+      blueprint,
+      (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }),
+      p.ias?.filter((ia) => IAS.includes(ia)),
+    ).catch((e): Execucao => ({ ok: false, texto: String(e) }));
 
     // Pedido parado no meio: a IA foi morta, então o resultado não diz nada — quem decide a
     // mensagem final é o evento `parado`.
@@ -559,28 +581,43 @@ function criarMcp() {
         log(`pergunta vaga recusada: ${JSON.stringify(pergunta).slice(0, 80)}`);
         return texto({ erro: vaga });
       }
-      const perguntaId = randomUUID();
-      escrever({
-        tipo: 'pergunta',
-        pedidoId: pedidoAtivo,
-        perguntaId,
-        pergunta,
-        campos,
-        opcoes,
-      } satisfies Evento);
-      const resposta = await new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
-        const timer = setTimeout(() => {
-          if (perguntasPendentes.delete(perguntaId)) {
-            resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
-          }
-        }, 5 * 60_000);
-        timer.unref?.();
-        perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
-      });
-      return texto(resposta);
+      return texto(await perguntarNoPainel(pedidoAtivo, pergunta, opcoes, campos));
     },
   );
+
+  registrarToolsNavegador(s, {
+    enviar,
+    status: (t) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
+    },
+    perguntar: async (pergunta, opcoes) =>
+      pedidoAtivo ? (await perguntarNoPainel(pedidoAtivo, pergunta, opcoes)).resposta : 'Nenhum pedido ativo',
+    conversa: () => conversaAtual,
+    paginaMudou: () => {
+      camposConhecidos = new Map();
+    },
+  });
   return s;
+}
+
+/** Mostra a pergunta no painel e espera a resposta (5 min; sem resposta, devolve um aviso). */
+function perguntarNoPainel(
+  pedidoId: string,
+  pergunta: string,
+  opcoes?: string[],
+  campos?: string[],
+): Promise<{ resposta: string; respostasCampos?: Record<string, string> }> {
+  const perguntaId = randomUUID();
+  escrever({ tipo: 'pergunta', pedidoId, perguntaId, pergunta, campos, opcoes } satisfies Evento);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (perguntasPendentes.delete(perguntaId)) {
+        resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
+      }
+    }, 5 * 60_000);
+    timer.unref?.();
+    perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
+  });
 }
 
 // ---- HTTP ----

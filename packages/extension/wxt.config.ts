@@ -29,7 +29,7 @@ export default defineConfig({
         }),
     // `identity` é o OAuth dos conectores (Google Drive). Só o client_id vai no manifest —
     // o refresh token nunca sai do keyring do navegador (utils/conectores.ts).
-    permissions: ['debugger', 'nativeMessaging', 'tabs', 'webNavigation', 'sidePanel', 'scripting', 'storage', 'identity'],
+    permissions: ['debugger', 'nativeMessaging', 'tabs', 'webNavigation', 'sidePanel', 'tabGroups', 'scripting', 'storage', 'identity'],
     // Plano B por DOM (chrome.scripting) precisa de acesso às páginas; o content.ts já roda em todas.
     host_permissions: ['<all_urls>'],
     action: { default_title: 'Abrir o BrOWSER' },
