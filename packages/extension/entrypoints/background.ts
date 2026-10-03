@@ -1,4 +1,5 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
+import * as acoes from '../utils/acoes-aba';
 import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
 import { clicarDom, fecharLeitura, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
@@ -476,6 +477,28 @@ async function executar(p: Pedido): Promise<unknown> {
       const a = p.args as Comandos['ler_pagina']['args'];
       return lerPagina(a.limite);
     }
+    case 'navegar':
+      return acoes.navegar(depsAba, (p.args as Comandos['navegar']['args']).url);
+    case 'voltar':
+      return acoes.voltar(depsAba);
+    case 'listar_abas':
+      return acoes.listarAbas(depsAba);
+    case 'abrir_aba':
+      return acoes.abrirAba(depsAba, (p.args as Comandos['abrir_aba']['args']).url);
+    case 'usar_aba':
+      return acoes.usarAba(depsAba, (p.args as Comandos['usar_aba']['args']).id);
+    case 'ver_tela':
+      return acoes.verTela(depsAba);
+    case 'esperar': {
+      const a = p.args as Comandos['esperar']['args'];
+      return acoes.esperar(depsAba, a.texto, a.segundos);
+    }
+    case 'teclar':
+      return acoes.teclar(depsAba, (p.args as Comandos['teclar']['args']).tecla);
+    case 'rolar':
+      return acoes.rolar(depsAba, (p.args as Comandos['rolar']['args']).direcao);
+    case 'links':
+      return acoes.links(depsAba);
     case 'avaliar':
       return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar':
@@ -490,34 +513,9 @@ async function executar(p: Pedido): Promise<unknown> {
   }
 }
 
-const TIMEOUT_NAVEGACAO_MS = 30_000;
-
-/** Espera a aba carregar. O listener sempre sai: se nunca completar, um timer encerra. */
-function esperarAbaCarregar(tabId: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const sair = () => {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(ouvir);
-    };
-    const ouvir = (id: number, info: chrome.tabs.OnUpdatedInfo) => {
-      if (id !== tabId || info.status !== 'complete') return;
-      sair();
-      resolve();
-    };
-    // Sem teto, uma aba que nunca carrega deixava o listener registrado para sempre — e cada
-    // `abrir` empilhava mais um.
-    const timer = setTimeout(() => {
-      sair();
-      resolve();
-    }, TIMEOUT_NAVEGACAO_MS);
-    timer.unref?.();
-    chrome.tabs.onUpdated.addListener(ouvir);
-  });
-}
-
 async function abrir(url: string) {
   const tab = await chrome.tabs.create({ url, active: true });
-  await esperarAbaCarregar(tab.id!);
+  await acoes.esperarAbaCarregar(tab.id!);
   await definirAlvo(tab.id!);
   return { tabId: tab.id! };
 }
@@ -536,6 +534,24 @@ async function abaAlvo(): Promise<number> {
   await definirAlvo(tab.id);
   return tab.id;
 }
+
+/**
+ * A IA passou a trabalhar em outra aba (abriu uma nova ou escolheu uma existente). A teia sai da
+ * velha e entra na nova: o efeito marca onde a IA está mexendo, e duas abas marcadas confundiriam.
+ */
+async function trocarAlvo(tabId: number): Promise<void> {
+  if (alvo === tabId) return;
+  if (alvo !== undefined) await desligarTeia(alvo).catch(() => {});
+  await definirAlvo(tabId);
+  await ligarTeia(tabId, 'IA trabalhando nesta aba…').catch(() => {});
+}
+
+const depsAba: acoes.DepsAba = {
+  abaAlvo: () => abaAlvo(),
+  trocarAlvo,
+  cdp: (m, params) => cdp(m, params),
+  semDebugger: (tabId) => abasSemDebugger.has(tabId),
+};
 
 async function cdp<T = any>(method: string, params: Record<string, unknown> = {}): Promise<T> {
   const tabId = await abaAlvo();
@@ -592,8 +608,8 @@ function varrerDom(root: any, origemTopo: string) {
 async function lerPagina(limite?: number): Promise<{ url: string; titulo: string; texto: string; truncado: boolean; caracteres: number }> {
   const teto = typeof limite === 'number' && limite > 0 ? Math.min(limite, 200_000) : LIMITE_PADRAO;
   const tabId = await abaAlvo();
-  const [aba] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
-  const url = aba?.url ?? '';
+  // A aba alvo, não a ativa: com abas, a IA pode estar lendo uma que não é a da frente.
+  const url = (await chrome.tabs.get(tabId).catch(() => undefined))?.url ?? '';
 
   if (!abasSemDebugger.has(tabId)) {
     try {

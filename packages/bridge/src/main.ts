@@ -26,6 +26,7 @@ import { desconectar, desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAss
 import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
 import { CONTROLE_ATIVO } from './build';
 import { pathComIAs } from './caminhos';
+import { type Conversa, conversaDe, registrarMensagem } from './conversas';
 import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
@@ -33,6 +34,7 @@ import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
+import { registrarToolsNavegador } from './tools-navegador';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -89,12 +91,10 @@ const paradoEm = new Set<string>();
 // pessoa a entender por que a resposta parou no meio.
 let iaEmCurso: Ia | undefined;
 let iaAtivaPreferencial: Ia = 'agy';
-// Sessão de cada IA por conversa do painel: a próxima mensagem retoma em vez de começar do zero.
-// ponytail: só em memória e sem limite de tempo; some quando a ponte reinicia (fechar o navegador)
-// e cresce uma entrada por conversa. Persistir em disco só se "reabri o navegador e ela esqueceu"
-// virar reclamação.
-const sessoes = new Map<string, Partial<Record<Ia, string>>>();
-const MAX_CONVERSAS = 50;
+// O que a ponte lembra de cada conversa do painel (sessões dos CLIs, sites e abas liberados).
+const conversas = new Map<string, Conversa>();
+// A conversa do pedido em curso: as tools de navegação consultam e ampliam o que está liberado.
+let conversaAtual: Conversa | undefined;
 // Modelo escolhido por IA. Ausente = default do CLI (que é o rápido).
 const modelosEscolhidos: Partial<Record<Ia, string>> = {};
 
@@ -320,6 +320,9 @@ async function rodarPedido(
   // cego — que foi exatamente o erro da primeira versão desta instrumentação.
   relogio.zerar();
   const t0 = performance.now();
+  const conversa = conversaDe(conversas, p.conversaId ?? p.pedidoId);
+  registrarMensagem(conversa, p.texto, p.tabId);
+  conversaAtual = conversa;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
     // Token novo a cada execução: o que o agy grava na config global dele fica inútil assim que
@@ -336,12 +339,13 @@ async function rodarPedido(
         iaEmCurso = ia;
       },
       (ia) => modelosEscolhidos[ia] ?? '',
-      (ia) => (p.conversaId ? sessoes.get(p.conversaId)?.[ia] : undefined),
+      (ia) => conversa.sessoes[ia],
     ).then((r) => {
-      if (r.ok && r.ia && r.sessao && p.conversaId) lembrarSessao(p.conversaId, r.ia, r.sessao);
+      if (r.ok && r.ia && r.sessao) conversa.sessoes[r.ia] = r.sessao;
       return r;
     });
   } finally {
+    conversaAtual = undefined;
     definirCancelamento(null);
     ocupado = false;
     log(relogio.resumo(performance.now() - t0));
@@ -349,13 +353,6 @@ async function rodarPedido(
 }
 
 /** URL + token vigentes; o token gira a cada pedido. */
-function lembrarSessao(conversaId: string, ia: Ia, sessao: string) {
-  const anteriores = sessoes.get(conversaId);
-  sessoes.delete(conversaId); // reinsere no fim: o Map vira uma fila do mais velho ao mais novo
-  sessoes.set(conversaId, { ...anteriores, [ia]: sessao });
-  if (sessoes.size > MAX_CONVERSAS) sessoes.delete(sessoes.keys().next().value!);
-}
-
 function sessaoMcp(): { url: string; token: string } {
   if (!mcp) throw new Error('MCP ainda não subiu');
   tokenAtivo = randomBytes(32).toString('hex');
@@ -584,28 +581,43 @@ function criarMcp() {
         log(`pergunta vaga recusada: ${JSON.stringify(pergunta).slice(0, 80)}`);
         return texto({ erro: vaga });
       }
-      const perguntaId = randomUUID();
-      escrever({
-        tipo: 'pergunta',
-        pedidoId: pedidoAtivo,
-        perguntaId,
-        pergunta,
-        campos,
-        opcoes,
-      } satisfies Evento);
-      const resposta = await new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
-        const timer = setTimeout(() => {
-          if (perguntasPendentes.delete(perguntaId)) {
-            resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
-          }
-        }, 5 * 60_000);
-        timer.unref?.();
-        perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
-      });
-      return texto(resposta);
+      return texto(await perguntarNoPainel(pedidoAtivo, pergunta, opcoes, campos));
     },
   );
+
+  registrarToolsNavegador(s, {
+    enviar,
+    status: (t) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
+    },
+    perguntar: async (pergunta, opcoes) =>
+      pedidoAtivo ? (await perguntarNoPainel(pedidoAtivo, pergunta, opcoes)).resposta : 'Nenhum pedido ativo',
+    conversa: () => conversaAtual,
+    paginaMudou: () => {
+      camposConhecidos = new Map();
+    },
+  });
   return s;
+}
+
+/** Mostra a pergunta no painel e espera a resposta (5 min; sem resposta, devolve um aviso). */
+function perguntarNoPainel(
+  pedidoId: string,
+  pergunta: string,
+  opcoes?: string[],
+  campos?: string[],
+): Promise<{ resposta: string; respostasCampos?: Record<string, string> }> {
+  const perguntaId = randomUUID();
+  escrever({ tipo: 'pergunta', pedidoId, perguntaId, pergunta, campos, opcoes } satisfies Evento);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (perguntasPendentes.delete(perguntaId)) {
+        resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
+      }
+    }, 5 * 60_000);
+    timer.unref?.();
+    perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
+  });
 }
 
 // ---- HTTP ----

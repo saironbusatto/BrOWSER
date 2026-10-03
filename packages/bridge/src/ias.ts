@@ -17,7 +17,24 @@ const log = (...a: unknown[]) => {
 const TIMEOUT_MS = 5 * 60_000;
 // Precisa bater com as tools registradas no MCP (main.ts): o teste confere. Sem isso o
 // `ler_pagina` ficou meses fora do --allowedTools do Claude, e "resume esta página" era negado.
-export const TOOLS = ['ler_campos', 'preencher', 'clicar', 'ler_pagina', 'perguntar_ao_usuario', 'consultar_blueprint'];
+export const TOOLS = [
+  'ler_campos',
+  'preencher',
+  'clicar',
+  'ler_pagina',
+  'perguntar_ao_usuario',
+  'consultar_blueprint',
+  // Nível 1 (tools-navegador.ts)
+  'navegar',
+  'voltar',
+  'listar_abas',
+  'abrir_aba',
+  'usar_aba',
+  'ver_tela',
+  'esperar',
+  'teclar',
+  'rolar',
+];
 const CHAVES_API = ['GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'];
 
 export type Mcp = { url: string; token: string };
@@ -61,6 +78,9 @@ Diretrizes de atuação:
    - NUNCA tente resolver captchas ("não sou um robô", desafios de imagem): peça ao usuário para resolver.
    - NUNCA clique em botões de envio final irrevogável ("Enviar", "Submit", "Finalizar") sem autorização explícita do usuário.
    - Para ler o texto da página (resumir, responder sobre o conteúdo), use 'ler_pagina'.
+   - Você pode ir até a página certa: 'navegar' (mesma aba), 'abrir_aba', 'usar_aba', 'voltar'. Sites fora do que a pessoa citou pedem permissão a ela automaticamente; se ela negar, não insista.
+   - Depois de navegar ou trocar de aba, leia de novo ('ler_campos'/'ler_pagina'): as refs antigas não valem.
+   - Página que carrega aos poucos: 'esperar' por um texto. Quando o texto não basta (imagem, layout, botão sem rótulo): 'ver_tela'. Listas e menus: 'teclar' e 'rolar'.
    - Ao concluir uma ação na página: responda em no MÁXIMO 1 a 2 frases curtas. ZERO prolixidade.
 
 2. MEMÓRIA DO SITE (BLUEPRINTS):
