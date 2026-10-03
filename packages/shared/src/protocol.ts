@@ -66,6 +66,9 @@ export type Pedir = {
   texto: string;
   tabId: number;
   arquivos?: ArquivoAnexo[];
+  // Contas que a pessoa conectou pelo BrOWSER, a ativa primeiro (ordem do failover). O painel
+  // sempre manda; ausente só no caminho de teste/spike, que usa a ordem padrão.
+  ias?: Ia[];
 };
 
 // extensão -> ponte: o usuário respondeu a uma pergunta da IA

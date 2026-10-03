@@ -33,7 +33,7 @@ export function classificarArquivos(lista: { nome: string; tamanho: number; tipo
   const recusados: { nome: string; motivo: string }[] = [];
   for (const f of lista) {
     if (f.tamanho > TAMANHO_MAXIMO) {
-      recusados.push({ nome: f.nome, motivo: `excede o limite de ${TAMANHO_MAXIMO / 1024 / 1024}MB` });
+      recusados.push({ nome: f.nome, motivo: `passa de ${TAMANHO_MAXIMO / 1024 / 1024} MB` });
       continue;
     }
     aceitos.push({ nome: f.nome, tipo: f.tipo, tamanho: f.tamanho });
@@ -62,9 +62,11 @@ export function bandejaHtml(anexos: ArquivoAnexo[]): string {
 }
 
 /** "3 arquivo(s) preparado(s)" / mensagem com os recusados. */
-export function mensagemAnexos(aceitos: number, recusados: { nome: string }[]): string | null {
+export function mensagemAnexos(aceitos: number, recusados: { nome: string; motivo?: string }[]): string | null {
   const partes: string[] = [];
-  if (aceitos > 0) partes.push(`${aceitos} arquivo(s) preparado(s)`);
-  if (recusados.length > 0) partes.push(`ignorado(s): ${recusados.map((r) => r.nome).join(', ')}`);
-  return partes.length ? partes.join(' · ') : null;
+  if (aceitos > 0) partes.push(aceitos === 1 ? '1 arquivo anexado' : `${aceitos} arquivos anexados`);
+  if (recusados.length > 0)
+    partes.push(`não deu para anexar ${recusados.map((r) => (r.motivo ? `${r.nome} (${r.motivo})` : r.nome)).join(', ')}`);
+  const texto = partes.join('; ');
+  return texto ? texto[0]!.toUpperCase() + texto.slice(1) : null;
 }

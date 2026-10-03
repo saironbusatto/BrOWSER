@@ -80,7 +80,7 @@ function bandeiaCount(html: string): number {
 describe('Anexos: mensagens para a pessoa', () => {
   it('avisa o que entrou e o que ficou de fora, por nome', () => {
     const m = mensagemAnexos(2, [{ nome: 'grande.pdf' }])!;
-    expect(m).toContain('2 arquivo(s) preparado(s)');
+    expect(m).toBe('2 arquivos anexados; não deu para anexar grande.pdf');
     expect(m).toContain('grande.pdf');
   });
 

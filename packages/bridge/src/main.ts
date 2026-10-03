@@ -358,6 +358,11 @@ async function atenderPedido(p: Pedir) {
     emitirRecusa(p.pedidoId, 'Já existe um pedido em andamento.');
     return;
   }
+  // Nunca cai numa conta que a pessoa não conectou: lista vazia é recusa, não "usa a padrão".
+  if (p.ias && !p.ias.some((ia) => IAS.includes(ia))) {
+    emitirRecusa(p.pedidoId, 'Conecte uma IA antes de fazer um pedido.');
+    return;
+  }
   pedidoAtivo = p.pedidoId;
   const emitir = (e: Evento) => escrever(e);
   try {
@@ -389,9 +394,12 @@ async function atenderPedido(p: Pedir) {
       }
     } catch {}
 
-    const r = await rodarPedido(p, blueprint, (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente })).catch(
-      (e): Execucao => ({ ok: false, texto: String(e) }),
-    );
+    const r = await rodarPedido(
+      p,
+      blueprint,
+      (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }),
+      p.ias?.filter((ia) => IAS.includes(ia)),
+    ).catch((e): Execucao => ({ ok: false, texto: String(e) }));
 
     // Pedido parado no meio: a IA foi morta, então o resultado não diz nada — quem decide a
     // mensagem final é o evento `parado`.
