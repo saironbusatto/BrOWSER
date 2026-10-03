@@ -30,9 +30,11 @@ export type Comandos = {
   // que não é http/https, como segunda trava.
   navegar: { args: { url: string }; result: InfoAba };
   voltar: { args: Record<string, never>; result: InfoAba };
-  listar_abas: { args: Record<string, never>; result: { abas: (InfoAba & { id: number; alvo: boolean })[] } };
+  // Só as abas do grupo "BrOWSER" (o espaço da IA); as outras são da pessoa e nem aparecem.
+  listar_abas: { args: Record<string, never>; result: { abas: (InfoAba & { id: number; alvo: boolean })[]; foraDoGrupo: number } };
   abrir_aba: { args: { url: string }; result: InfoAba & { id: number } };
   usar_aba: { args: { id: number }; result: InfoAba };
+  fechar_aba: { args: { id: number }; result: { ok: true } };
   ver_tela: { args: Record<string, never>; result: { mime: string; base64: string } };
   esperar: { args: { texto?: string; segundos?: number }; result: { achou: boolean; esperouMs: number } };
   teclar: { args: { tecla: Tecla }; result: { ok: true } };

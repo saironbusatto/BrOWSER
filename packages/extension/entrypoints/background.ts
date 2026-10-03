@@ -1,9 +1,18 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import * as acoes from '../utils/acoes-aba';
-import { codigoDaUrl, codigoNoTexto, pareceCodigo, redirectDe } from '../utils/codigo-oauth';
+import {
+  anotarNaConversa,
+  ehEventoDoPedido,
+  lerConversa,
+  type MensagemPainel,
+  pedidoEmAndamento,
+  recomecarConversa,
+} from '../utils/conversa-log';
 import { clicarDom, fecharLeitura, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
+import { foraDoGrupo, trazerParaOGrupo, vigiarPainel } from '../utils/grupo-abas';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
 import { expressaoIniciar, expressoesInjetar, gerarScriptStatus, PARES_TEIA, SCRIPT_PARAR_TEIA } from '../utils/teia';
+import { armarVigia, vigiarCallback } from '../utils/vigia-login';
 
 // ---- Plano B (Q13): quando o chrome.debugger é bloqueado na aba, lê e preenche pelo DOM ----
 // refs do plano B começam aqui para nunca colidirem com backendNodeIds do CDP.
@@ -133,7 +142,7 @@ const PAPEIS = new Set([
 // O MV3 encerra o worker ocioso (~30 s). Tudo que precisa sobreviver a isso mora em
 // chrome.storage.session (some quando o navegador fecha, não quando o worker morre):
 // `alvo` (aba em que a IA trabalha), `refsDom` (mapa ref -> frame+ref local do plano B) e
-// `vigias` (login OAuth em andamento). Sem isso, um pedido que passa do meio minuto morria com
+// `vigias` (login OAuth em andamento, em utils/vigia-login.ts). Sem isso, um pedido que passa do meio minuto morria com
 // "ref desconhecida" e a captura do código de autenticação se perdia silenciosamente.
 // Mesma chave do painel lateral: o content script liga/desliga o aprendizado de formulário e este
 // lado decide se o blueprint chega à ponte.
@@ -141,7 +150,6 @@ const CHAVE_APRENDIZADO = 'aprendizadoPassivo';
 
 const SESSAO_ALVO = 'alvo';
 const SESSAO_REFS = 'refsDom';
-const SESSAO_VIGIAS = 'vigias';
 const SESSAO_SEM_DEBUGGER = 'abasSemDebugger';
 
 const lerSessao = <T>(chave: string, padrao: T): Promise<T> => chrome.storage.session.get(chave).then((r) => (r[chave] as T) ?? padrao);
@@ -179,92 +187,12 @@ async function definirAlvo(tabId: number | undefined): Promise<void> {
   else await gravarSessao({ [SESSAO_ALVO]: tabId });
 }
 
-// ---- Login oficial sem terminal: a aba de callback entrega o código sozinha ----
-//
-// O OAuth do Google/Claude não é device-code nativo: o CLI imprime uma URL com redirect_uri
-// apontando para uma página web. Depois do consentimento essa página mostra (ou traz na query)
-// o authorization code que o CLI espera no stdin. Em vez de pedir pra pessoa copiar e colar, a
-// extensão lê essa aba e entrega o código na ponte. É a aba dela, na sessão dela, na máquina dela.
-
-// redirect_uri -> ia. Vive no storage.session porque o login OAuth leva mais de 30 s com certeza:
-// se ficasse só em memória, o worker morreria no meio da autenticação e o código nunca chegaria
-// à ponte.
-const vigias = new Map<string, string>();
-
-const salvarVigias = () => gravarSessao({ [SESSAO_VIGIAS]: [...vigias] });
-async function carregarVigias() {
-  if (vigias.size) return;
-  const guardado = await lerSessao<[string, string][]>(SESSAO_VIGIAS, []);
-  for (const [redirect, ia] of guardado) vigias.set(redirect, ia);
-}
-
-/** Lê o código de autorização na página de callback. Roda dentro da aba. */
-function rasparCodigo(): string | null {
-  const daUrl = codigoDaUrl(location.href);
-  if (daUrl) return daUrl;
-  for (const el of document.querySelectorAll('input')) {
-    const v = (el.value || el.textContent || '').trim();
-    if (pareceCodigo(v)) return v;
-  }
-  for (const sel of ['code', 'pre', '[data-code]', '[data-testid*="code" i]', '[class*="code" i]', '[id*="code" i]']) {
-    for (const el of document.querySelectorAll(sel)) {
-      const achado = codigoNoTexto(el.textContent || '');
-      if (achado) return achado;
-    }
-  }
-  return null;
-}
-
-function armarVigia(ia: string, urlAuth: string, pedeCodigo: boolean) {
-  if (!pedeCodigo) return; // o codex entrega o código no painel, não numa página
-  const redirect = redirectDe(urlAuth);
-  if (!redirect) return;
-  vigias.set(redirect, ia);
-  salvarVigias();
-}
-
-async function entregarCodigo(tabId: number, base: string, ia: string) {
-  let codigo: string | null = null;
-  // A página pode renderizar o código depois do load; uma segunda tentativa cobre isso.
-  for (const espera of [0, 1200]) {
-    if (espera) await new Promise((r) => setTimeout(r, espera));
-    codigo = await chrome.scripting
-      .executeScript({ target: { tabId }, func: rasparCodigo })
-      .then((r) => (r[0]?.result as string | null) ?? null)
-      .catch(() => null);
-    if (codigo) break;
-  }
-  vigias.delete(base);
-  await salvarVigias();
-  if (!codigo) return;
-  // O código não é logado nem gravado: só viaja aba -> ponte -> stdin do CLI.
-  porta?.postMessage({ tipo: 'login_codigo', ia, codigo } as MensagemExtensao);
-  await chrome.tabs.remove(tabId).catch(() => {});
-}
-
 export default defineBackground(() => {
   conectar();
   chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     const url = tab?.pendingUrl || info.url || '';
     if (info.status !== 'complete' || !url) return;
-    if (!vigias.size) {
-      // Só paga o custo do storage quando há vigia; e recarrega antes de desistir.
-      carregarVigias()
-        .then(() => {
-          for (const [redirect, ia] of vigias) {
-            if (!url.startsWith(redirect.split('?')[0]!)) continue;
-            entregarCodigo(tabId, redirect, ia).catch(console.warn);
-            return;
-          }
-        })
-        .catch(() => {});
-      return;
-    }
-    for (const [redirect, ia] of vigias) {
-      if (!url.startsWith(redirect.split('?')[0]!)) continue;
-      entregarCodigo(tabId, redirect, ia).catch(console.warn);
-      return;
-    }
+    vigiarCallback(tabId, url, (m) => porta?.postMessage(m)).catch(console.warn);
   });
   chrome.debugger.onDetach.addListener(({ tabId }) => {
     if (tabId) {
@@ -273,17 +201,34 @@ export default defineBackground(() => {
     }
   });
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+  vigiarPainel(); // fora do grupo da IA, o painel recolhe
 
   // Painel lateral -> ponte.
-  chrome.runtime.onMessage.addListener((msg: MensagemExtensao, _remetente, responder) => {
+  chrome.runtime.onMessage.addListener((msg: MensagemExtensao | MensagemPainel, _remetente, responder) => {
+    // A conversa mora aqui (utils/conversa-log.ts): o painel pede ao abrir e manda zerar na lixeira.
+    if (msg?.tipo === 'historico') {
+      lerConversa().then(responder);
+      return true; // resposta assíncrona
+    }
+    if (msg?.tipo === 'limpar_conversa') {
+      recomecarConversa().then(responder);
+      return true;
+    }
     if (msg?.tipo === 'pedido') {
       if (!porta) {
         responder({ ok: false, erro: 'Ponte não conectada. Rode o instalador do BrOWSER.' });
         return;
       }
+      // Depois da checagem da ponte: anotado sem ponte, o pedido nunca terminaria no registro e o
+      // painel reabriria "ocupado" para sempre. Só nome e tamanho dos anexos vão para o storage.
+      anotarNaConversa({ tipo: 'eu', texto: msg.texto, anexos: msg.arquivos?.map((a) => ({ nome: a.nome, tamanho: a.tamanho })) });
+      anotarNaConversa({ tipo: 'inicio', pedidoId: msg.pedidoId });
       // Não pode ser `async`: o Chrome não aceita Promise como resposta síncrona do listener.
       // Persistir o alvo antes de seguir garante que a aba não se perca se o worker morrer agora.
-      definirAlvo(msg.tabId)
+      // A aba do pedido entra no grupo da IA (a pessoa pediu ali), e só então vira alvo.
+      trazerParaOGrupo(msg.tabId)
+        .catch((e) => console.warn('grupo de abas:', e))
+        .then(() => definirAlvo(msg.tabId))
         .then(() => {
           ligarTeia(msg.tabId, 'IA conectada. Assumindo controle…').catch(() => {});
           porta?.postMessage(msg);
@@ -305,6 +250,7 @@ export default defineBackground(() => {
       return;
     }
     if (msg?.tipo === 'resposta_usuario') {
+      anotarNaConversa({ tipo: 'resposta', perguntaId: msg.perguntaId, texto: msg.resposta });
       if (alvo) ligarTeia(alvo, 'Resposta recebida! Continuando na página…').catch(() => {});
       porta?.postMessage(msg);
       responder({ ok: true });
@@ -424,6 +370,7 @@ function conectar() {
     if ('tipo' in p) {
       // Evento da ponte -> painel (se o painel estiver fechado, ninguém recebe; tudo bem).
       if (p.tipo === 'login_ia') armarVigia(p.ia, p.url, p.pedeCodigo);
+      if (ehEventoDoPedido(p)) anotarNaConversa(p);
       chrome.runtime.sendMessage(p).catch(() => {});
       if (alvo) {
         if (p.tipo === 'status') {
@@ -451,12 +398,30 @@ function conectar() {
   porta.onDisconnect.addListener(() => {
     console.warn('ponte desconectada:', chrome.runtime.lastError?.message);
     porta = undefined;
+    encerrarPedidoOrfao();
     // Folga exponencial: 2s, 4s, 8s… até 60s. A primeira mensagem recebida zera a contador.
     const espera = Math.min(RECONEXAO_MS * 2 ** tentativa, RECONEXAO_MAX_MS);
     tentativa++;
     reconexaoTimer = setTimeout(conectar, espera);
     reconexaoTimer.unref?.();
   });
+}
+
+/**
+ * A ponte caiu com um pedido no meio: o resultado não vem mais. Sem fechar o pedido aqui, o painel
+ * ficava "trabalhando" para sempre (e reabria assim, porque a conversa mora no storage).
+ */
+async function encerrarPedidoOrfao() {
+  const pedidoId = pedidoEmAndamento((await lerConversa()).registros);
+  if (!pedidoId) return;
+  const parado = {
+    tipo: 'parado' as const,
+    pedidoId,
+    texto: 'A conexão com o BrOWSER do computador caiu no meio do pedido. Confira a página e tente de novo.',
+  };
+  await anotarNaConversa(parado);
+  chrome.runtime.sendMessage(parado).catch(() => {});
+  if (alvo !== undefined) desligarTeia(alvo).catch(() => {});
 }
 
 async function executar(p: Pedido): Promise<unknown> {
@@ -487,6 +452,8 @@ async function executar(p: Pedido): Promise<unknown> {
       return acoes.abrirAba(depsAba, (p.args as Comandos['abrir_aba']['args']).url);
     case 'usar_aba':
       return acoes.usarAba(depsAba, (p.args as Comandos['usar_aba']['args']).id);
+    case 'fechar_aba':
+      return acoes.fecharAba(depsAba, (p.args as Comandos['fechar_aba']['args']).id);
     case 'ver_tela':
       return acoes.verTela(depsAba);
     case 'esperar': {
@@ -521,6 +488,13 @@ async function abrir(url: string) {
 }
 
 async function abaAlvo(): Promise<number> {
+  const id = await resolverAlvo();
+  // A pessoa arrastou a aba para fora do grupo: devolveu a aba para ela. A IA para de mexer.
+  if (await foraDoGrupo(id)) throw new Error('a pessoa tirou esta aba do grupo BrOWSER; não mexa mais nela');
+  return id;
+}
+
+async function resolverAlvo(): Promise<number> {
   if (alvo !== undefined) return alvo;
   // O worker pode ter morrido com `alvo` só na memória; o storage.session sabe qual era.
   const guardado = await lerSessao<number | undefined>(SESSAO_ALVO, undefined);

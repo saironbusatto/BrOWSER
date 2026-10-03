@@ -6,6 +6,7 @@
 // http/https chega ao chrome.tabs.
 
 import type { InfoAba, Tecla } from '@browser/shared';
+import { abasDoGrupo, noGrupo, trazerParaOGrupo } from './grupo-abas';
 
 export type DepsAba = {
   abaAlvo: () => Promise<number>;
@@ -70,31 +71,51 @@ export async function voltar(d: DepsAba): Promise<InfoAba> {
   return agirECarregar(tabId, () => chrome.tabs.goBack(tabId));
 }
 
+/** Só o grupo da IA. Das abas da pessoa vai só a contagem: título pode ser assunto de e-mail. */
 export async function listarAbas(d: DepsAba) {
-  const alvo = await d.abaAlvo();
-  const abas = await chrome.tabs.query({ lastFocusedWindow: true });
+  // Sem exigir alvo válido: se a pessoa tirou a aba da vez do grupo, listar é justamente como a IA
+  // acha outra aba do grupo para continuar.
+  const alvo = await d.abaAlvo().catch(() => undefined);
+  const grupo = await abasDoGrupo();
+  const todas = await chrome.tabs.query({ windowId: grupo[0]?.windowId ?? chrome.windows.WINDOW_ID_CURRENT });
   return {
-    abas: abas
-      .filter((t) => t.id !== undefined && ehWeb(t.url))
-      .map((t) => ({ id: t.id!, url: t.url ?? '', titulo: t.title ?? '', alvo: t.id === alvo })),
+    abas: grupo.filter((t) => t.id !== undefined).map((t) => ({ id: t.id!, url: t.url ?? '', titulo: t.title ?? '', alvo: t.id === alvo })),
+    foraDoGrupo: todas.length - grupo.length,
   };
 }
+
+const FORA_DO_GRUPO = 'essa aba é da pessoa (fora do grupo BrOWSER). Se ela quiser que você use, ela arrasta a aba para dentro do grupo.';
 
 export async function abrirAba(d: DepsAba, url: string): Promise<InfoAba & { id: number }> {
   exigirWeb(url);
   const tab = await chrome.tabs.create({ url, active: true });
+  await trazerParaOGrupo(tab.id!); // o que a IA abre é dela
   await esperarAbaCarregar(tab.id!);
   await d.trocarAlvo(tab.id!);
   return { id: tab.id!, ...(await infoAba(tab.id!)) };
 }
 
 export async function usarAba(d: DepsAba, id: number): Promise<InfoAba> {
+  if (!(await noGrupo(id))) throw new Error(FORA_DO_GRUPO);
   const tab = await chrome.tabs.get(id);
   exigirWeb(tab.url ?? '');
   // Fica na frente: a pessoa precisa ver em que aba a IA está mexendo.
   await chrome.tabs.update(id, { active: true });
   await d.trocarAlvo(id);
   return infoAba(id);
+}
+
+/** Fecha uma aba do grupo. Se era a da vez, a IA passa para outra do grupo; a última não fecha. */
+export async function fecharAba(d: DepsAba, id: number): Promise<{ ok: true }> {
+  if (!(await noGrupo(id))) throw new Error(FORA_DO_GRUPO);
+  if ((await d.abaAlvo().catch(() => undefined)) === id) {
+    const outra = (await abasDoGrupo()).find((t) => t.id !== id && t.id !== undefined);
+    if (!outra) throw new Error('é a última aba do grupo; abra outra antes de fechar esta');
+    await chrome.tabs.update(outra.id!, { active: true });
+    await d.trocarAlvo(outra.id!);
+  }
+  await chrome.tabs.remove(id);
+  return { ok: true };
 }
 
 function mostrarTeia(tabId: number, visivel: boolean) {

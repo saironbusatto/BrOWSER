@@ -1,7 +1,11 @@
 // Tools MCP do nível 1: a IA usa o navegador inteiro, não só a aba em que a pessoa estava.
 //
-// Toda decisão de risco mora aqui, em código: para onde navegar (navegacao.ts) e que aba usar.
-// O que não dá para provar seguro vira pergunta no painel, e "não respondeu" conta como não.
+// Duas fronteiras, as duas em código:
+//   - QUAIS abas: o grupo "BrOWSER" (extensão, utils/grupo-abas.ts). Dentro dele a IA faz o que
+//     quiser; fora, a extensão recusa. A pessoa dá permissão arrastando a aba para o grupo.
+//   - PARA ONDE o dado vai: a regra de navegação (navegacao.ts). O grupo não resolve isso: dentro
+//     dele a IA ainda poderia abrir coletor.com/?d=<dado>. O que não dá para provar seguro vira
+//     pergunta no painel, e "não respondeu" conta como não.
 
 import { type Cmd, type Comandos, TECLAS } from '@browser/shared';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -74,19 +78,10 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     'listar_abas',
     {
       description:
-        'Lista as abas abertas na janela. As que você já pode usar vêm com título e endereço; as outras só com o site (são da pessoa, e usá-las pede permissão).',
+        'Lista as abas do seu grupo "BrOWSER" (o seu espaço de trabalho), com título e endereço. As outras abas são da pessoa: só a quantidade aparece.',
       inputSchema: {},
     },
-    async () => {
-      const c = d.conversa();
-      const { abas } = await d.enviar('listar_abas', {});
-      // Título de aba alheia pode ser assunto de e-mail, nome de paciente, saldo: só o site.
-      return texto({
-        abas: abas.map((a) =>
-          c?.abasPermitidas.has(a.id) ? a : { id: a.id, site: semWww(new URL(a.url).hostname), alvo: a.alvo, permitida: false },
-        ),
-      });
-    },
+    async () => texto(await d.enviar('listar_abas', {})),
   );
 
   s.registerTool(
@@ -101,7 +96,6 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
       if ('erro' in ok) return texto(ok);
       d.status(`Abrindo ${semWww(new URL(ok.url).hostname)} numa aba nova…`);
       const r = await d.enviar('abrir_aba', { url: ok.url });
-      d.conversa()?.abasPermitidas.add(r.id);
       d.paginaMudou();
       return texto(r);
     },
@@ -110,22 +104,27 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
   s.registerTool(
     'usar_aba',
     {
-      description: 'Passa a trabalhar noutra aba já aberta (id vindo de listar_abas). Abas que você não abriu pedem permissão à pessoa.',
+      description:
+        'Passa a trabalhar noutra aba do seu grupo (id vindo de listar_abas). Abas fora do grupo são da pessoa: se precisar de uma, peça para ela arrastar a aba para o grupo BrOWSER.',
       inputSchema: { id: z.number().int() },
     },
     async ({ id }) => {
-      const c = d.conversa();
-      if (!c) return texto({ erro: 'Nenhum pedido ativo no momento' });
-      if (!c.abasPermitidas.has(id)) {
-        const aba = (await d.enviar('listar_abas', {})).abas.find((a) => a.id === id);
-        if (!aba) return texto({ erro: `não há aba ${id} nesta janela; chame listar_abas` });
-        const site = semWww(new URL(aba.url).hostname);
-        const resposta = await d.perguntar(`A IA quer usar a sua aba de ${site}. Permitir?`, [PERMITIR, NAO_PERMITIR]);
-        if (resposta !== PERMITIR) return texto({ erro: `A pessoa não permitiu usar a aba de ${site}.` });
-        c.abasPermitidas.add(id);
-      }
       d.status('Trocando de aba…');
       const r = await d.enviar('usar_aba', { id });
+      d.paginaMudou();
+      return texto(r);
+    },
+  );
+
+  s.registerTool(
+    'fechar_aba',
+    {
+      description:
+        'Fecha uma aba do seu grupo que não serve mais (resultado de busca já lido, página aberta por engano). A última aba do grupo não fecha.',
+      inputSchema: { id: z.number().int() },
+    },
+    async ({ id }) => {
+      const r = await d.enviar('fechar_aba', { id });
       d.paginaMudou();
       return texto(r);
     },

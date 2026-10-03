@@ -321,7 +321,7 @@ async function rodarPedido(
   relogio.zerar();
   const t0 = performance.now();
   const conversa = conversaDe(conversas, p.conversaId ?? p.pedidoId);
-  registrarMensagem(conversa, p.texto, p.tabId);
+  registrarMensagem(conversa, p.texto);
   conversaAtual = conversa;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];

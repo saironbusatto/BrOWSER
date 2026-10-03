@@ -9,7 +9,7 @@ function montar(opcoes: { links?: string[]; resposta?: string; pedido?: string; 
   const handlers = new Map<string, Handler>();
   const servidor = { registerTool: (nome: string, _cfg: unknown, h: Handler) => handlers.set(nome, h) };
   const conversa = conversaDe(new Map(), 'c1');
-  registrarMensagem(conversa, opcoes.pedido ?? 'preenche o formulário', 7);
+  registrarMensagem(conversa, opcoes.pedido ?? 'preenche o formulário');
   const enviados: string[] = [];
   const perguntas: string[] = [];
   const deps: DepsNavegador = {
@@ -58,7 +58,6 @@ describe('navegar: a regra é de código', () => {
     await t.chamar('navegar', { url: 'https://loja.com/produto/1' });
     await t.chamar('abrir_aba', { url: 'https://www.mercadolivre.com.br/busca' });
     expect(t.perguntas).toHaveLength(0);
-    expect(t.conversa.abasPermitidas.has(99)).toBe(true); // a aba que a IA abriu é dela
   });
 
   it('javascript: e file: são recusados sem nem perguntar', async () => {
@@ -68,31 +67,12 @@ describe('navegar: a regra é de código', () => {
   });
 });
 
-describe('abas da pessoa são dela', () => {
-  const abas = [
-    { id: 7, url: 'https://formulario.gov.br' },
-    { id: 3, url: 'https://mail.google.com/u/0' },
-  ];
-
-  it('listar_abas não entrega título de aba alheia (pode ser assunto de e-mail)', async () => {
-    const t = montar({ abas });
-    const r = await t.chamar('listar_abas');
-    expect(r).toContain('mail.google.com');
-    expect(r.match(/Caixa de entrada/g)).toHaveLength(1); // só a aba 7, de onde a pessoa pediu
-  });
-
-  it('usar uma aba que a IA não abriu pergunta; negado, não troca', async () => {
-    const t = montar({ abas });
-    const r = await t.chamar('usar_aba', { id: 3 });
-    expect(t.perguntas[0]).toContain('mail.google.com');
-    expect(r).toContain('não permitiu');
-    expect(t.enviados.some((e) => e.startsWith('usar_aba'))).toBe(false);
-  });
-
-  it('a aba de onde a pessoa pediu não precisa de permissão', async () => {
-    const t = montar({ abas });
-    await t.chamar('usar_aba', { id: 7 });
+describe('abas: a fronteira é o grupo, não uma pergunta', () => {
+  it('usar e fechar aba não perguntam nada: quem recusa aba fora do grupo é a extensão', async () => {
+    const t = montar({});
+    await t.chamar('usar_aba', { id: 3 });
+    await t.chamar('fechar_aba', { id: 4 });
     expect(t.perguntas).toHaveLength(0);
-    expect(t.enviados).toContain('usar_aba 7');
+    expect(t.enviados).toEqual(['usar_aba 3', 'fechar_aba 4']);
   });
 });
