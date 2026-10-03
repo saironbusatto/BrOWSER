@@ -1,6 +1,7 @@
 import { type ArquivoAnexo, type Evento, IAS, type Ia, type ItemAssinatura, type Pedir } from '@browser/shared';
 import { iniciarCampoPontos } from '../../utils/campo-pontos';
 import { type ConversaGuardada, ehEventoDoPedido } from '../../utils/conversa-log';
+import { marcarAbaDoPainel } from '../../utils/grupo-abas';
 import { bandejaHtml, classificarArquivos, ehArquivoTexto, mensagemAnexos } from './anexos';
 import { botaoVisivel, type EstadoBotao } from './botao';
 import { aplicarEvento, appendUserMessage, iniciarChat, iniciarPedido, limparChat, pedidoEmCurso, repetirConversa } from './chat';
@@ -507,7 +508,14 @@ function renderizarLogin(e: Extract<Evento, { tipo: 'login_ia' }>) {
 
   // O agy dá 60s e não estende: abrir a aba na hora é o que cabe nesses 60s. O botão continua
   // valendo pra quem preferir abrir depois.
-  chrome.tabs.create({ url, active: true }).catch(() => {});
+  // Aba do painel, não da IA: marcada para o painel não recolher enquanto a pessoa faz o login.
+  chrome.tabs
+    .create({ url, active: false })
+    .then(async (t) => {
+      if (t.id !== undefined) await marcarAbaDoPainel(t.id);
+      if (t.id !== undefined) await chrome.tabs.update(t.id, { active: true });
+    })
+    .catch(() => {});
 
   const prazo = box.querySelector<HTMLElement>('[data-prazo]');
   if (prazo && e.expiraEmSegundos) {

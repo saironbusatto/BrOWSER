@@ -11,6 +11,24 @@
 const TITULO = 'BrOWSER';
 const COR = 'blue';
 const SESSAO_GRUPO = 'grupo';
+// Aba aberta por link a partir do grupo entra nele logo DEPOIS de ser ativada; recolher na hora
+// fechava o painel em toda aba nova do próprio grupo. Espera a aba assentar e confere de novo.
+const ASSENTAR_MS = 400;
+// Abas que o próprio painel abre (login da assinatura): ficam fora do grupo (são da pessoa, não da
+// IA), mas recolher o painel nelas tirava da tela o campo onde a pessoa cola o código do login.
+const SESSAO_ABAS_DO_PAINEL = 'abasDoPainel';
+
+/** Chamado pelo painel ao abrir uma aba que é dele: ativar essa aba não recolhe o painel. */
+export async function marcarAbaDoPainel(tabId: number): Promise<void> {
+  const r = await chrome.storage.session.get(SESSAO_ABAS_DO_PAINEL).catch(() => ({}) as Record<string, unknown>);
+  const atuais = Array.isArray(r[SESSAO_ABAS_DO_PAINEL]) ? (r[SESSAO_ABAS_DO_PAINEL] as number[]) : [];
+  await chrome.storage.session.set({ [SESSAO_ABAS_DO_PAINEL]: [...atuais.slice(-20), tabId] }).catch(() => {});
+}
+
+async function ehAbaDoPainel(tabId: number): Promise<boolean> {
+  const r = await chrome.storage.session.get(SESSAO_ABAS_DO_PAINEL).catch(() => ({}) as Record<string, unknown>);
+  return Array.isArray(r[SESSAO_ABAS_DO_PAINEL]) && (r[SESSAO_ABAS_DO_PAINEL] as number[]).includes(tabId);
+}
 
 let grupo: number | undefined; // espelho de SESSAO_GRUPO
 
@@ -86,6 +104,10 @@ export function vigiarPainel(): void {
     if (g === undefined) return; // sem tarefa em curso, o painel fica onde a pessoa deixou
     const doGrupo = await chrome.tabGroups.get(g);
     if (doGrupo.windowId !== windowId || (await noGrupo(tabId))) return;
+    await new Promise((r) => setTimeout(r, ASSENTAR_MS));
+    const [ativa] = await chrome.tabs.query({ active: true, windowId });
+    // A pessoa já voltou para o grupo, a aba entrou nele, ou é a aba de login aberta pelo painel.
+    if (!ativa?.id || (await noGrupo(ativa.id)) || (await ehAbaDoPainel(ativa.id))) return;
     // sidePanel.close existe a partir do Chrome 141; antes disso, o painel só não recolhe.
     const painel = chrome.sidePanel as typeof chrome.sidePanel & { close?: (o: { windowId: number }) => Promise<void> };
     await painel.close?.({ windowId }).catch(() => {});

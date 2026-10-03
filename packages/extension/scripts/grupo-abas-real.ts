@@ -79,8 +79,11 @@ writeFileSync(
 
 const srv = Bun.serve({
   port: 0,
-  fetch: (r) =>
-    new Response(`<!doctype html><title>${new URL(r.url).pathname}</title><p>página`, { headers: { 'content-type': 'text/html' } }),
+  fetch: (r) => {
+    const caminho = new URL(r.url).pathname;
+    const corpo = caminho === '/link' ? '<a id="l" href="/f" target="_blank">abre</a>' : '<p>página';
+    return new Response(`<!doctype html><title>${caminho}</title>${corpo}`, { headers: { 'content-type': 'text/html' } });
+  },
 });
 const W = `http://127.0.0.1:${srv.port}`;
 const ctx = await chromium.launchPersistentContext(join(dir, 'perfil'), {
@@ -159,6 +162,30 @@ try {
   await gesto.click('#b');
   await espera(800);
   const aberto = await paineis();
+
+  // A IA abre aba nova: o Chrome ativa a aba ao criar, antes de ela entrar no grupo. O painel não
+  // pode recolher nessa janela de tempo (foi o bug relatado no Brave).
+  await ev(`await acoes.abrirAba(deps, '${W}/e')`);
+  await espera(1000);
+  confere('a IA abrir aba no grupo não recolhe o painel', (await paineis()) === 1);
+
+  // Link com target=_blank numa aba do grupo: o Chrome põe a aba nova no mesmo grupo.
+  const comLink = ctx.pages().find((p) => p.url() === `${W}/e`)!;
+  await comLink.goto(`${W}/link`);
+  await comLink.click('#l');
+  await espera(1000);
+  confere('link aberto em aba nova a partir do grupo não recolhe o painel', (await paineis()) === 1);
+
+  // Aba de login aberta pelo painel: fica fora do grupo, mas o painel não pode recolher nela.
+  const login = await ev<number>(
+    `const t = await chrome.tabs.create({ url: '${W}/login', active: false }); await grupo.marcarAbaDoPainel(t.id); await chrome.tabs.update(t.id, { active: true }); return t.id;`,
+  );
+  await espera(1000);
+  confere(
+    'aba de login aberta pelo painel não recolhe o painel',
+    (await paineis()) === 1 && !(await ev<boolean>(`return grupo.noGrupo(${login})`)),
+  );
+
   const fora = await ctx.newPage();
   await fora.goto(`${W}/d`);
   await fora.bringToFront();

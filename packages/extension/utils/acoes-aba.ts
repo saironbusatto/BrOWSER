@@ -88,8 +88,11 @@ const FORA_DO_GRUPO = 'essa aba é da pessoa (fora do grupo BrOWSER). Se ela qui
 
 export async function abrirAba(d: DepsAba, url: string): Promise<InfoAba & { id: number }> {
   exigirWeb(url);
-  const tab = await chrome.tabs.create({ url, active: true });
+  // Nasce inativa, entra no grupo e SÓ ENTÃO aparece: ativa na criação, ela ficava um instante
+  // fora do grupo, e o painel recolhia nesse instante (grupo-abas.ts › vigiarPainel).
+  const tab = await chrome.tabs.create({ url, active: false });
   await trazerParaOGrupo(tab.id!); // o que a IA abre é dela
+  await chrome.tabs.update(tab.id!, { active: true });
   await esperarAbaCarregar(tab.id!);
   await d.trocarAlvo(tab.id!);
   return { id: tab.id!, ...(await infoAba(tab.id!)) };
