@@ -1,7 +1,7 @@
 # Termos de Serviço e Política Global de Privacidade do BrOWSER
 
-**Última Atualização:** 27 de setembro de 2026  
-**Versão:** 2.0.0 (Enterprise, Developer & Community Edition)  
+**Última Atualização:** 4 de outubro de 2026  
+**Versão:** 2.1.0 (Enterprise, Developer & Community Edition)  
 **Status Jurídico:** Documento Vinculante e Vigente
 
 ---
@@ -117,6 +117,16 @@ O BrOWSER **não realiza upload de documentos do Usuário para servidores em nuv
 
 ### 6.3. Descarte Efêmero de Arquivos Temporários
 Quaisquer arquivos auxiliares criados temporariamente para a viabilização de chamadas do sistema operacional são mantidos com permissões restritivas (modo `0700` ou `0600`) em diretórios temporários do sistema operacional (`tmpdir`) e **removidos ao término da execução do comando**, inclusive quando o pedido é interrompido pelo Usuário ou falha. O software não sobrescreve o conteúdo dos arquivos antes de apagá-los; a remoção é um `unlink` no sistema de arquivos.
+
+### 6.4. Conectores Opcionais de Contas do Usuário (Google Drive e Gmail)
+O BrOWSER oferece **Conectores**: ligações opcionais entre a extensão e contas do próprio Usuário em serviços de terceiros. Na data desta versão existem dois, ambos do Google: **Google Drive** e **Gmail**.
+
+1. **Desligados por padrão e ligados um a um.** Nenhum Conector funciona sem que o Usuário o ligue, no painel, pelo interruptor correspondente. Ligar o Drive não liga o Gmail, e vice-versa. O Conector desligado não recebe credencial de acesso do software, ainda que a autorização concedida ao Google continue existindo;
+2. **Somente leitura.** Os Conectores pedem ao Google apenas permissões de leitura (`drive.readonly` e `gmail.readonly`). O BrOWSER **não envia, não responde, não encaminha, não apaga, não arquiva e não marca como lido** nenhum e-mail, e **não cria, altera nem exclui** nenhum arquivo do Drive;
+3. **Autorização na página do Google.** O Usuário autoriza na tela oficial de consentimento do Google; o BrOWSER nunca vê a senha da conta. O código de renovação do acesso (*refresh token*) fica guardado apenas no armazenamento local da extensão, neste computador, e é apagado quando o último Conector é desligado ou a extensão é desinstalada. O Usuário pode ainda revogar a autorização diretamente na sua Conta do Google (Segurança › Conexões com apps de terceiros);
+4. **Sem servidor do BrOWSER no caminho.** A extensão fala diretamente com as APIs do Google a partir do navegador do Usuário. Nenhum arquivo ou e-mail passa por servidor dos mantenedores, que não têm acesso a esses dados;
+5. **O que chega ao Provedor de IA.** Quando, durante um pedido do Usuário, a IA busca ou lê um arquivo do Drive ou um e-mail, o resultado (nome, remetente, assunto, data, trecho e texto do item lido) é entregue ao processo do Provedor de IA autenticado e selecionado pelo Usuário, do mesmo modo que o texto de uma página aberta. **Ao ligar um Conector, o Usuário consente com esse envio.** O tratamento desses dados pelo Provedor de IA segue os termos do próprio Provedor (Seção 2.3). O BrOWSER não copia a caixa de e-mail nem o Drive: só trafega o que a IA consultou naquele pedido, e nada disso é gravado em Blueprint ou telemetria;
+6. **Conteúdo de terceiros.** E-mails e arquivos podem ter sido escritos por terceiros e conter instruções maliciosas dirigidas à IA. O software marca esse conteúdo como dado, e não como instrução, e mantém a exigência de permissão do Usuário para abrir endereços que constem dentro dele. Essas salvaguardas reduzem o risco, mas não o eliminam (Seção 10.2); permanece o dever de conferência humana da Seção 7.
 
 ---
 
