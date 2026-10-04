@@ -4,7 +4,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, SiteBlueprint } from '@browser/shared';
 import { CATALOGO, lerComPrazo, statusConectado } from '../src/assinaturas';
-import { acoesNegadas, cancelarExecucao, comando, executar, instrucoes, type Mcp, respostaFinal, sessaoDaSaida, TOOLS } from '../src/ias';
+import {
+  acoesNegadas,
+  cancelarExecucao,
+  comando,
+  executar,
+  instrucoes,
+  type Mcp,
+  marcarAtividade,
+  PRAZOS,
+  respostaFinal,
+  sessaoDaSaida,
+  TOOLS,
+} from '../src/ias';
 
 const MCP: Mcp = { url: 'http://127.0.0.1:51234/mcp', token: 'a'.repeat(64) };
 const tmp = () => mkdtempSync(join(tmpdir(), 'ias-teste-'));
@@ -312,6 +324,47 @@ describe('Parar: vale para o pedido inteiro', () => {
       expect(existsSync(marca)).toBe(false);
     } finally {
       process.env.PATH = path;
+    }
+  });
+});
+
+describe('Prazo: inatividade mata, trabalho em andamento não', () => {
+  it.skipIf(process.platform === 'win32')('IA que continua agindo passa do prazo; quando para de agir, é encerrada', async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'cli-lento-'));
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nexec sleep 30\n');
+    chmodSync(join(bin, 'claude'), 0o755);
+    const path = process.env.PATH;
+    const prazos = { ...PRAZOS };
+    process.env.PATH = `${bin}:${path}`;
+    PRAZOS.paradoMs = 400;
+    try {
+      // Três ações, uma a cada 250 ms: sem renovar, o prazo de 400 ms mataria no meio delas.
+      for (const ms of [250, 500, 750]) setTimeout(marcarAtividade, ms);
+      const t0 = performance.now();
+      const r = await executar('x', MCP, () => {}, undefined, null, ['claude']);
+      expect(performance.now() - t0).toBeGreaterThan(1000);
+      expect(r.ok).toBe(false);
+      expect(r.texto).toContain('sem agir no navegador');
+    } finally {
+      process.env.PATH = path;
+      Object.assign(PRAZOS, prazos);
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('o teto total vale mesmo com a IA agindo', async () => {
+    const bin = mkdtempSync(join(tmpdir(), 'cli-eterno-'));
+    writeFileSync(join(bin, 'claude'), '#!/bin/sh\nexec sleep 30\n');
+    chmodSync(join(bin, 'claude'), 0o755);
+    const path = process.env.PATH;
+    const prazos = { ...PRAZOS };
+    process.env.PATH = `${bin}:${path}`;
+    PRAZOS.totalMs = 300;
+    try {
+      const r = await executar('x', MCP, () => {}, undefined, null, ['claude']);
+      expect(r.texto).toContain('minutos de trabalho');
+    } finally {
+      process.env.PATH = path;
+      Object.assign(PRAZOS, prazos);
     }
   });
 });

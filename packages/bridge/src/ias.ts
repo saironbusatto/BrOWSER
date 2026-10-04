@@ -15,7 +15,18 @@ const log = (...a: unknown[]) => {
   } catch {}
 };
 
-const TIMEOUT_MS = 5 * 60_000;
+// Dois prazos. O de inatividade é o que pega IA travada: 5 minutos sem nenhuma ação no navegador.
+// O total é só um teto. Antes havia um prazo único de 5 minutos contados do começo, e ele matava
+// tarefa longa que estava andando (planilha lida célula a célula: 23 ações em 5 minutos, morta).
+// Objeto mutável para o teste encurtar os prazos.
+export const PRAZOS = { paradoMs: 5 * 60_000, totalMs: 30 * 60_000 };
+// Quem renova o prazo de inatividade da execução em curso (a ponte chama a cada ação da IA).
+let renovarPrazo: (() => void) | undefined;
+
+/** A IA acabou de agir no navegador: o prazo de inatividade recomeça. */
+export function marcarAtividade() {
+  renovarPrazo?.();
+}
 // Precisa bater com as tools registradas no MCP (main.ts): o teste confere. Sem isso o
 // `ler_pagina` ficou meses fora do --allowedTools do Claude, e "resume esta página" era negado.
 export const TOOLS = [
@@ -400,15 +411,24 @@ async function rodar(
   // O stderr só era lido depois de `await proc.exited`. Se o agy morresse no spawn ou travasse, o
   // proc.stderr.text() ficava pendurado e a causa sumia: o BrOWSER só devolvia "saiu com código X".
   // Agarrar o erro antes do kill é o que torna a falha de spawn visível no log.
-  const timer = setTimeout(async () => {
-    let stderr = '';
-    try {
-      stderr = await new Response(proc.stderr).text();
-    } catch {}
-    log(`timeout de ${TIMEOUT_MS}ms em ${ia}; stderr antes do kill: ${stderr.slice(-500) || '(vazio)'}`);
+  let estourou = '';
+  const estourar = (motivo: string) => () => {
+    estourou = motivo;
+    log(`prazo em ${ia}: ${motivo}`);
     proc.kill();
-  }, TIMEOUT_MS);
-  timer.unref?.();
+  };
+  const armar = () => {
+    const t = setTimeout(estourar(`ficou ${Math.round(PRAZOS.paradoMs / 60_000)} minutos sem agir no navegador`), PRAZOS.paradoMs);
+    t.unref?.();
+    return t;
+  };
+  let timer = armar();
+  const teto = setTimeout(estourar(`passou de ${Math.round(PRAZOS.totalMs / 60_000)} minutos de trabalho`), PRAZOS.totalMs);
+  teto.unref?.();
+  renovarPrazo = () => {
+    clearTimeout(timer);
+    timer = armar();
+  };
   proc.stdin.write(inv.stdin);
   proc.stdin.flush();
   if (!inv.manterStdinAberto) proc.stdin.end();
@@ -425,6 +445,8 @@ async function rodar(
   const [saida, erros] = await Promise.all([lerSaida(), new Response(proc.stderr).text()]);
   const codigo = await proc.exited;
   clearTimeout(timer);
+  clearTimeout(teto);
+  renovarPrazo = undefined;
   definirCancelamento(null);
   // O `finally` é o que garante a limpeza: um pedido parado no meio também tem que apagar os
   // anexos e o arquivo com o token da ponte.
@@ -438,6 +460,8 @@ async function rodar(
     rmSync(join(cwd, ARQUIVO_MCP_CLAUDE), { force: true }); // contém o token da ponte
   }
 
+  // Morta pelo prazo: diz isso, e não o "interrupted" que o CLI escreve ao morrer.
+  if (estourou) return { ok: false, ia, texto: `${ia} ${estourou} e foi encerrado.`, sessao: sessaoDaSaida(ia, saida) };
   const texto = respostaFinal(ia, saida);
   if (codigo !== 0 || !texto) {
     return {

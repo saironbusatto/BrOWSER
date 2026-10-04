@@ -29,7 +29,7 @@ import { pathComIAs } from './caminhos';
 import { type Conversa, conversaDe, registrarMensagem } from './conversas';
 import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
-import { cancelarExecucao, definirCancelamento, type Execucao, executar, removerIntegracaoAgy } from './ias';
+import { cancelarExecucao, definirCancelamento, type Execucao, executar, marcarAtividade, removerIntegracaoAgy } from './ias';
 import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
@@ -116,6 +116,7 @@ const relogio = new Relogio();
 function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Comandos[C]['result']> {
   const id = ++seq;
   escrever({ id, cmd, args });
+  marcarAtividade(); // a IA agiu: o prazo de inatividade dela recomeça (ias.ts)
   const t0 = performance.now();
   return new Promise((resolve, reject) => {
     // O timer é sempre limpo: sem isso cada comando deixava um setTimeout de 30s vivo e prendia
@@ -127,6 +128,7 @@ function enviar<C extends Cmd>(cmd: C, args: Comandos[C]['args']): Promise<Coman
     pendentes.set(id, {
       ok: (v) => {
         clearTimeout(timer);
+        marcarAtividade();
         relogio.registrar(cmd, performance.now() - t0);
         resolve(v as Comandos[C]['result']);
       },
@@ -633,7 +635,12 @@ function perguntarNoPainel(
 ): Promise<{ resposta: string; respostasCampos?: Record<string, string> }> {
   const perguntaId = randomUUID();
   escrever({ tipo: 'pergunta', pedidoId, perguntaId, pergunta, campos, opcoes } satisfies Evento);
-  return new Promise((resolve) => {
+  // Esperar a pessoa não é a IA parada: sem este pulso, o prazo de inatividade (ias.ts) matava a
+  // IA enquanto a pergunta ainda estava na tela.
+  marcarAtividade();
+  const pulso = setInterval(marcarAtividade, 60_000);
+  pulso.unref?.();
+  return new Promise<{ resposta: string; respostasCampos?: Record<string, string> }>((resolve) => {
     const timer = setTimeout(() => {
       if (perguntasPendentes.delete(perguntaId)) {
         resolve({ resposta: 'O usuário não respondeu a tempo. Tente prosseguir com os dados disponíveis.' });
@@ -641,6 +648,9 @@ function perguntarNoPainel(
     }, 5 * 60_000);
     timer.unref?.();
     perguntasPendentes.set(perguntaId, { resolver: resolve, timer });
+  }).finally(() => {
+    clearInterval(pulso);
+    marcarAtividade();
   });
 }
 
