@@ -36,6 +36,7 @@ import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
 import { escolherSkills, type Skill } from './skills';
 import { registrarToolsDrive } from './tools-drive';
+import { registrarToolsGmail } from './tools-gmail';
 import { registrarToolsNavegador } from './tools-navegador';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
@@ -617,6 +618,13 @@ function criarMcp() {
     },
   });
   registrarToolsDrive(s, {
+    enviar,
+    status: (t) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
+    },
+    conversa: () => conversaAtual,
+  });
+  registrarToolsGmail(s, {
     enviar,
     status: (t) => {
       if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);

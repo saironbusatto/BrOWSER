@@ -1,6 +1,6 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import * as acoes from '../utils/acoes-aba';
-import { buscarNoDrive, CONECTORES, conectorConfigurado, textoDoDrive, tokenGoogle } from '../utils/conectores';
+import { buscarNoDrive, conector, conectorConfigurado, textoDoDrive, tokenDoConector } from '../utils/conectores';
 import {
   anotarNaConversa,
   ehEventoDoPedido,
@@ -10,6 +10,7 @@ import {
   recomecarConversa,
 } from '../utils/conversa-log';
 import { clicarDom, fecharLeitura, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
+import { buscarNoGmail, lerEmail } from '../utils/gmail';
 import { foraDoGrupo, trazerParaOGrupo, vigiarPainel } from '../utils/grupo-abas';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
 import { expressaoIniciar, expressoesInjetar, gerarScriptStatus, PARES_TEIA, SCRIPT_PARAR_TEIA } from '../utils/teia';
@@ -426,15 +427,15 @@ async function encerrarPedidoOrfao() {
 }
 
 /**
- * Token do conector do Drive SEM abrir janela: no meio de um pedido, um popup de login do Google
- * surgiria do nada. Sem conexão, a IA ouve isso e usa a busca pela interface (skill do Drive).
+ * Token de um conector SEM abrir janela: no meio de um pedido, um popup de login do Google
+ * surgiria do nada. Sem conexão, a IA ouve isso e segue pela tela do site (skill do Drive).
  */
-async function tokenDoDrive(): Promise<string> {
-  if (!conectorConfigurado())
-    throw new Error('o conector do Google Drive não existe nesta instalação; use a busca do Drive pela interface');
-  return tokenGoogle([CONECTORES[0]!.escopo], false).catch(() => {
+async function tokenSemJanela(id: 'drive' | 'gmail'): Promise<string> {
+  const nome = conector(id)!.nome;
+  if (!conectorConfigurado()) throw new Error(`o conector do ${nome} não existe nesta instalação; use o ${nome} pela interface`);
+  return tokenDoConector(id, false).catch(() => {
     throw new Error(
-      'o Google Drive não está conectado no BrOWSER; use a busca do Drive pela interface (ou peça para a pessoa ligar o Drive em Planos)',
+      `o ${nome} não está conectado no BrOWSER; use o ${nome} pela interface (ou peça para a pessoa ligar o ${nome} em Planos)`,
     );
   });
 }
@@ -491,10 +492,16 @@ async function executar(p: Pedido): Promise<unknown> {
       return acoes.links(depsAba);
     case 'buscar_drive': {
       const a = p.args as Comandos['buscar_drive']['args'];
-      return { arquivos: await buscarNoDrive(await tokenDoDrive(), a.texto, a.limite) };
+      return { arquivos: await buscarNoDrive(await tokenSemJanela('drive'), a.texto, a.limite) };
     }
     case 'ler_drive':
-      return textoDoDrive(await tokenDoDrive(), (p.args as Comandos['ler_drive']['args']).id);
+      return textoDoDrive(await tokenSemJanela('drive'), (p.args as Comandos['ler_drive']['args']).id);
+    case 'buscar_gmail': {
+      const a = p.args as Comandos['buscar_gmail']['args'];
+      return { emails: await buscarNoGmail(await tokenSemJanela('gmail'), a.consulta, a.limite) };
+    }
+    case 'ler_gmail':
+      return lerEmail(await tokenSemJanela('gmail'), (p.args as Comandos['ler_gmail']['args']).id);
     case 'avaliar':
       return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar':

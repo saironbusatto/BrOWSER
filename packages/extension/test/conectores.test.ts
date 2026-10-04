@@ -3,18 +3,20 @@ import {
   buscarNoDrive,
   CONECTORES,
   codeChallenge,
+  conectoresLigados,
   consultaConteudo,
   formatarTamanho,
   listarDrive,
   paramDaUrl,
   textoDoDrive,
+  tokenDoConector,
 } from '../utils/conectores';
 
 // O chrome.runtime só existe dentro da extensão; o módulo chama isso no import.
 (globalThis as any).chrome = { runtime: { getManifest: () => ({}) } };
 
 describe('escopos dos conectores', () => {
-  it('Drive é só leitura — nenhum scope de escrita', () => {
+  it('todo conector é só leitura — nenhum scope de escrita', () => {
     // ponytail: se algum dia der escrita, o teste quebra na revisão. É a trava de segurança
     // mais barata que existe: um escopo que o BrOWSER não precisa não entra.
     for (const c of CONECTORES) {
@@ -260,5 +262,38 @@ describe('textoDoDrive: o texto que a IA lê sem abrir a interface', () => {
     const r = await textoDoDrive('t', 'x1');
     expect(r.truncado).toBe(true);
     expect(r.texto!.length).toBeLessThan(80_000);
+  });
+});
+
+describe('conector desligado não recebe token, mesmo que o do Google alcance', () => {
+  // O Google guarda um refresh token só, com os escopos de tudo que já foi ligado. A trava é a lista.
+  function guardar(dados: Record<string, unknown>) {
+    (globalThis as any).chrome = {
+      runtime: { getManifest: () => ({ oauth2: { client_id: 'id' } }) },
+      storage: {
+        local: {
+          get: async (chaves: string | string[]) => Object.fromEntries([chaves].flat().map((k) => [k, dados[k]])),
+          remove: async (chaves: string | string[]) => {
+            for (const k of [chaves].flat()) delete dados[k];
+          },
+        },
+      },
+    };
+    globalThis.fetch = (async () => new Response(JSON.stringify({ access_token: 'acesso' }), { status: 200 })) as never;
+  }
+
+  it('conexão antiga (antes do Gmail) vale só para o Drive', async () => {
+    guardar({ 'conector:refresh': 'r' });
+    expect(await conectoresLigados()).toEqual(['drive']);
+    expect(await tokenDoConector('drive', false)).toBe('acesso');
+    await expect(tokenDoConector('gmail', false)).rejects.toThrow('Gmail não está conectado');
+  });
+
+  it('com o Gmail ligado, o token sai; sem refresh, ninguém está ligado', async () => {
+    guardar({ 'conector:refresh': 'r', 'conector:ligados': ['drive', 'gmail'] });
+    expect(await tokenDoConector('gmail', false)).toBe('acesso');
+    guardar({ 'conector:ligados': ['gmail'] });
+    expect(await conectoresLigados()).toEqual([]);
+    await expect(tokenDoConector('nao-existe', false)).rejects.toThrow('desconhecido');
   });
 });

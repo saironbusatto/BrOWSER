@@ -1506,6 +1506,7 @@ textarea#texto::placeholder {
   margin-bottom: 8px;
 }
 .conector-linha { display: flex; align-items: center; gap: 10px; }
+.conector-linha + .conector-linha { margin-top: 10px; }
 .conector-icone {
   width: 30px; height: 30px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;

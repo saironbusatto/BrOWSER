@@ -6,11 +6,13 @@ import {
   type ArquivoDrive,
   baixarDrive,
   CONECTORES,
+  type Conector,
   conectorConfigurado,
-  desconectarGoogle,
+  conectoresLigados,
+  desconectarConector,
   formatarTamanho,
   listarDrive,
-  tokenGoogle,
+  tokenDoConector,
 } from '../../utils/conectores';
 
 type Deps = {
@@ -19,7 +21,6 @@ type Deps = {
 };
 
 let deps: Deps;
-let conectado = false;
 let conectando = false;
 let tokenAtual = '';
 
@@ -30,20 +31,36 @@ const ICONE_ARQUIVO = `<svg class="ms ms-description" viewBox="0 -960 960 960" w
 // Nativo do Google sai por /export, então parece documento com texto — draft tem as linhas.
 const ICONE_DOC = `<svg class="ms ms-draft" viewBox="0 -960 960 960" width="16" height="16" aria-hidden="true"><path d="M220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h361l219 219v521q0 24-18 42t-42 18H220Zm331-554v-186H220v680h520v-494H551ZM220-820v186-186 680-680Z"/></svg>`;
 
+const ICONE_DRIVE = `<svg class="icone-drive" viewBox="0 0 87.3 78" aria-hidden="true">
+<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+<path d="M43.65 25 13.75 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.45z" fill="#00ac47"/>
+<path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L56.75 46.55 43.65 69.2z" fill="#ea4335"/>
+<path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+<path d="M59.8 53.3 56.75 46.55 43.65 69.2 30.55 46.55 27.45 53.3l-13.7 23.7c1.35.8 2.9 1.2 4.5 1.2h50.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+</svg>`;
+const ICONE_GMAIL = `<svg class="icone-drive" viewBox="52 42 88 66" aria-hidden="true">
+<path fill="#4285f4" d="M58 108h14V74L52 59v43c0 3.32 2.69 6 6 6"/>
+<path fill="#34a853" d="M120 108h14c3.32 0 6-2.69 6-6V59l-20 15"/>
+<path fill="#fbbc04" d="M120 48v26l20-15v-8c0-7.42-8.47-11.65-14.4-7.2"/>
+<path fill="#ea4335" d="M72 74V48l24 18 24-18v26L96 92"/>
+<path fill="#c5221f" d="M52 51v8l20 15V48l-5.6-4.2c-5.94-4.45-14.4-.22-14.4 7.2"/>
+</svg>`;
+const ICONES: Record<string, string> = { drive: ICONE_DRIVE, gmail: ICONE_GMAIL };
+// O que a pessoa lê ao ligar: o que muda para ela, não o nome do escopo.
+const AO_LIGAR: Record<string, string> = {
+  drive: 'Use o botão do Drive, ao lado do clipe, para anexar arquivos.',
+  gmail: 'A IA já pode buscar e ler seus e-mails. Ela não envia nem apaga nada.',
+};
+
 /** true quando dá para usar o Drive agora: client_id no manifest + token válido. */
 export async function drivePronto(): Promise<boolean> {
   if (!conectorConfigurado()) return false;
   try {
-    tokenAtual = await tokenGoogle([escopoDoDrive()], false);
-    conectado = true;
+    tokenAtual = await tokenDoConector('drive', false);
+    return true;
   } catch {
-    conectado = false;
+    return false;
   }
-  return conectado;
-}
-
-function escopoDoDrive(): string {
-  return CONECTORES[0]!.escopo;
 }
 
 export function blocoConectores(): HTMLElement {
@@ -51,74 +68,73 @@ export function blocoConectores(): HTMLElement {
   bloco.className = 'conectores-bloco';
   bloco.innerHTML = `
     <div class="conectores-titulo">Conectores do Google</div>
-    <div class="conector-linha">
-      <div class="conector-icone" aria-hidden="true">
-        <svg class="icone-drive" viewBox="0 0 87.3 78" aria-hidden="true">
-<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-<path d="M43.65 25 13.75 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.45z" fill="#00ac47"/>
-<path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L56.75 46.55 43.65 69.2z" fill="#ea4335"/>
-<path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-<path d="M59.8 53.3 56.75 46.55 43.65 69.2 30.55 46.55 27.45 53.3l-13.7 23.7c1.35.8 2.9 1.2 4.5 1.2h50.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-</svg>
-      </div>
+    ${CONECTORES.map(
+      (c) => `<div class="conector-linha" data-conector="${c.id}">
+      <div class="conector-icone" aria-hidden="true">${ICONES[c.id] ?? ''}</div>
       <div class="conector-info">
-        <span class="conector-nome">${CONECTORES[0]!.nome}</span>
+        <span class="conector-nome">${c.nome}</span>
         <span class="conector-status" data-conectado="nao">Não conectado</span>
       </div>
       <button type="button" class="plan-switch" role="switch" aria-checked="false"
-              aria-label="Conectar o Google Drive"></button>
-    </div>
+              aria-label="Conectar o ${c.nome}"></button>
+    </div>`,
+    ).join('')}
     <p class="conectores-nota" hidden></p>
   `;
 
-  const status = bloco.querySelector<HTMLElement>('.conector-status')!;
   const nota = bloco.querySelector<HTMLElement>('.conectores-nota')!;
-  const sw = bloco.querySelector<HTMLButtonElement>('.plan-switch')!;
-
-  if (!conectorConfigurado()) {
-    // Sem client_id não há botão: OAuth sem client_id falha com erro de console inútil.
-    sw.replaceWith(
-      Object.assign(document.createElement('span'), {
-        className: 'conector-vazio',
-        textContent: 'Em breve',
-      }),
-    );
+  const semClientId = !conectorConfigurado();
+  for (const c of CONECTORES) {
+    const linha = bloco.querySelector<HTMLElement>(`[data-conector="${c.id}"]`)!;
+    const sw = linha.querySelector<HTMLButtonElement>('.plan-switch')!;
+    if (semClientId) {
+      // Sem client_id não há botão: OAuth sem client_id falha com erro de console inútil.
+      sw.replaceWith(Object.assign(document.createElement('span'), { className: 'conector-vazio', textContent: 'Em breve' }));
+      continue;
+    }
+    sw.addEventListener('click', () => void alternar(c, linha));
+  }
+  if (semClientId) {
     nota.hidden = false;
-    nota.textContent = 'Conector em preparação. Só leitura: o Google nunca enxerga seus arquivos.';
+    nota.textContent = 'Conectores em preparação. Só leitura: a IA nunca altera nada na sua conta do Google.';
     return bloco;
   }
-
-  sw.addEventListener('click', () => void alternar(sw, status));
-  void drivePronto().then((ok) => pintar(sw, status, ok));
+  void conectoresLigados().then((ligados) => {
+    for (const c of CONECTORES) pintar(bloco.querySelector<HTMLElement>(`[data-conector="${c.id}"]`)!, ligados.includes(c.id));
+  });
   return bloco;
 }
 
-function pintar(sw: HTMLButtonElement, status: HTMLElement, ligado: boolean) {
-  conectado = ligado;
-  sw.setAttribute('aria-checked', String(ligado));
+function pintar(linha: HTMLElement, ligado: boolean) {
+  const status = linha.querySelector<HTMLElement>('.conector-status')!;
+  linha.querySelector('.plan-switch')!.setAttribute('aria-checked', String(ligado));
   status.dataset.conectado = ligado ? 'sim' : 'nao';
   status.textContent = ligado ? 'Conectado' : 'Não conectado';
 }
 
-async function alternar(sw: HTMLButtonElement, status: HTMLElement) {
+async function alternar(c: Conector, linha: HTMLElement) {
   if (conectando) return;
   conectando = true;
+  const sw = linha.querySelector<HTMLElement>('.plan-switch')!;
   sw.setAttribute('aria-busy', 'true');
   try {
-    if (conectado) {
-      await desconectarGoogle();
-      pintar(sw, status, false);
-      document.querySelector('.drive-btn')?.remove();
-      deps.avisar('Google Drive desconectado');
+    if (sw.getAttribute('aria-checked') === 'true') {
+      await desconectarConector(c.id);
+      pintar(linha, false);
+      if (c.id === 'drive') document.querySelector('.drive-btn')?.remove();
+      deps.avisar(`${c.nome} desconectado`);
     } else {
-      tokenAtual = await tokenGoogle([escopoDoDrive()], true);
-      pintar(sw, status, true);
-      await iniciarConectores(deps);
-      deps.avisar('Google Drive conectado', false, 'Use o botão do Drive, ao lado do clipe, para anexar arquivos.');
+      const token = await tokenDoConector(c.id, true);
+      pintar(linha, true);
+      if (c.id === 'drive') {
+        tokenAtual = token;
+        await iniciarConectores(deps);
+      }
+      deps.avisar(`${c.nome} conectado`, false, AO_LIGAR[c.id]);
     }
   } catch (e) {
-    pintar(sw, status, false);
-    deps.avisar('Não deu para conectar o Google Drive', true, e instanceof Error ? e.message : 'Tente de novo.');
+    pintar(linha, false);
+    deps.avisar(`Não deu para conectar o ${c.nome}`, true, e instanceof Error ? e.message : 'Tente de novo.');
   } finally {
     conectando = false;
     sw.removeAttribute('aria-busy');
@@ -137,13 +153,7 @@ export async function iniciarConectores(d: Deps): Promise<void> {
   btn.className = 'attach-btn drive-btn';
   btn.title = 'Anexar do Google Drive';
   btn.setAttribute('aria-label', 'Anexar arquivo do Google Drive');
-  btn.innerHTML = `<svg class="icone-drive" viewBox="0 0 87.3 78" aria-hidden="true">
-<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-<path d="M43.65 25 13.75 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0-1.2 4.5h27.45z" fill="#00ac47"/>
-<path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75L56.75 46.55 43.65 69.2z" fill="#ea4335"/>
-<path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
-<path d="M59.8 53.3 56.75 46.55 43.65 69.2 30.55 46.55 27.45 53.3l-13.7 23.7c1.35.8 2.9 1.2 4.5 1.2h50.3c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
-</svg>`;
+  btn.innerHTML = ICONE_DRIVE;
   btn.addEventListener('click', () => void abrirSeletor());
   acoes.prepend(btn);
 }

@@ -53,6 +53,26 @@ export type Comandos = {
     args: { id: string };
     result: { nome: string; tipo: string; link: string; texto?: string; truncado?: boolean; motivo?: string };
   };
+  // Gmail pela API (conector do Google, só leitura). `consulta` é a sintaxe da busca do Gmail.
+  buscar_gmail: {
+    args: { consulta: string; limite?: number };
+    result: { emails: { id: string; de: string; assunto: string; data: string; trecho: string; link: string }[] };
+  };
+  ler_gmail: {
+    args: { id: string };
+    result: {
+      id: string;
+      de: string;
+      para: string;
+      assunto: string;
+      data: string;
+      trecho: string;
+      link: string;
+      texto: string;
+      truncado?: boolean;
+      anexos: string[];
+    };
+  };
   // Interno da ponte (não vai para o MCP): os links da página, para a regra de navegação.
   links: { args: Record<string, never>; result: { links: string[] } };
   // Só para o runner do teste conferir o resultado; não é exposto no MCP.

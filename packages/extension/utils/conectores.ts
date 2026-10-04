@@ -13,14 +13,21 @@ export type Conector = {
   provedor: 'google';
 };
 
-// Só Drive, de propósito: é o único que alimenta o pipeline de anexos que já existe
-// (protocol.ts: ArquivoAnexo). Gmail/Calendar entram quando houver tela que os use.
+// Todos só de leitura (o teste de escopo quebra se entrar um de escrita). Cada um é ligado à parte:
+// quem só quer anexar do Drive não entrega o e-mail junto.
 export const CONECTORES: Conector[] = [
   {
     id: 'drive',
     nome: 'Google Drive',
     descricao: 'Anexar PDF, XML, CSV e imagens direto do seu Drive',
     escopo: 'https://www.googleapis.com/auth/drive.readonly',
+    provedor: 'google',
+  },
+  {
+    id: 'gmail',
+    nome: 'Gmail',
+    descricao: 'A IA busca e lê seus e-mails (não envia, não apaga)',
+    escopo: 'https://www.googleapis.com/auth/gmail.readonly',
     provedor: 'google',
   },
 ];
@@ -120,26 +127,50 @@ async function renovar(refresh: string): Promise<string> {
   return dados.access_token;
 }
 
+const CHAVE_LIGADOS = 'conector:ligados';
+
+/** Conectores que a pessoa ligou. Conexão de antes de existir o Gmail só tinha o Drive. */
+export async function conectoresLigados(): Promise<string[]> {
+  const guardado = await chrome.storage.local.get([CHAVE_REFRESH, CHAVE_LIGADOS]);
+  if (!guardado[CHAVE_REFRESH]) return [];
+  return (guardado[CHAVE_LIGADOS] as string[] | undefined) ?? ['drive'];
+}
+
 /**
- * Access token do Drive.
+ * Access token para um conector.
  *
+ * A trava é a lista de ligados, não o escopo do token: o Google guarda UM refresh token por
+ * conta, com os escopos de todos os conectores já ligados. Conector desligado aqui não recebe
+ * token, mesmo que o do Google ainda alcance.
+ */
+export async function tokenDoConector(id: string, interactive: boolean): Promise<string> {
+  const c = conector(id);
+  if (!c) throw new Error(`conector desconhecido: ${id}`);
+  let ligados = await conectoresLigados();
+  if (ligados.includes(id)) {
+    const guardado = await chrome.storage.local.get(CHAVE_REFRESH);
+    // access_token dura 1 hora; renovar é rede pura e não mostra nada na tela.
+    try {
+      return await renovar(guardado[CHAVE_REFRESH] as string);
+    } catch {
+      await chrome.storage.local.remove([CHAVE_REFRESH, CHAVE_LIGADOS]); // refresh revogado: autoriza de novo
+      ligados = [];
+    }
+  }
+  if (!interactive) throw new Error(`${c.nome} não está conectado.`);
+  // O consentimento novo pede o escopo deste e os dos já ligados: o refresh que volta substitui o antigo.
+  const outros = ligados.filter((l) => l !== id);
+  const token = await autorizar([...outros.map((l) => conector(l)!.escopo), c.escopo]);
+  await chrome.storage.local.set({ [CHAVE_LIGADOS]: [...outros, id] });
+  return token;
+}
+
+/**
  * Não usa chrome.identity.getAuthToken: o Google descontinuou o fluxo em extensões (custom URI
  * scheme dá "400: unsupported_response_type") e o Brave ainda patcha a API para falhar. O
  * launchWebAuthFlow funciona em Chrome, Edge, Brave e Arc, que é o que importa aqui.
  */
-export async function tokenGoogle(escopos: string[], interactive: boolean): Promise<string> {
-  const guardado = await chrome.storage.local.get(CHAVE_REFRESH);
-  const refresh = guardado[CHAVE_REFRESH] as string | undefined;
-  if (refresh) {
-    // access_token dura 1 hora; renova é rede pura e não mostra nada na tela.
-    try {
-      return await renovar(refresh);
-    } catch {
-      await chrome.storage.local.remove(CHAVE_REFRESH); // refresh revogado:Authorize de novo
-    }
-  }
-  if (!interactive) throw new Error('Google Drive não está conectado.');
-
+async function autorizar(escopos: string[]): Promise<string> {
   const verifier = b64(crypto.getRandomValues(new Uint8Array(32)));
   const url = `${AUTH}?${new URLSearchParams({
     client_id: chrome.runtime.getManifest().oauth2!.client_id,
@@ -165,8 +196,11 @@ export async function tokenGoogle(escopos: string[], interactive: boolean): Prom
   return token;
 }
 
-export async function desconectarGoogle(): Promise<void> {
-  await chrome.storage.local.remove(CHAVE_REFRESH);
+/** Desliga um conector; ao desligar o último, o refresh token sai desta máquina. */
+export async function desconectarConector(id: string): Promise<void> {
+  const resto = (await conectoresLigados()).filter((l) => l !== id);
+  if (resto.length) await chrome.storage.local.set({ [CHAVE_LIGADOS]: resto });
+  else await chrome.storage.local.remove([CHAVE_REFRESH, CHAVE_LIGADOS]);
 }
 
 /**
