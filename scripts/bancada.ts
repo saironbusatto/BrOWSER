@@ -21,9 +21,13 @@ import { TAREFAS } from '../fixtures/bancada/tarefas';
 import { EXTENSION_ID } from '../packages/bridge/src/instalar';
 import type { Medida } from '../packages/bridge/src/latencia';
 
-const [ia, ...escolhidas] = process.argv.slice(2) as [Ia, ...string[]];
-if (!IAS.includes(ia)) {
-  console.error(`uso: bun run bancada <${IAS.join('|')}> [${TAREFAS.map((t) => t.id).join(' ')}]`);
+// `harness` é a régua: as mesmas tarefas feitas pelo browser-harness (a referência do projeto,
+// docs/dif-browser-harness-x-playwright-selenium.md), com o Claude escrevendo o Python dele, no
+// mesmo Chromium isolado, sem a extensão. Diz até onde dá para chegar em chamadas e tempo.
+const HARNESS = 'harness';
+const [ia, ...escolhidas] = process.argv.slice(2) as [Ia | typeof HARNESS, ...string[]];
+if (ia !== HARNESS && !IAS.includes(ia)) {
+  console.error(`uso: bun run bancada <${IAS.join('|')}|${HARNESS}> [${TAREFAS.map((t) => t.id).join(' ')}]`);
   process.exit(2);
 }
 const tarefas = escolhidas.length ? TAREFAS.filter((t) => escolhidas.includes(t.id)) : TAREFAS;
@@ -37,7 +41,7 @@ function construir(pacote: string, script: string) {
   const r = Bun.spawnSync(['bun', 'run', '--cwd', join(raiz, 'packages', pacote), script], { stdout: 'ignore', stderr: 'inherit' });
   if (r.exitCode !== 0) throw new Error(`build de ${pacote} falhou`);
 }
-if (!process.env.BANCADA_SEM_BUILD) {
+if (!process.env.BANCADA_SEM_BUILD && ia !== HARNESS) {
   construir('extension', 'build');
   construir('bridge', 'build:dev'); // só o build de desenvolvimento tem a rota /control
 }
@@ -79,11 +83,15 @@ const srv = Bun.serve({
 const A = `http://127.0.0.1:${srv.port}`;
 const B = `http://localhost:${srv.port}`;
 
+const PORTA_CDP = 9000 + Math.floor(Math.random() * 900);
 const ctx = await chromium.launchPersistentContext(perfil, {
   executablePath: process.env.GRUPO_CHROME || chromiumDoPlaywright(),
   headless: !process.env.BANCADA_VER,
   viewport: null,
-  args: [`--disable-extensions-except=${extensao}`, `--load-extension=${extensao}`, '--window-size=1366,850'],
+  args:
+    ia === HARNESS
+      ? [`--remote-debugging-port=${PORTA_CDP}`, '--window-size=1366,850']
+      : [`--disable-extensions-except=${extensao}`, `--load-extension=${extensao}`, '--window-size=1366,850'],
 });
 
 /** O token da ponte gira a cada pedido: lê de novo a cada chamada. */
@@ -100,6 +108,58 @@ async function controle<T = any>(cmd: string, args: object = {}): Promise<T> {
   return j.result as T;
 }
 
+type Rodada = { ok: boolean; texto: string; medida: Medida };
+
+/** O pedido pelo BrOWSER: mesmo caminho do painel lateral, pela rota de teste da ponte. */
+async function peloBrowser(pagina: string, pedido: string): Promise<Rodada> {
+  await controle('abrir', { url: pagina });
+  return controle<Rodada>('executar', { texto: pedido, ia });
+}
+
+/** O mesmo pedido pelo browser-harness: o Claude escreve Python e roda com o comando dele. */
+async function peloHarness(pagina: string, pedido: string): Promise<Rodada> {
+  const t0 = performance.now();
+  const prompt = `Use a skill browser-harness para controlar o navegador (comando \`browser-harness\`, já conectado). Abra ${pagina} com new_tab e faça a tarefa abaixo nessa página. No fim, responda em 1 ou 2 frases.\n\nTarefa: ${pedido}`;
+  const p = Bun.spawn(
+    [
+      'claude',
+      '-p',
+      prompt,
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--allowedTools',
+      'Bash(browser-harness:*),Skill,Read(~/.claude/skills/**)',
+    ],
+    {
+      stdout: 'pipe',
+      stderr: 'ignore',
+      // Daemon próprio, preso a este Chromium: não toca no Chrome que a pessoa está usando.
+      env: { ...process.env, BU_NAME: `bancada${PORTA_CDP}`, BU_CDP_URL: `http://127.0.0.1:${PORTA_CDP}`, BH_TELEMETRY: '0' },
+    },
+  );
+  const porFerramenta: Record<string, number> = {};
+  let texto = '';
+  let ok = false;
+  for (const linha of (await new Response(p.stdout).text()).split('\n')) {
+    if (!linha.trim()) continue;
+    const m = JSON.parse(linha) as {
+      type: string;
+      subtype?: string;
+      result?: string;
+      message?: { content?: { type: string; name?: string }[] };
+    };
+    for (const c of m.message?.content ?? [])
+      if (m.type === 'assistant' && c.type === 'tool_use') porFerramenta[c.name!] = (porFerramenta[c.name!] ?? 0) + 1;
+    if (m.type === 'result') {
+      texto = m.result ?? '';
+      ok = m.subtype === 'success';
+    }
+  }
+  const ferramentas = Object.values(porFerramenta).reduce((a, n) => a + n, 0);
+  return { ok, texto, medida: { ferramentas, porFerramenta, msTotal: Math.round(performance.now() - t0), msNavegador: 0 } };
+}
+
 type Linha = {
   tarefa: string;
   exercita: string;
@@ -114,10 +174,12 @@ type Linha = {
 const linhas: Linha[] = [];
 
 try {
-  ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
-  for (let i = 0; i < 100 && !existsSync(join(estadoPonte, 'bridge.json')); i++) await Bun.sleep(200);
-  if (!existsSync(join(estadoPonte, 'bridge.json')))
-    throw new Error('a extensão não subiu a ponte (Native Messaging não conectou no perfil temporário)');
+  if (ia !== HARNESS) {
+    ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
+    for (let i = 0; i < 100 && !existsSync(join(estadoPonte, 'bridge.json')); i++) await Bun.sleep(200);
+    if (!existsSync(join(estadoPonte, 'bridge.json')))
+      throw new Error('a extensão não subiu a ponte (Native Messaging não conectou no perfil temporário)');
+  }
 
   for (const t of tarefas) {
     process.stdout.write(`${t.id}… `);
@@ -132,8 +194,7 @@ try {
       resposta: '',
     };
     try {
-      await controle('abrir', { url: `${A}/${t.pagina}` });
-      const r = await controle<{ ok: boolean; texto: string; medida: Medida }>('executar', { texto: t.pedido(B), ia });
+      const r = await (ia === HARNESS ? peloHarness : peloBrowser)(`${A}/${t.pagina}`, t.pedido(B));
       linha.resposta = r.texto;
       linha.ferramentas = r.medida.ferramentas;
       linha.porFerramenta = r.medida.porFerramenta;
@@ -156,6 +217,7 @@ try {
     );
     // Cada tarefa começa numa aba nova; as da anterior fecham para não confundir a próxima.
     for (const p of ctx.pages().slice(1)) await p.close().catch(() => {});
+    await Bun.sleep(500); // o fechamento da aba assenta na extensão antes de a próxima abrir
   }
 } finally {
   await ctx.close().catch(() => {});

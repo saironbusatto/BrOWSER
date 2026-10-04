@@ -519,6 +519,7 @@ async function executar(p: Pedido): Promise<unknown> {
 async function abrir(url: string) {
   const tab = await chrome.tabs.create({ url, active: true });
   await acoes.esperarAbaCarregar(tab.id!);
+  await trazerParaOGrupo(tab.id!).catch(() => {}); // como a aba de um pedido do painel
   await definirAlvo(tab.id!);
   return { tabId: tab.id! };
 }

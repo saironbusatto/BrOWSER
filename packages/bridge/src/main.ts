@@ -726,10 +726,18 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
     // Mesmo caminho do painel lateral, para o `bun run spike` testar o fluxo real.
     const pedido: Pedir = { tipo: 'pedido', pedidoId: randomUUID(), texto: String(body.args?.texto ?? ''), tabId: -1 };
     const t0 = performance.now();
-    const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
-    // A medição vai junto: a bancada (scripts/bancada.ts) compara pedidos por ela.
-    const result = { ...r, medida: relogio.medida(performance.now() - t0) };
-    return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result }));
+    // Como no painel (atenderPedido): sem pedido ativo, `ler_pagina` e `perguntar_ao_usuario`
+    // respondem "nenhum pedido ativo" e a medição sai com a IA meio cega.
+    pedidoAtivo = pedido.pedidoId;
+    try {
+      const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
+      // A medição vai junto: a bancada (scripts/bancada.ts) compara pedidos por ela.
+      const result = { ...r, medida: relogio.medida(performance.now() - t0) };
+      return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result }));
+    } finally {
+      pedidoAtivo = undefined;
+      camposConhecidos = new Map();
+    }
   }
   if (CONTROLE_ATIVO && origemConfiavel(req) && req.url === '/control' && req.method === 'POST') {
     if (!CONTROLE.includes(body?.cmd)) return res.writeHead(400).end('comando inválido');
