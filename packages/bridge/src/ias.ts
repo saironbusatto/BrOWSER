@@ -3,12 +3,12 @@ import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { type ArquivoAnexo, IAS, type Ia, type PapelAgente, type SiteBlueprint } from '@browser/shared';
 import { formatarBlueprintParaIa } from './blueprints';
-import { comandoExecutavel, which } from './caminhos';
+import { comandoExecutavel, DIR_PONTE, which } from './caminhos';
 import { apagarAnexos, formatarContextoArquivos, salvarAnexosBinarios } from './documentos';
 import { formatarSkillsParaIa, type Skill } from './skills';
 
 // Mesmo log de main.ts e assinaturas.ts: stdout é exclusivo do protocolo do Chrome.
-const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
+const DIR_BRIDGE = DIR_PONTE;
 const log = (...a: unknown[]) => {
   try {
     appendFileSync(join(DIR_BRIDGE, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);

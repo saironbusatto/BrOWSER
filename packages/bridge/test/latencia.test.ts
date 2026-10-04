@@ -71,3 +71,16 @@ describe('Relogio: o contador que main.ts chama a cada enviar()', () => {
     expect(new Relogio().resumo(1_000)).toContain('latência 1.0s');
   });
 });
+
+describe('medida: os números que a bancada compara', () => {
+  it('conta as ferramentas chamadas (idas e voltas à IA) e zera entre pedidos', () => {
+    const r = new Relogio();
+    r.ferramenta('ler_campos');
+    r.ferramenta('clicar');
+    r.ferramenta('clicar');
+    r.registrar('clicar', 120.4);
+    expect(r.medida(5000.6)).toEqual({ ferramentas: 3, porFerramenta: { ler_campos: 1, clicar: 2 }, msTotal: 5001, msNavegador: 120 });
+    r.zerar();
+    expect(r.medida(0).ferramentas).toBe(0);
+  });
+});

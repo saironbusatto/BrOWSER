@@ -4,7 +4,6 @@
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
   type Campo,
@@ -25,7 +24,7 @@ import { z } from 'zod';
 import { desconectar, desconectarTodas, fimDoLogin, iniciarLogin, obterStatusAssinaturas, responderCodigo } from './assinaturas';
 import { gerarBlueprintAnonimizado, obterBlueprint, salvarOuAtualizarBlueprint } from './blueprints';
 import { CONTROLE_ATIVO } from './build';
-import { pathComIAs } from './caminhos';
+import { DIR_PONTE, pathComIAs } from './caminhos';
 import { type Conversa, conversaDe, registrarMensagem } from './conversas';
 import { rodarDiagnostico } from './doctor';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
@@ -57,13 +56,13 @@ if (process.argv.includes('--doctor')) {
 if (process.argv.includes('--uninstall')) {
   for (const n of removerHost()) console.log(`✓ removido do ${n}`);
   for (const f of removerIntegracaoAgy()) console.log(`✓ ${f}`);
-  rmSync(join(homedir(), '.config', 'browser-bridge'), { recursive: true, force: true });
+  rmSync(DIR_PONTE, { recursive: true, force: true });
   console.log('✓ dados do BrOWSER apagados (estado, log e cache de blueprints)');
   console.log('Pronto. Remova também a extensão BrOWSER do navegador.');
   process.exit(0);
 }
 
-export const DIR = join(homedir(), '.config', 'browser-bridge');
+export const DIR = DIR_PONTE;
 const TIMEOUT_MS = 30_000;
 const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste
 
@@ -468,6 +467,14 @@ const texto = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.s
 
 function criarMcp() {
   const s = new McpServer({ name: 'browser', version: '0.1.0' });
+  // Cada chamada de ferramenta é uma ida e volta à IA: é o número que a bancada quer baixar.
+  // Contado aqui, no único lugar por onde toda ferramenta é registrada.
+  const registrar = s.registerTool.bind(s) as (nome: string, cfg: unknown, h: (...a: unknown[]) => unknown) => unknown;
+  s.registerTool = ((nome: string, cfg: unknown, h: (...a: unknown[]) => unknown) =>
+    registrar(nome, cfg, (...a: unknown[]) => {
+      relogio.ferramenta(nome);
+      return h(...a);
+    })) as typeof s.registerTool;
   s.registerTool(
     'consultar_blueprint',
     {
@@ -718,8 +725,11 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
   if (CONTROLE_ATIVO && origemConfiavel(req) && req.url === '/control' && req.method === 'POST' && body?.cmd === 'executar') {
     // Mesmo caminho do painel lateral, para o `bun run spike` testar o fluxo real.
     const pedido: Pedir = { tipo: 'pedido', pedidoId: randomUUID(), texto: String(body.args?.texto ?? ''), tabId: -1 };
+    const t0 = performance.now();
     const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
-    return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result: r }));
+    // A medição vai junto: a bancada (scripts/bancada.ts) compara pedidos por ela.
+    const result = { ...r, medida: relogio.medida(performance.now() - t0) };
+    return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result }));
   }
   if (CONTROLE_ATIVO && origemConfiavel(req) && req.url === '/control' && req.method === 'POST') {
     if (!CONTROLE.includes(body?.cmd)) return res.writeHead(400).end('comando inválido');

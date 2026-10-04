@@ -1,0 +1,12 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>body{font:15px system-ui;margin:24px;max-width:900px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}button{padding:6px 12px;cursor:pointer}label{display:block;margin:10px 0}input,select{padding:5px;min-width:260px}nav a{margin-right:12px}.cartao{display:inline-block;border:2px solid #999;border-radius:8px;padding:16px 24px;margin:8px;cursor:pointer}.cartao.sel{border-color:#0a0;background:#efe}.menu{border:1px solid #999;padding:4px;display:inline-block}.menu div{padding:6px 14px;cursor:pointer}.fundo{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center}.caixa{background:#fff;padding:24px;border-radius:8px}</style><title>Solicitação registrada</title></head><body>
+<h1>Solicitação</h1>
+<p id="msg">Registrando a solicitação, aguarde…</p>
+<div id="depois"></div>
+<script>
+window.estado = { confirmado: null };
+setTimeout(() => {
+  document.getElementById('msg').textContent = 'Solicitação registrada. Protocolo: BR-7F3K9-2026';
+  document.getElementById('depois').innerHTML = '<label>Confirme o protocolo <input id="conf"></label><button id="ok">Confirmar protocolo</button>';
+  document.getElementById('ok').onclick = () => { estado.confirmado = document.getElementById('conf').value; };
+}, 3000);
+</script></body></html>

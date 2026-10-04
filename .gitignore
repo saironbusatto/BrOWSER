@@ -27,3 +27,6 @@ Downloads-brOWSER/
 # Estudos e análises: material de trabalho, não documentação do produto.
 docs/estudo-*.md
 estudo-*.md
+
+# Resultados da bancada de medição (scripts/bancada.ts): locais, por máquina.
+.bancada/

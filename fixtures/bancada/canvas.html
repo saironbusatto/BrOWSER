@@ -1,0 +1,17 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>body{font:15px system-ui;margin:24px;max-width:900px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}button{padding:6px 12px;cursor:pointer}label{display:block;margin:10px 0}input,select{padding:5px;min-width:260px}nav a{margin-right:12px}.cartao{display:inline-block;border:2px solid #999;border-radius:8px;padding:16px 24px;margin:8px;cursor:pointer}.cartao.sel{border-color:#0a0;background:#efe}.menu{border:1px solid #999;padding:4px;display:inline-block}.menu div{padding:6px 14px;cursor:pointer}.fundo{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center}.caixa{background:#fff;padding:24px;border-radius:8px}</style><title>Planta</title></head><body>
+<h1>Planta do galpão</h1>
+<p>Clique numa área do desenho para selecioná-la.</p>
+<canvas id="c" width="600" height="300" style="border:1px solid #999"></canvas>
+<p id="sel">Nenhuma área selecionada.</p>
+<script>
+// Tudo desenhado: nenhuma área existe como elemento da página.
+window.estado = { area: null };
+const areas = [['vermelha', '#d33', 40, 60, 140, 180], ['azul', '#36c', 230, 60, 140, 180], ['verde', '#2a2', 420, 60, 140, 180]];
+const g = document.getElementById('c').getContext('2d');
+for (const [, cor, x, y, w, h] of areas) { g.fillStyle = cor; g.fillRect(x, y, w, h); }
+document.getElementById('c').addEventListener('click', (e) => {
+  const a = areas.find(([, , x, y, w, h]) => e.offsetX >= x && e.offsetX <= x + w && e.offsetY >= y && e.offsetY <= y + h);
+  estado.area = a ? a[0] : 'fora';
+  document.getElementById('sel').textContent = a ? 'Área selecionada: ' + a[0] : 'Clique fora das áreas.';
+});
+</script></body></html>

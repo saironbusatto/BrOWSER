@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AcaoGatilho, Campo, CampoBlueprint, SiteBlueprint } from '@browser/shared';
+import { DIR_PONTE } from './caminhos';
 import { sanitizarBlueprint } from './sanitizar';
 
-const CACHE_DIR = join(homedir(), '.config', 'browser-bridge', 'blueprints');
+const CACHE_DIR = join(DIR_PONTE, 'blueprints');
 const GITHUB_RAW_BASE = 'https://raw.githubusercontent.com/saironbusatto/BrOWSER/main/blueprints';
 const TIMEOUT_FETCH_MS = 2500;
 // Teto de um blueprint remoto. Um mapa de formulário real tem dezenas de campos; alguns milhares já

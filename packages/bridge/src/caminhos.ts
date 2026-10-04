@@ -4,6 +4,13 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 
+/**
+ * Pasta de estado da ponte (token, log, cache). `BROWSER_BRIDGE_DIR` existe para a bancada e os
+ * testes subirem uma ponte isolada: sem isso, uma segunda ponte sobrescreve o `bridge.json` da
+ * ponte que a pessoa está usando no navegador dela.
+ */
+export const DIR_PONTE = process.env.BROWSER_BRIDGE_DIR || join(homedir(), '.config', 'browser-bridge');
+
 export function pastasDasIAs(): string[] {
   const home = homedir();
   const comuns = [join(home, '.local', 'bin'), join(home, '.bun', 'bin'), join(home, '.npm-global', 'bin')];

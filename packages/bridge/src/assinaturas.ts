@@ -6,12 +6,11 @@
 // parte útil pro painel. A assinatura nunca passa por nós (ver docs/decisoes.md).
 
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, ItemAssinatura } from '@browser/shared';
-import { comandoExecutavel, which } from './caminhos';
+import { comandoExecutavel, DIR_PONTE, which } from './caminhos';
 
-const DIR_BRIDGE = join(homedir(), '.config', 'browser-bridge');
+const DIR_BRIDGE = DIR_PONTE;
 const log = (...a: unknown[]) => {
   try {
     appendFileSync(join(DIR_BRIDGE, 'bridge.log'), `${new Date().toISOString()} ${a.join(' ')}\n`);

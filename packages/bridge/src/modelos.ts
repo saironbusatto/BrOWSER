@@ -11,12 +11,11 @@
 // A lista é conveniência, não portão: um id fora dela é repassado ao CLI, que decide. Se a lista
 // estiver velha, o máximo que acontece é o modelo novo não aparecer no <select>.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { Ia, ModeloInfo } from '@browser/shared';
-import { comandoExecutavel, which } from './caminhos';
+import { comandoExecutavel, DIR_PONTE, which } from './caminhos';
 
-const CACHE = join(homedir(), '.config', 'browser-bridge', 'modelos.json');
+const CACHE = join(DIR_PONTE, 'modelos.json');
 // Fora de blueprints/ de propósito: lá, todo .json da pasta tem que estar no index.json
 // (é a lista de domínios buscados) e um catálogo de modelo apareceria como domínio.
 const GITHUB_RAW_MODELOS = 'https://raw.githubusercontent.com/saironbusatto/BrOWSER/main/modelos/modelos.json';

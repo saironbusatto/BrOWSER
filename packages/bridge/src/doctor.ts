@@ -11,7 +11,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { HOST_NAME, type Ia } from '@browser/shared';
 import { obterStatusAssinaturas } from './assinaturas';
-import { pastasDasIAs, which } from './caminhos';
+import { DIR_PONTE, pastasDasIAs, which } from './caminhos';
 import { EXTENSION_ID, pastasDeNavegador } from './instalar';
 
 const ok = (t: string) => `  ✓ ${t}`;
@@ -202,7 +202,7 @@ export function relatorio(d: Diagnostico): { linhas: string[]; saida: 0 | 1 } {
     linhas.push('  sudo apt install python3   ·   ou use ChatGPT (codex) / Claude, que não precisam');
   }
 
-  linhas.push('', 'Onde procurar se algo falhar', `  log da ponte:  ${join(homedir(), '.config', 'browser-bridge', 'bridge.log')}`);
+  linhas.push('', 'Onde procurar se algo falhar', `  log da ponte:  ${join(DIR_PONTE, 'bridge.log')}`);
   linhas.push(`  id da extensão esperado: ${EXTENSION_ID}`);
   linhas.push(`  pastas de IA procuradas: ${pastasDasIAs().slice(0, 4).join(', ')}…`);
 

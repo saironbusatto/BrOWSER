@@ -1,0 +1,20 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>body{font:15px system-ui;margin:24px;max-width:900px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:6px 10px;text-align:left}button{padding:6px 12px;cursor:pointer}label{display:block;margin:10px 0}input,select{padding:5px;min-width:260px}nav a{margin-right:12px}.cartao{display:inline-block;border:2px solid #999;border-radius:8px;padding:16px 24px;margin:8px;cursor:pointer}.cartao.sel{border-color:#0a0;background:#efe}.menu{border:1px solid #999;padding:4px;display:inline-block}.menu div{padding:6px 14px;cursor:pointer}.fundo{position:fixed;inset:0;background:#0006;display:flex;align-items:center;justify-content:center}.caixa{background:#fff;padding:24px;border-radius:8px}</style><title>Escolha o plano</title></head><body>
+<h1>Escolha o plano</h1>
+<div id="planos"></div>
+<p id="escolhido">Nenhum plano escolhido.</p>
+<script>
+// Cartões clicáveis sem papel, sem tabindex e sem <button>: não aparecem na leitura de campos.
+window.estado = { plano: null };
+for (const [nome, preco] of [['Básico', 'R$ 29/mês'], ['Profissional', 'R$ 79/mês'], ['Empresarial', 'R$ 199/mês']]) {
+  const c = document.createElement('div');
+  c.className = 'cartao';
+  c.innerHTML = '<strong>' + nome + '</strong><br>' + preco;
+  c.addEventListener('click', () => {
+    document.querySelectorAll('.cartao').forEach((x) => x.classList.remove('sel'));
+    c.classList.add('sel');
+    estado.plano = nome;
+    document.getElementById('escolhido').textContent = 'Plano escolhido: ' + nome;
+  });
+  document.getElementById('planos').append(c);
+}
+</script></body></html>

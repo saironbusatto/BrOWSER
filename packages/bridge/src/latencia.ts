@@ -8,10 +8,12 @@
 // formatador mora aqui para poder ser testado sem subir nada.
 
 export type Custo = { n: number; ms: number };
+export type Medida = { ferramentas: number; porFerramenta: Record<string, number>; msTotal: number; msNavegador: number };
 
 export class Relogio {
   private porCmd = new Map<string, Custo>();
   private msBrowser = 0;
+  private porFerramenta = new Map<string, number>();
 
   /** Chamar no fim de cada `enviar()`. */
   registrar(cmd: string, ms: number): void {
@@ -20,9 +22,26 @@ export class Relogio {
     this.porCmd.set(cmd, { n: r.n + 1, ms: r.ms + ms });
   }
 
+  /** Chamar a cada ferramenta MCP que a IA invoca: uma ida e volta ao modelo. */
+  ferramenta(nome: string): void {
+    this.porFerramenta.set(nome, (this.porFerramenta.get(nome) ?? 0) + 1);
+  }
+
   zerar(): void {
     this.porCmd.clear();
+    this.porFerramenta.clear();
     this.msBrowser = 0;
+  }
+
+  /** Os números do pedido, para a bancada comparar. `ferramentas` é o que se quer baixar. */
+  medida(totalMs: number): Medida {
+    const porFerramenta = Object.fromEntries(this.porFerramenta);
+    return {
+      ferramentas: Object.values(porFerramenta).reduce((s, n) => s + n, 0),
+      porFerramenta,
+      msTotal: Math.round(totalMs),
+      msNavegador: Math.round(this.msBrowser),
+    };
   }
 
   resumo(totalMs: number): string {
