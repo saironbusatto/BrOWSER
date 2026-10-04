@@ -430,7 +430,8 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
         const idade = (agora - c.t) / 1000;
         // O rastro já é um gradiente pela posição na trilha (frescor); este termo dá o dissolver
         // temporal em cima, para a dissolução não depender só do corte do fim da corrida.
-        const a = Math.max(0, 1 - idade / 1.2);
+        // 2,4 s: dobrou junto com a queda da velocidade, para o rastro manter o comprimento.
+        const a = Math.max(0, 1 - idade / 2.4);
         if (a <= 0.01) continue;
         const frescor = i / Math.max(1, v.trilha.length - 1);
         ctx.fillStyle = `rgba(${140 + 90 * frescor},${200 + 40 * frescor},255,${a * (0.5 + frescor * 0.5)})`;

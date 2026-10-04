@@ -341,7 +341,7 @@ describe('O rastro fala letra a letra, não sorteia', () => {
     const mm = mundo();
     try {
       iniciarTeia(configTeia(1920, 1080, 2), deformacao);
-      for (let i = 0; i < 40; i++) mm.avancar(34);
+      for (let i = 0; i < 80; i++) mm.avancar(34);
       mm.zerar();
       mm.avancar(34);
 
