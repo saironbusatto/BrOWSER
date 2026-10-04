@@ -25,8 +25,10 @@ import type { Medida } from '../packages/bridge/src/latencia';
 // docs/dif-browser-harness-x-playwright-selenium.md), com o Claude escrevendo o Python dele, no
 // mesmo Chromium isolado, sem a extensão. Diz até onde dá para chegar em chamadas e tempo.
 const HARNESS = 'harness';
-const [ia, ...escolhidas] = process.argv.slice(2) as [Ia | typeof HARNESS, ...string[]];
-if (ia !== HARNESS && !IAS.includes(ia)) {
+// `ler <pagina.html>`: mostra o que a IA enxerga da página (ler_estrutura), sem chamar IA nenhuma.
+const LER = 'ler';
+const [ia, ...escolhidas] = process.argv.slice(2) as [Ia | typeof HARNESS | typeof LER, ...string[]];
+if (ia !== HARNESS && ia !== LER && !IAS.includes(ia as Ia)) {
   console.error(`uso: bun run bancada <${IAS.join('|')}|${HARNESS}> [${TAREFAS.map((t) => t.id).join(' ')}]`);
   process.exit(2);
 }
@@ -181,6 +183,16 @@ try {
       throw new Error('a extensão não subiu a ponte (Native Messaging não conectou no perfil temporário)');
   }
 
+  if (ia === LER) {
+    for (const pagina of escolhidas) {
+      await controle('abrir', { url: `${A}/${pagina}` });
+      const r = await controle<{ texto: string; campos: unknown[] }>('ler_estrutura');
+      console.log(`\n===== ${pagina} (${r.texto.length} caracteres, ${r.campos.length} controles)\n${r.texto}`);
+    }
+    await ctx.close();
+    srv.stop();
+    process.exit(0);
+  }
   for (const t of tarefas) {
     process.stdout.write(`${t.id}… `);
     const linha: Linha = {

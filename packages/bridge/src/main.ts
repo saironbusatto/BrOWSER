@@ -64,7 +64,7 @@ if (process.argv.includes('--uninstall')) {
 
 export const DIR = DIR_PONTE;
 const TIMEOUT_MS = 30_000;
-const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste
+const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'ler_estrutura', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste
 
 mkdirSync(DIR, { recursive: true, mode: 0o700 });
 // Log nunca derruba a ponte: stdout é exclusivo do protocolo do Chrome e o arquivo pode sumir
@@ -508,6 +508,26 @@ function criarMcp() {
       // Guarda do clique em envio: só dá para classificar o que foi lido nesta rodada.
       camposConhecidos = new Map(leitura.campos.map((c) => [c.ref, c]));
       return texto(leitura);
+    },
+  );
+  // Leitura única (roteiro, fase 1.2): texto e controles juntos, com hierarquia. Sai em texto
+  // puro e não em JSON: é o que a IA lê a cada passo, e cada chave repetida é ficha jogada fora.
+  s.registerTool(
+    'ler_estrutura',
+    {
+      description:
+        'Lê a página como ela é: texto e controles juntos, na ordem de leitura, com hierarquia (título, tabela, linha, lista, janela) e uma ref em cada coisa clicável ou preenchível. Use PRIMEIRO, antes de qualquer outra leitura: mostra de que linha é cada botão e o que está escrito ao redor. Com `filtro`, devolve só a parte da página que contém aquele texto (use em página grande ou quando a leitura vier cortada).',
+      inputSchema: { filtro: z.string().optional().describe('Texto que a parte procurada contém, ex.: "Padaria Sol", "exportar"') },
+    },
+    async ({ filtro }) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Lendo a página…', agente: 'scout' } satisfies Evento);
+      const r = await enviar('ler_estrutura', filtro ? { filtro } : {});
+      // Mesma guarda do ler_campos: só dá para classificar um clique no que foi lido nesta rodada.
+      // Leitura filtrada acrescenta; leitura inteira substitui.
+      camposConhecidos = new Map([...(filtro ? camposConhecidos : []), ...r.campos.map((c) => [c.ref, c] as const)]);
+      const corte = r.truncado ? '\n… (página grande, leitura cortada: chame de novo com `filtro`)' : '';
+      const vazio = filtro ? `nada na página contém "${filtro}"` : '(página sem conteúdo legível; se for tela desenhada, use ver_tela)';
+      return { content: [{ type: 'text' as const, text: `${r.titulo}\n${r.url}\n\n${r.texto || vazio}${corte}` }] };
     },
   );
   s.registerTool(

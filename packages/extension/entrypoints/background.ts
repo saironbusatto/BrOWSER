@@ -1,6 +1,6 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import * as acoes from '../utils/acoes-aba';
-import { buscarNoDrive, conector, conectorConfigurado, textoDoDrive, tokenDoConector } from '../utils/conectores';
+import { ehCmdConector, executarConector } from '../utils/acoes-conector';
 import {
   anotarNaConversa,
   ehEventoDoPedido,
@@ -10,8 +10,8 @@ import {
   recomecarConversa,
 } from '../utils/conversa-log';
 import { clicarDom, fecharLeitura, type LeituraDom, lerCamposDom, preencherDom } from '../utils/dom-fallback';
-import { buscarNoGmail, lerEmail } from '../utils/gmail';
 import { foraDoGrupo, trazerParaOGrupo, vigiarPainel } from '../utils/grupo-abas';
+import { lerEstrutura } from '../utils/leitura-estrutura';
 import { extrairTextoDaPagina, LIMITE_PADRAO } from '../utils/pagina-texto';
 import { expressaoIniciar, expressoesInjetar, gerarScriptStatus, PARES_TEIA, SCRIPT_PARAR_TEIA } from '../utils/teia';
 import { armarVigia, vigiarCallback } from '../utils/vigia-login';
@@ -426,22 +426,28 @@ async function encerrarPedidoOrfao() {
   if (alvo !== undefined) desligarTeia(alvo).catch(() => {});
 }
 
-/**
- * Token de um conector SEM abrir janela: no meio de um pedido, um popup de login do Google
- * surgiria do nada. Sem conexão, a IA ouve isso e segue pela tela do site (skill do Drive).
- */
-async function tokenSemJanela(id: 'drive' | 'gmail'): Promise<string> {
-  const nome = conector(id)!.nome;
-  if (!conectorConfigurado()) throw new Error(`o conector do ${nome} não existe nesta instalação; use o ${nome} pela interface`);
-  return tokenDoConector(id, false).catch(() => {
-    throw new Error(
-      `o ${nome} não está conectado no BrOWSER; use o ${nome} pela interface (ou peça para a pessoa ligar o ${nome} em Planos)`,
-    );
-  });
+/** A página como árvore (fase 1.2 do roteiro). A lista de sensíveis acompanha, como em ler_campos. */
+async function lerEstruturaDaAba(filtro?: string) {
+  const tabId = await abaAlvo();
+  if (alvo) atualizarTeia(alvo, 'Lendo a página…');
+  const r = await lerEstrutura(
+    {
+      cdp,
+      semDebugger: abasSemDebugger.has(tabId),
+      lerCamposPeloDom: lerCamposComPlanoB,
+      camposDeOutraOrigem: (url) => lerIframesDeOutraOrigem(tabId, url),
+    },
+    filtro,
+  );
+  sensiveis = new Set(r.campos.filter((c) => c.sensivel).map((c) => c.ref));
+  return r;
 }
 
 async function executar(p: Pedido): Promise<unknown> {
+  if (ehCmdConector(p.cmd)) return executarConector(p.cmd, p.args);
   switch (p.cmd) {
+    case 'ler_estrutura':
+      return lerEstruturaDaAba((p.args as Comandos['ler_estrutura']['args']).filtro);
     case 'abrir':
       return abrir((p.args as Comandos['abrir']['args']).url);
     case 'ler_campos':
@@ -490,18 +496,6 @@ async function executar(p: Pedido): Promise<unknown> {
       return acoes.rolar(depsAba, (p.args as Comandos['rolar']['args']).direcao);
     case 'links':
       return acoes.links(depsAba);
-    case 'buscar_drive': {
-      const a = p.args as Comandos['buscar_drive']['args'];
-      return { arquivos: await buscarNoDrive(await tokenSemJanela('drive'), a.texto, a.limite) };
-    }
-    case 'ler_drive':
-      return textoDoDrive(await tokenSemJanela('drive'), (p.args as Comandos['ler_drive']['args']).id);
-    case 'buscar_gmail': {
-      const a = p.args as Comandos['buscar_gmail']['args'];
-      return { emails: await buscarNoGmail(await tokenSemJanela('gmail'), a.consulta, a.limite) };
-    }
-    case 'ler_gmail':
-      return lerEmail(await tokenSemJanela('gmail'), (p.args as Comandos['ler_gmail']['args']).id);
     case 'avaliar':
       return avaliar((p.args as Comandos['avaliar']['args']).expr);
     case 'recarregar':

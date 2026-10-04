@@ -20,6 +20,12 @@ export type Comandos = {
   ler_campos: { args: Record<string, never>; result: { url: string; titulo: string; campos: Campo[] } };
   preencher: { args: { ref: number; valor: string }; result: { valor: string } };
   clicar: { args: { ref: number }; result: { ok: true } };
+  // A página como árvore: texto e controles juntos, com hierarquia e ref (extension/utils/arvore.ts).
+  // `texto` é o que a IA lê; `campos` é o que a ponte guarda para conferir cada clique.
+  ler_estrutura: {
+    args: { filtro?: string };
+    result: { url: string; titulo: string; texto: string; truncado: boolean; campos: Campo[] };
+  };
   // Texto da página inteira. A IA só tinha os campos, e por isso recusava "resume esta página".
   ler_pagina: {
     args: { limite?: number };
