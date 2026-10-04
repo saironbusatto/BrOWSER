@@ -17,7 +17,8 @@
     "test:coverage": "bun test --coverage",
     "verificar": "bun run lint && bun run typecheck && bun test",
     "teia:visual": "bun packages/extension/scripts/teia-visual.ts",
-    "grupo:real": "bun packages/extension/scripts/grupo-abas-real.ts"
+    "grupo:real": "bun packages/extension/scripts/grupo-abas-real.ts",
+    "ponto:real": "bun packages/extension/scripts/ponto-real.ts"
   },
   "dependencies": {
     "@browser/shared": "workspace:*"

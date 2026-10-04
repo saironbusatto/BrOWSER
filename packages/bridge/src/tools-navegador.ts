@@ -11,6 +11,7 @@ import { type Cmd, type Comandos, TECLAS } from '@browser/shared';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { Conversa } from './conversas';
+import { recusaPonto } from './envio';
 import { navegacaoLiberada, urlNavegavel } from './navegacao';
 
 export type DepsNavegador = {
@@ -141,7 +142,36 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     async () => {
       d.status('Olhando a tela…');
       const r = await d.enviar('ver_tela', {});
-      return { content: [{ type: 'image' as const, data: r.base64, mimeType: r.mime }] };
+      return {
+        content: [
+          { type: 'image' as const, data: r.base64, mimeType: r.mime },
+          {
+            type: 'text' as const,
+            text: `Foto de ${r.largura}×${r.altura} px. Em clicar_ponto, x e y são pixels desta foto, a partir do canto de cima à esquerda.`,
+          },
+        ],
+      };
+    },
+  );
+
+  s.registerTool(
+    'clicar_ponto',
+    {
+      description:
+        'Clica num ponto da tela, pelas coordenadas da última foto de ver_tela. ÚLTIMO recurso, só para área desenhada que não tem ref: gráfico ou célula de planilha, mapa, canvas. Botão, link e campo são recusados aqui: para eles use ler_campos + clicar. Depois do clique, confira com ver_tela.',
+      inputSchema: {
+        x: z.number().min(0).describe('pixels a partir da esquerda da foto de ver_tela'),
+        y: z.number().min(0).describe('pixels a partir do topo da foto de ver_tela'),
+      },
+    },
+    async ({ x, y }) => {
+      // Regra de código, não de prompt: a ponte olha o que há embaixo do ponto antes de clicar.
+      const recusa = recusaPonto(await d.enviar('descrever_ponto', { x, y }));
+      if (recusa) return texto(recusa);
+      d.status('Clicando na tela…');
+      const r = await d.enviar('clicar_ponto', { x, y });
+      d.paginaMudou();
+      return texto(r);
     },
   );
 
@@ -165,7 +195,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     'teclar',
     {
       description:
-        'Aperta uma tecla na página: navegar em listas e menus (setas), trocar de campo (Tab), fechar janelas (Escape). Enter não existe aqui de propósito: para confirmar, clique no botão.',
+        'Aperta uma tecla na página: navegar em listas e menus (setas), trocar de campo (Tab), fechar janelas (Escape), apagar o que está selecionado (Delete, Backspace). Enter não existe aqui de propósito: para confirmar, clique no botão.',
       inputSchema: { tecla: z.enum(TECLAS) },
     },
     async ({ tecla }) => texto(await d.enviar('teclar', { tecla })),

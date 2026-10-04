@@ -10,7 +10,7 @@
 //
 // Isto estreita a janela; não a fecha. O fecho real continua sendo a pessoa clicar no botão
 // da página com a própria mão (docs/termos-e-privacidade.md §7.2).
-import type { Campo } from '@browser/shared';
+import type { Campo, Ponto } from '@browser/shared';
 
 // "enviar" sozinho; e expressões compostas que só fazem sentido no fim do fluxo.
 const IRREVERSIVEL = [
@@ -79,4 +79,41 @@ export function recusaEnvio(nome: string): { ok: false; motivo: string; pedirCon
       'de envio é a pessoa, na página, com a própria mão.',
     pedirConfirmacao: true,
   };
+}
+
+// ---- Clique por ponto (clicar_ponto) ----
+// Existe para a tela desenhada (grade e gráfico de planilha, mapa, canvas), que não tem ref. Sem
+// trava, viraria um atalho por cima da guarda acima: bastava apontar para o botão "Enviar".
+
+const TAGS_COM_REF = new Set(['a', 'button', 'input', 'select', 'textarea', 'label', 'summary', 'option']);
+const PAPEIS_COM_REF = new Set([
+  'button',
+  'link',
+  'menuitem',
+  'menuitemcheckbox',
+  'menuitemradio',
+  'tab',
+  'checkbox',
+  'radio',
+  'switch',
+  'option',
+  'combobox',
+  'textbox',
+  'searchbox',
+]);
+
+/** Recusa pronta para devolver à IA, ou null quando o clique no ponto pode seguir. */
+export function recusaPonto(p: Ponto): { ok: false; motivo: string } | null {
+  const controle = p.cadeia.find((n) => TAGS_COM_REF.has(n.tag) || PAPEIS_COM_REF.has(n.papel ?? '') || n.editavel);
+  if (controle) {
+    return {
+      ok: false,
+      motivo:
+        `Nesse ponto há um controle da página (${controle.papel || controle.tag}), não uma área desenhada. ` +
+        'clicar_ponto não clica em botão, link nem campo: chame ler_campos e use clicar (ou preencher) com a ref.',
+    };
+  }
+  // Botão feito de <div>, sem papel: não aparece em ler_campos, então a guarda olha o texto dele.
+  const nome = motivoEnvioIrreversivel({ nome: p.texto, papel: 'button' });
+  return nome ? recusaEnvio(nome) : null;
 }

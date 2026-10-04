@@ -471,6 +471,14 @@ async function executar(p: Pedido): Promise<unknown> {
       return acoes.fecharAba(depsAba, (p.args as Comandos['fechar_aba']['args']).id);
     case 'ver_tela':
       return acoes.verTela(depsAba);
+    case 'descrever_ponto': {
+      const a = p.args as Comandos['descrever_ponto']['args'];
+      return acoes.descreverPonto(depsAba, a.x, a.y);
+    }
+    case 'clicar_ponto': {
+      const a = p.args as Comandos['clicar_ponto']['args'];
+      return acoes.clicarPonto(depsAba, a.x, a.y);
+    }
     case 'esperar': {
       const a = p.args as Comandos['esperar']['args'];
       return acoes.esperar(depsAba, a.texto, a.segundos);

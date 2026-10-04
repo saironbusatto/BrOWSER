@@ -32,7 +32,22 @@ campo **"formula bar"** e clique no botão **"commit edit"** (o ✓ ao lado da b
 - As planilhas da pasta aparecem como guias "Planilha …" na parte de baixo: clique para trocar.
 - Fórmulas prontas: guia "Fórmulas" e botão "AutoSoma".
 
-## 5. O que não fazer
+## 5. Gráficos e outros objetos desenhados
+
+Gráfico, imagem e forma não aparecem em `ler_campos`: são desenho, como a grade.
+
+1. `ver_tela` para achar o gráfico. A foto diz o próprio tamanho em pixels.
+2. `clicar_ponto` na borda ou num canto vazio do gráfico (no meio, o clique pega uma barra ou a
+   legenda, não o gráfico inteiro). Confira com `ver_tela`: gráfico selecionado ganha moldura.
+3. **Apagar**: `teclar` Delete. Confira com `ver_tela` antes de ir para o próximo.
+4. **Trocar o tipo**: com o gráfico selecionado aparece a guia "Gráfico"; chame `ler_campos` e
+   clique no tipo ou em "Outros Gráficos" com `clicar`. Os botões da faixa têm ref: neles
+   `clicar_ponto` é recusado.
+
+Muitos gráficos para apagar ou mudar: é um por vez, e demora. Diga isso à pessoa antes de começar
+e, se houver "Chat com o Copilot", prefira pedir a ele.
+
+## 6. O que não fazer
 
 - Não confie em número lido da foto quando o valor importa: confirme na "formula bar".
 - Não apague nem sobrescreva célula sem a pessoa ter pedido.

@@ -86,7 +86,7 @@ describe('as demais tools só repassam à extensão, com a forma certa', () => {
     const deps: DepsNavegador = {
       enviar: (async (cmd: string, args: unknown) => {
         enviados.push({ cmd, args });
-        return cmd === 'ver_tela' ? { mime: 'image/jpeg', base64: 'AAAA' } : { ok: true };
+        return cmd === 'ver_tela' ? { mime: 'image/jpeg', base64: 'AAAA', largura: 1280, altura: 720 } : { ok: true };
       }) as DepsNavegador['enviar'],
       status: (t) => status.push(t),
       perguntar: async () => '',
@@ -102,6 +102,7 @@ describe('as demais tools só repassam à extensão, com a forma certa', () => {
 
     const foto = await handlers.get('ver_tela')!({});
     expect(foto.content[0]).toEqual({ type: 'image', data: 'AAAA', mimeType: 'image/jpeg' });
+    expect(foto.content[1]?.text).toContain('1280×720'); // a IA precisa saber em que espaço de pixels apontar
 
     await handlers.get('esperar')!({ texto: 'Pedido gerado', segundos: 5 });
     await handlers.get('esperar')!({});
@@ -111,5 +112,47 @@ describe('as demais tools só repassam à extensão, com a forma certa', () => {
     expect(enviados[2]!.args).toEqual({ texto: 'Pedido gerado', segundos: 5 });
     expect(enviados[3]!.args).toEqual({});
     expect(status.some((t) => t.includes('Pedido gerado'))).toBe(true);
+  });
+});
+
+describe('clicar_ponto: a ponte olha o que há embaixo antes de clicar', () => {
+  function montarPonto(embaixo: { cadeia: { tag: string; papel?: string }[]; texto: string }) {
+    const handlers = new Map<string, Handler>();
+    const enviados: string[] = [];
+    let mudou = 0;
+    const deps: DepsNavegador = {
+      enviar: (async (cmd: string) => {
+        enviados.push(cmd);
+        return cmd === 'descrever_ponto' ? embaixo : { ok: true };
+      }) as DepsNavegador['enviar'],
+      status: () => {},
+      perguntar: async () => '',
+      conversa: () => conversaDe(new Map(), 'c'),
+      paginaMudou: () => {
+        mudou++;
+      },
+    };
+    registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
+    const clicar = async () => (await handlers.get('clicar_ponto')!({ x: 400, y: 300 })).content[0]?.text ?? '';
+    return { clicar, enviados, mudou: () => mudou };
+  }
+
+  it('área desenhada: clica e invalida as refs (a tela pode ter mudado)', async () => {
+    const t = montarPonto({ cadeia: [{ tag: 'canvas' }, { tag: 'div' }], texto: '' });
+    expect(await t.clicar()).toContain('"ok": true');
+    expect(t.enviados).toEqual(['descrever_ponto', 'clicar_ponto']);
+    expect(t.mudou()).toBe(1);
+  });
+
+  it('botão embaixo do ponto: o clique NÃO chega à extensão', async () => {
+    const t = montarPonto({ cadeia: [{ tag: 'span' }, { tag: 'button' }], texto: 'Enviar' });
+    expect(await t.clicar()).toContain('ler_campos');
+    expect(t.enviados).toEqual(['descrever_ponto']);
+  });
+
+  it('<div> com cara de botão de envio: barrado pela guarda de envio', async () => {
+    const t = montarPonto({ cadeia: [{ tag: 'div' }], texto: 'Finalizar compra' });
+    expect(await t.clicar()).toContain('pedirConfirmacao');
+    expect(t.enviados).toEqual(['descrever_ponto']);
   });
 });

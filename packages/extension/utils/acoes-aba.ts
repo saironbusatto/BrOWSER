@@ -5,8 +5,9 @@
 // Quem decide PARA ONDE navegar é a ponte (navegacao.ts). Aqui é a segunda trava: nada que não seja
 // http/https chega ao chrome.tabs.
 
-import type { InfoAba, Tecla } from '@browser/shared';
+import type { InfoAba, Ponto, Tecla } from '@browser/shared';
 import { abasDoGrupo, noGrupo, trazerParaOGrupo } from './grupo-abas';
+import { descreverNoPonto, escalaFoto } from './ponto';
 
 export type DepsAba = {
   abaAlvo: () => Promise<number>;
@@ -135,22 +136,87 @@ function mostrarTeia(tabId: number, visivel: boolean) {
 }
 
 /** Screenshot do que está visível, sem o efeito da teia por cima (a IA veria a teia, não a página). */
-export async function verTela(d: DepsAba): Promise<{ mime: string; base64: string }> {
+export async function verTela(d: DepsAba): Promise<{ mime: string; base64: string; largura: number; altura: number }> {
   const tabId = await d.abaAlvo();
   await mostrarTeia(tabId, false);
   try {
+    // PNG aqui: a foto ainda vai ser reduzida, e JPEG duas vezes borra texto pequeno.
     if (!d.semDebugger(tabId)) {
-      const r = await d.cdp<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: 60 });
-      return { mime: 'image/jpeg', base64: r.data };
+      const r = await d.cdp<{ data: string }>('Page.captureScreenshot', { format: 'png' });
+      return await reduzirFoto(r.data, await tamanhoDaTela(tabId));
     }
     // Sem debugger (política de empresa, extensão de segurança): só dá para fotografar a aba da frente.
     const { windowId } = await chrome.tabs.get(tabId);
     await chrome.tabs.update(tabId, { active: true });
-    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'jpeg', quality: 60 });
-    return { mime: 'image/jpeg', base64: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+    return await reduzirFoto(dataUrl.slice(dataUrl.indexOf(',') + 1), await tamanhoDaTela(tabId));
   } finally {
     await mostrarTeia(tabId, true);
   }
+}
+
+type Tela = { largura: number; altura: number };
+const tamanhoDaTela = (tabId: number) => naPagina(tabId, (): Tela => ({ largura: window.innerWidth, altura: window.innerHeight }), []);
+
+/** A foto sai em px do dispositivo (2x, 3x); a IA recebe em px de CSS, com teto (ponto.ts). */
+async function reduzirFoto(png: string, tela: Tela) {
+  const bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+  const largura = Math.round(tela.largura * escalaFoto(tela.largura, tela.altura));
+  const altura = Math.round((bmp.height * largura) / bmp.width);
+  const quadro = new OffscreenCanvas(largura, altura);
+  quadro.getContext('2d')!.drawImage(bmp, 0, 0, largura, altura);
+  const bytes = new Uint8Array(await (await quadro.convertToBlob({ type: 'image/jpeg', quality: 0.6 })).arrayBuffer());
+  let binario = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { mime: 'image/jpeg', base64: btoa(binario), largura, altura };
+}
+
+/** Do pixel da foto para o px de CSS da tela. Ponto fora da foto é erro, não clique no vazio. */
+async function pontoNaTela(tabId: number, x: number, y: number): Promise<{ x: number; y: number }> {
+  const tela = await tamanhoDaTela(tabId);
+  const escala = escalaFoto(tela.largura, tela.altura);
+  const p = { x: x / escala, y: y / escala };
+  if (!(p.x >= 0 && p.x < tela.largura && p.y >= 0 && p.y < tela.altura)) {
+    throw new Error(
+      `ponto fora da foto de ${Math.round(tela.largura * escala)}×${Math.round(tela.altura * escala)}; tire outra com ver_tela`,
+    );
+  }
+  return p;
+}
+
+const MAX_FRAMES_ANINHADOS = 5;
+
+/** O que há embaixo do ponto, descendo pelos iframes (inclusive os de outra origem). */
+export async function descreverPonto(d: DepsAba, x: number, y: number): Promise<Ponto> {
+  const tabId = await d.abaAlvo();
+  let ponto = await pontoNaTela(tabId, x, y);
+  let caminho: number[] = [];
+  for (let nivel = 0; nivel <= MAX_FRAMES_ANINHADOS; nivel++) {
+    const respostas = await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      func: descreverNoPonto,
+      args: [ponto.x, ponto.y, caminho],
+    });
+    const r = respostas.map((f) => f.result).find(Boolean);
+    if (!r) break; // frame em que a extensão não entra: sem saber o que é, não clica
+    if (!r.descer) return { cadeia: r.cadeia, texto: r.texto };
+    caminho = [...caminho, r.descer.indice];
+    ponto = { x: r.descer.x, y: r.descer.y };
+  }
+  throw new Error('não deu para ver o que há nesse ponto (frame fechado para a extensão); clique não executado');
+}
+
+export async function clicarPonto(d: DepsAba, x: number, y: number): Promise<{ ok: true }> {
+  const tabId = await d.abaAlvo();
+  // Mesmo motivo do teclar: clique sintético por script é isTrusted=false, e canvas ignora.
+  if (d.semDebugger(tabId)) throw new Error('clicar_ponto precisa do modo completo; esta aba está sem acesso de depuração');
+  const p = await pontoNaTela(tabId, x, y);
+  // O mouse chega antes do clique: há tela que só seleciona o que já estava sob o ponteiro.
+  await d.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', ...p });
+  for (const type of ['mousePressed', 'mouseReleased']) {
+    await d.cdp('Input.dispatchMouseEvent', { type, ...p, button: 'left', clickCount: 1 });
+  }
+  return { ok: true };
 }
 
 async function naPagina<A extends unknown[], R>(tabId: number, func: (...a: A) => R, args: A): Promise<R> {
@@ -189,6 +255,7 @@ const CODIGOS: Record<Tecla, number> = {
   Home: 36,
   End: 35,
   Backspace: 8,
+  Delete: 46,
 };
 
 export async function teclar(d: DepsAba, tecla: Tecla): Promise<{ ok: true }> {

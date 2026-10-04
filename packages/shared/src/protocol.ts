@@ -35,7 +35,12 @@ export type Comandos = {
   abrir_aba: { args: { url: string }; result: InfoAba & { id: number } };
   usar_aba: { args: { id: number }; result: InfoAba };
   fechar_aba: { args: { id: number }; result: { ok: true } };
-  ver_tela: { args: Record<string, never>; result: { mime: string; base64: string } };
+  // A foto vem reduzida (utils/ponto.ts › escalaFoto) e diz o próprio tamanho: é nesse espaço de
+  // pixels que a IA aponta em `clicar_ponto`.
+  ver_tela: { args: Record<string, never>; result: { mime: string; base64: string; largura: number; altura: number } };
+  // Interno da ponte: o que há embaixo do ponto, para a trava (envio.ts › recusaPonto) decidir.
+  descrever_ponto: { args: { x: number; y: number }; result: Ponto };
+  clicar_ponto: { args: { x: number; y: number }; result: { ok: true } };
   esperar: { args: { texto?: string; segundos?: number }; result: { achou: boolean; esperouMs: number } };
   teclar: { args: { tecla: Tecla }; result: { ok: true } };
   rolar: { args: { direcao: 'cima' | 'baixo' | 'topo' | 'fim' }; result: { y: number; alturaTotal: number } };
@@ -60,6 +65,10 @@ export type Comandos = {
 
 export type InfoAba = { url: string; titulo: string };
 
+/** Um elemento embaixo do ponto. `cadeia` vai dele até a raiz do documento em que ele está. */
+export type NoPonto = { tag: string; papel?: string; editavel?: boolean };
+export type Ponto = { cadeia: NoPonto[]; texto: string };
+
 // Sem Enter de propósito: Enter num formulário envia, e isso furaria a trava de envio final
 // (envio.ts), que só olha cliques. Para confirmar, a IA clica, e o clique passa pela trava.
 export const TECLAS = [
@@ -74,6 +83,7 @@ export const TECLAS = [
   'Home',
   'End',
   'Backspace',
+  'Delete',
 ] as const;
 export type Tecla = (typeof TECLAS)[number];
 
