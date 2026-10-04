@@ -29,7 +29,7 @@ export type ConfigTeia = {
 // descartada (a antiga estava lá, então o atalho de reuso a mantinha), e o efeito velho
 // continuava na tela — "recarreguei e não mudou nada". A marca mora na config porque a função
 // injetada não lê nada do módulo: quem compara são as duas instâncias, via `cfg`.
-export const VERSAO_TEIA = '2';
+export const VERSAO_TEIA = '3';
 
 // 1 cm vale 96/2.54 px de CSS. Em tela menor o número de células cai sozinho, que é o
 // comportamento pedido: o espaçamento é o mesmo, a quantidade é que é proporcional.
@@ -291,9 +291,9 @@ export function iniciarTeia(cfg: ConfigTeia, deforma: (dx: number, dy: number, r
       // Cada via começa num ponto qualquer do versículo, para as cinco não recitarem a mesma
       // palavra ao mesmo tempo.
       i: Math.floor(Math.random() * G.length),
-      // 12 a 40 células por segundo: o dobro de antes (6 a 20). Mais devagar que isto e o
-      // rastro, que tem `vida` células, levaria segundos para encher.
-      vel: (12 + Math.random() * 28) * CEL,
+      // 6 a 20 células por segundo. Já foi o dobro (12 a 40) e a pessoa não conseguia acompanhar
+      // as letras.
+      vel: (6 + Math.random() * 14) * CEL,
       trilha: [],
       ponto: false,
     };
