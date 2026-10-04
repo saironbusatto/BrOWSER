@@ -27,7 +27,6 @@ import { CONTROLE_ATIVO } from './build';
 import { DIR_PONTE, pathComIAs } from './caminhos';
 import { type Conversa, conversaDe, registrarMensagem } from './conversas';
 import { rodarDiagnostico } from './doctor';
-import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { cancelarExecucao, definirCancelamento, type Execucao, executar, marcarAtividade, removerIntegracaoAgy } from './ias';
 import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
@@ -37,6 +36,7 @@ import { escolherSkills, type Skill } from './skills';
 import { registrarToolsDrive } from './tools-drive';
 import { registrarToolsGmail } from './tools-gmail';
 import { registrarToolsNavegador } from './tools-navegador';
+import { type DepsPagina, registrarToolsPagina, verMudanca } from './tools-pagina';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -488,125 +488,19 @@ function criarMcp() {
       return texto(bp ?? { encontrado: false, mensagem: 'Nenhum blueprint disponível para este domínio ainda.' });
     },
   );
-  s.registerTool(
-    'ler_campos',
-    {
-      description:
-        'Lê a aba atual do navegador e lista os campos de formulário e botões: ref, papel, rótulo (nome), valor atual, se está marcado e as opções de selects. Chame antes de preencher e de novo no fim para conferir.',
-      inputSchema: {},
+  const pagina: DepsPagina = {
+    enviar,
+    status: (t) => {
+      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
     },
-    async () => {
-      if (pedidoAtivo) {
-        escrever({
-          tipo: 'status',
-          pedidoId: pedidoAtivo,
-          texto: 'Mapeando elementos e botões da página…',
-          agente: 'scout',
-        } satisfies Evento);
-      }
-      const leitura = (await enviar('ler_campos', {})) as { url: string; titulo: string; campos: Campo[] };
-      // Guarda do clique em envio: só dá para classificar o que foi lido nesta rodada.
-      camposConhecidos = new Map(leitura.campos.map((c) => [c.ref, c]));
-      return texto(leitura);
+    temPedido: () => pedidoAtivo !== undefined,
+    campos: () => camposConhecidos,
+    definirCampos: (m) => {
+      camposConhecidos = m;
     },
-  );
-  // Leitura única (roteiro, fase 1.2): texto e controles juntos, com hierarquia. Sai em texto
-  // puro e não em JSON: é o que a IA lê a cada passo, e cada chave repetida é ficha jogada fora.
-  s.registerTool(
-    'ler_estrutura',
-    {
-      description:
-        'Lê a página como ela é: texto e controles juntos, na ordem de leitura, com hierarquia (título, tabela, linha, lista, janela) e uma ref em cada coisa clicável ou preenchível. Use PRIMEIRO, antes de qualquer outra leitura: mostra de que linha é cada botão e o que está escrito ao redor. Com `filtro`, devolve só a parte da página que contém aquele texto (use em página grande ou quando a leitura vier cortada).',
-      inputSchema: { filtro: z.string().optional().describe('Texto que a parte procurada contém, ex.: "Padaria Sol", "exportar"') },
-    },
-    async ({ filtro }) => {
-      if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Lendo a página…', agente: 'scout' } satisfies Evento);
-      const r = await enviar('ler_estrutura', filtro ? { filtro } : {});
-      // Mesma guarda do ler_campos: só dá para classificar um clique no que foi lido nesta rodada.
-      // Leitura filtrada acrescenta; leitura inteira substitui.
-      camposConhecidos = new Map([...(filtro ? camposConhecidos : []), ...r.campos.map((c) => [c.ref, c] as const)]);
-      const corte = r.truncado ? '\n… (página grande, leitura cortada: chame de novo com `filtro`)' : '';
-      const vazio = filtro ? `nada na página contém "${filtro}"` : '(página sem conteúdo legível; se for tela desenhada, use ver_tela)';
-      return { content: [{ type: 'text' as const, text: `${r.titulo}\n${r.url}\n\n${r.texto || vazio}${corte}` }] };
-    },
-  );
-  s.registerTool(
-    'preencher',
-    {
-      description:
-        'Preenche um campo pelo ref obtido em ler_campos. Datas: AAAA-MM-DD. Select: texto ou valor da opção. Checkbox/radio: "true" para marcar, "false" para desmarcar. Retorna o valor que ficou no campo.',
-      inputSchema: { ref: z.number().int().describe('ref do campo em ler_campos'), valor: z.string() },
-    },
-    async ({ ref, valor }) => {
-      if (pedidoAtivo) {
-        escrever({
-          tipo: 'status',
-          pedidoId: pedidoAtivo,
-          texto: `Preenchendo: ${valor.length > 20 ? `${valor.slice(0, 18)}…` : valor}`,
-          agente: 'scout',
-        } satisfies Evento);
-      }
-      return texto(await enviar('preencher', { ref, valor }));
-    },
-  );
-  s.registerTool(
-    'clicar',
-    {
-      description:
-        'Clica num elemento pelo ref obtido em ler_campos. NUNCA clique em botões que enviam o formulário sem confirmação explícita do usuário.',
-      inputSchema: { ref: z.number().int() },
-    },
-    async ({ ref }) => {
-      // Regra de código, não de prompt: clique em envio final é barrado antes de chegar na página.
-      const campo = camposConhecidos.get(ref);
-      if (!campo) return texto({ erro: `ref ${ref} desconhecida: chame ler_campos antes de clicar` });
-      const nome = motivoEnvioIrreversivel(campo);
-      if (nome) {
-        log(`clique em "${nome}" barrado: envio irreversível`);
-        return texto(recusaEnvio(nome));
-      }
-      if (pedidoAtivo) {
-        escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: 'Navegando / abrindo menu na página…', agente: 'scout' } satisfies Evento);
-      }
-      return texto(await enviar('clicar', { ref }));
-    },
-  );
-  // A ferramenta que faltava. Sem ela a IArespondia "não consigo ler a página" a pedido legítimo,
-  // porque só existia ler_campos: ela via os campos do formulário, não o texto. Recusar um
-  // pedido que dá para cumprir é a pior resposta que um agente pode dar.
-  s.registerTool(
-    'ler_pagina',
-    {
-      description:
-        'Lê o TEXTO da aba ativa: a página inteira de uma vez, sem precisar rolar. Use para entender a página, resumir, responder perguntas sobre o que está escrito, localizar um texto antes de clicar. Para preencher formulários use ler_campos. Campo de senha nunca tem o valor lido. Se o retorno disser que o texto foi cortado, peça o trecho que falta em vez de adivinhar.',
-      inputSchema: {
-        limite: z
-          .number()
-          .int()
-          .min(500)
-          .max(200_000)
-          .optional()
-          .describe('Máximo de caracteres a devolver (padrão 40000). Aumente só se o texto vier cortado.'),
-      },
-    },
-    async ({ limite }) => {
-      if (!pedidoAtivo) return texto({ erro: 'Nenhum pedido ativo no momento' });
-      const r = (await enviar('ler_pagina', limite ? { limite } : {}).catch((e) => ({
-        erro: `não consegui ler a página: ${String(e)}`,
-      }))) as { url: string; titulo: string; texto: string; truncado: boolean; caracteres: number; erro?: string };
-      if (r.erro) return texto(r);
-      return texto({
-        url: r.url,
-        titulo: r.titulo,
-        caracteres: r.caracteres,
-        truncado: r.truncado,
-        texto: r.texto,
-        aviso: r.truncado
-          ? 'O texto veio cortado. Se a resposta depender do que ficou de fora, chame ler_pagina de novo com um limite maior.'
-          : undefined,
-      });
-    },
-  );
+    log,
+  };
+  registrarToolsPagina(s, pagina);
 
   s.registerTool(
     'perguntar_ao_usuario',
@@ -643,6 +537,7 @@ function criarMcp() {
     paginaMudou: () => {
       camposConhecidos = new Map();
     },
+    ver: (acao) => verMudanca(pagina, acao),
   });
   registrarToolsDrive(s, {
     enviar,

@@ -33,6 +33,7 @@ export const TOOLS = [
   'ler_campos',
   'ler_estrutura',
   'preencher',
+  'preencher_varios',
   'clicar',
   'ler_pagina',
   'perguntar_ao_usuario',
@@ -100,8 +101,9 @@ Diretrizes de atuação:
    - Comece por 'ler_estrutura': uma chamada mostra o texto e os controles da página juntos, cada controle com sua ref e dentro da linha, item ou janela a que pertence. Quase sempre basta para agir; não chame 'ler_campos' nem 'ler_pagina' para ver a mesma página de novo.
    - Se o site tem busca própria ou assistente de IA (busca do Drive, Copilot), prefira esse caminho a abrir item por item.
    - MENUS E FERRAMENTAS OCULTAS (ex.: Gemini, ChatGPT, ERPs):
-     * Se a opção, ferramenta (ex.: "+", "Nano Banana", modo) não estiver visível inicialmente, clique no botão disparador do menu/gaveta e chame 'ler_estrutura' de novo.
-   - Preencha cada campo necessário usando 'preencher' (ou 'clicar' para botões, switches, checkboxes e itens de menu).
+     * Se a opção, ferramenta (ex.: "+", "Nano Banana", modo) não estiver visível inicialmente, clique no botão disparador do menu/gaveta: a resposta do clique já traz o menu que abriu.
+   - Mais de um campo a preencher: 'preencher_varios', todos numa chamada só (inclusive caixas e opções de rádio, com "true"). 'preencher' é para um campo isolado.
+   - 'clicar', 'preencher_varios' e 'teclar' já respondem com o que mudou na página (janela ou menu que abriu, linha que sumiu, erro que apareceu) e com as refs novas. Siga dali: só chame 'ler_estrutura' de novo se precisar de uma parte que não veio na resposta.
    - NUNCA tente resolver captchas ("não sou um robô", desafios de imagem): peça ao usuário para resolver.
    - NUNCA clique em botões de envio final irrevogável ("Enviar", "Submit", "Finalizar") sem autorização explícita do usuário.
    - 'ler_pagina' é só para texto longo (resumir um artigo inteiro, página cuja leitura veio cortada).

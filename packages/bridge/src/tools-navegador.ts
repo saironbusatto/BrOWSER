@@ -22,6 +22,8 @@ export type DepsNavegador = {
   conversa: () => Conversa | undefined;
   /** A página mudou: os refs lidos antes não valem mais (e o clique exige ler de novo). */
   paginaMudou: () => void;
+  /** Faz a ação e diz o que mudou na página (mudancas.ts), já atualizando as refs conhecidas. */
+  ver: <T>(acao: () => Promise<T>) => Promise<{ resultado: T; mudou: string }>;
 };
 
 const PERMITIR = 'Permitir';
@@ -158,7 +160,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     'clicar_ponto',
     {
       description:
-        'Clica num ponto da tela, pelas coordenadas da última foto de ver_tela. ÚLTIMO recurso, só para área desenhada que não tem ref: gráfico ou célula de planilha, mapa, canvas. Botão, link e campo são recusados aqui: para eles use ler_campos + clicar. Depois do clique, confira com ver_tela.',
+        'Clica num ponto da tela, pelas coordenadas da última foto de ver_tela. ÚLTIMO recurso, só para área desenhada que não tem ref: gráfico ou célula de planilha, mapa, canvas. Botão, link e campo são recusados aqui: para eles use ler_campos + clicar. A resposta diz o que mudou no texto da página; se a mudança for só no desenho, confira com ver_tela.',
       inputSchema: {
         x: z.number().min(0).describe('pixels a partir da esquerda da foto de ver_tela'),
         y: z.number().min(0).describe('pixels a partir do topo da foto de ver_tela'),
@@ -169,9 +171,10 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
       const recusa = recusaPonto(await d.enviar('descrever_ponto', { x, y }));
       if (recusa) return texto(recusa);
       d.status('Clicando na tela…');
-      const r = await d.enviar('clicar_ponto', { x, y });
-      d.paginaMudou();
-      return texto(r);
+      const v = await d.ver(() => d.enviar('clicar_ponto', { x, y }));
+      // Sem leitura da página não há como dizer o que mudou: as refs antigas deixam de valer.
+      if (!v.mudou) d.paginaMudou();
+      return v.mudou ? { content: [{ type: 'text' as const, text: `Clique feito.\n\n${v.mudou}` }] } : texto(v.resultado);
     },
   );
 
@@ -198,7 +201,10 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
         'Aperta uma tecla na página: navegar em listas e menus (setas), trocar de campo (Tab), fechar janelas (Escape), apagar o que está selecionado (Delete, Backspace). Enter não existe aqui de propósito: para confirmar, clique no botão.',
       inputSchema: { tecla: z.enum(TECLAS) },
     },
-    async ({ tecla }) => texto(await d.enviar('teclar', { tecla })),
+    async ({ tecla }) => {
+      const v = await d.ver(() => d.enviar('teclar', { tecla }));
+      return v.mudou ? { content: [{ type: 'text' as const, text: `Tecla ${tecla} apertada.\n\n${v.mudou}` }] } : texto(v.resultado);
+    },
   );
 
   s.registerTool(

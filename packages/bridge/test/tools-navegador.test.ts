@@ -2,6 +2,9 @@ import { describe, expect, it } from 'bun:test';
 import { conversaDe, registrarMensagem } from '../src/conversas';
 import { type DepsNavegador, registrarToolsNavegador } from '../src/tools-navegador';
 
+// O que a ponte diria que mudou depois da ação; vazio = sem leitura da página (caminho antigo).
+const opcaoMudou = '';
+
 type Handler = (args: Record<string, unknown>) => Promise<{ content: { type: string; text?: string; data?: string; mimeType?: string }[] }>;
 
 /** Monta as tools com uma ponte falsa e devolve o que cada uma fez. */
@@ -27,6 +30,7 @@ function montar(opcoes: { links?: string[]; resposta?: string; pedido?: string; 
     },
     conversa: () => conversa,
     paginaMudou: () => {},
+    ver: async (acao) => ({ resultado: await acao(), mudou: '' }),
   };
   registrarToolsNavegador(servidor as never, deps);
   const chamar = async (nome: string, args: Record<string, unknown> = {}) => {
@@ -94,6 +98,7 @@ describe('as demais tools só repassam à extensão, com a forma certa', () => {
       paginaMudou: () => {
         mudou++;
       },
+      ver: async (acao) => ({ resultado: await acao(), mudou: opcaoMudou }),
     };
     registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
 
@@ -131,6 +136,7 @@ describe('clicar_ponto: a ponte olha o que há embaixo antes de clicar', () => {
       paginaMudou: () => {
         mudou++;
       },
+      ver: async (acao) => ({ resultado: await acao(), mudou: opcaoMudou }),
     };
     registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
     const clicar = async () => (await handlers.get('clicar_ponto')!({ x: 400, y: 300 })).content[0]?.text ?? '';
@@ -154,5 +160,29 @@ describe('clicar_ponto: a ponte olha o que há embaixo antes de clicar', () => {
     const t = montarPonto({ cadeia: [{ tag: 'div' }], texto: 'Finalizar compra' });
     expect(await t.clicar()).toContain('pedirConfirmacao');
     expect(t.enviados).toEqual(['descrever_ponto']);
+  });
+});
+
+describe('ações que já dizem o que mudou', () => {
+  it('teclar e clicar_ponto respondem com a mudança da página, e as refs novas ficam valendo', async () => {
+    const handlers = new Map<string, Handler>();
+    let zerou = 0;
+    const deps: DepsNavegador = {
+      enviar: (async (cmd: string) =>
+        cmd === 'descrever_ponto' ? { cadeia: [{ tag: 'canvas' }], texto: '' } : { ok: true }) as DepsNavegador['enviar'],
+      status: () => {},
+      perguntar: async () => '',
+      conversa: () => conversaDe(new Map(), 'c'),
+      paginaMudou: () => {
+        zerou++;
+      },
+      ver: async (acao) => ({ resultado: await acao(), mudou: 'Apareceu:\nÁrea selecionada: azul' }),
+    };
+    registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
+    expect((await handlers.get('teclar')!({ tecla: 'Delete' })).content[0]?.text).toBe(
+      'Tecla Delete apertada.\n\nApareceu:\nÁrea selecionada: azul',
+    );
+    expect((await handlers.get('clicar_ponto')!({ x: 1, y: 1 })).content[0]?.text).toContain('Área selecionada: azul');
+    expect(zerou).toBe(0); // a leitura nova já trouxe as refs: não precisa mandar ler de novo
   });
 });
