@@ -37,6 +37,7 @@ import { registrarToolsDrive } from './tools-drive';
 import { registrarToolsGmail } from './tools-gmail';
 import { registrarToolsNavegador } from './tools-navegador';
 import { type DepsPagina, registrarToolsPagina, verMudanca } from './tools-pagina';
+import { registrarToolsPassos } from './tools-passos';
 
 process.env.PATH = pathComIAs(); // o navegador passa o PATH de quando foi aberto
 
@@ -501,6 +502,7 @@ function criarMcp() {
     log,
   };
   registrarToolsPagina(s, pagina);
+  registrarToolsPassos(s, pagina);
 
   s.registerTool(
     'perguntar_ao_usuario',

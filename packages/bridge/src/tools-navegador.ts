@@ -182,7 +182,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     'esperar',
     {
       description:
-        'Espera a página: até um texto aparecer (ex.: "Pedido gerado", resultado de busca) ou, sem texto, só alguns segundos. Máximo 15 s.',
+        'Espera a página: até um texto aparecer (ex.: "Pedido gerado", resultado de busca) ou, sem texto, só alguns segundos. Máximo 15 s. Responde com o que apareceu na página durante a espera, com as refs: não precisa reler depois.',
       inputSchema: {
         texto: z.string().optional().describe('Texto que indica que a página terminou de carregar'),
         segundos: z.number().min(1).max(15).optional(),
@@ -190,7 +190,15 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     },
     async ({ texto: procurado, segundos }) => {
       d.status(procurado ? `Esperando aparecer “${procurado.slice(0, 30)}”…` : 'Esperando a página…');
-      return texto(await d.enviar('esperar', { ...(procurado && { texto: procurado }), ...(segundos && { segundos }) }));
+      // A espera já devolve o que apareceu: sem isso a IA esperava e depois relia a página.
+      const v = await d.ver(() => d.enviar('esperar', { ...(procurado && { texto: procurado }), ...(segundos && { segundos }) }));
+      if (!v.mudou) return texto(v.resultado);
+      const achou = procurado
+        ? v.resultado.achou
+          ? `"${procurado}" apareceu.`
+          : `"${procurado}" NÃO apareceu no tempo dado.`
+        : 'Espera feita.';
+      return { content: [{ type: 'text' as const, text: `${achou}\n\n${v.mudou}` }] };
     },
   );
 
