@@ -28,6 +28,7 @@ export type DepsNavegador = {
   anotar: (acao: 'clicar' | 'teclar' | 'esperar', alvo?: string) => void;
 };
 
+const MAX_POR_PAGINA = 8000;
 const PERMITIR = 'Permitir';
 const NAO_PERMITIR = 'Não permitir';
 const texto = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
@@ -104,6 +105,52 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
       const r = await d.enviar('abrir_aba', { url: ok.url });
       d.paginaMudou();
       return texto(r);
+    },
+  );
+
+  // Ler N páginas eram 2N chamadas (navegar + ler, uma de cada vez). É o `bulk_get` do Scrapling,
+  // com o navegador da pessoa (logado) no lugar de uma busca HTTP crua, e a regra de navegação
+  // valendo para cada endereço.
+  s.registerTool(
+    'ler_paginas',
+    {
+      description:
+        'Lê VÁRIAS páginas numa chamada só: abre cada endereço numa aba do seu grupo, lê a estrutura (como ler_estrutura) e fecha. Use para as páginas 2, 3… de uma lista, vários resultados de busca, vários itens. Com `filtro`, de cada página vem só a parte que contém o texto. No fim você continua na aba em que estava. Mesma regra de permissão do navegar.',
+      inputSchema: {
+        urls: z.array(z.string()).min(1).max(8).describe('Endereços completos, com https://'),
+        filtro: z.string().optional().describe('De cada página, só a parte que contém este texto'),
+      },
+    },
+    async ({ urls, filtro }) => {
+      const { abas } = await d.enviar('listar_abas', {});
+      const origem = abas.find((a) => a.alvo)?.id;
+      const partes: string[] = [];
+      for (const [i, bruta] of urls.entries()) {
+        const ok = await liberarNavegacao(d, bruta);
+        if ('erro' in ok) {
+          partes.push(`### ${bruta}\nNão aberta: ${ok.erro}`);
+          continue;
+        }
+        d.status(`Lendo a página ${i + 1} de ${urls.length}…`);
+        try {
+          const aba = await d.enviar('abrir_aba', { url: ok.url });
+          const l = await d.enviar('ler_estrutura', filtro ? { filtro } : {});
+          partes.push(
+            `### ${l.titulo}\n${l.url}\n${(l.texto || '(nada legível)').slice(0, MAX_POR_PAGINA)}${l.truncado || l.texto.length > MAX_POR_PAGINA ? '\n… (cortada: use filtro)' : ''}`,
+          );
+          await d.enviar('fechar_aba', { id: aba.id }).catch(() => {});
+        } catch (e) {
+          partes.push(`### ${ok.url}\nNão deu para ler: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      // Volta para onde a IA estava: as refs que ela tinha são daquela aba, e precisam ser relidas.
+      if (origem !== undefined) await d.enviar('usar_aba', { id: origem }).catch(() => {});
+      d.paginaMudou();
+      return {
+        content: [
+          { type: 'text' as const, text: `${partes.join('\n\n')}\n\n(Você continua na aba de antes; para clicar nela, leia de novo.)` },
+        ],
+      };
     },
   );
 

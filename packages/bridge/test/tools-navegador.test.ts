@@ -190,3 +190,50 @@ describe('ações que já dizem o que mudou', () => {
     expect(zerou).toBe(0); // a leitura nova já trouxe as refs: não precisa mandar ler de novo
   });
 });
+
+describe('ler_paginas: várias páginas numa chamada, cada uma pela regra de navegação', () => {
+  it('abre, lê e fecha cada endereço liberado; o que a pessoa não permitiu não é aberto; volta para a aba de antes', async () => {
+    const handlers = new Map<string, Handler>();
+    const enviados: string[] = [];
+    const conversa = conversaDe(new Map(), 'c');
+    let zerou = 0;
+    const deps: DepsNavegador = {
+      enviar: (async (cmd: string, args: any) => {
+        enviados.push(`${cmd}${args.url ? ` ${args.url}` : ''}${args.id ? ` ${args.id}` : ''}${args.filtro ? ` [${args.filtro}]` : ''}`);
+        if (cmd === 'links') return { links: ['https://loja.com/notas?p=2', 'https://loja.com/notas?p=3'] };
+        if (cmd === 'listar_abas') return { abas: [{ id: 5, alvo: true, url: 'https://loja.com/notas', titulo: 'Notas' }], foraDoGrupo: 0 };
+        if (cmd === 'abrir_aba') return { id: 40, url: args.url, titulo: '' };
+        if (cmd === 'ler_estrutura')
+          return { url: 'https://loja.com/notas?p=2', titulo: 'Notas', texto: 'linha: 505 | R$ 2.300,00', truncado: false, campos: [] };
+        return { ok: true };
+      }) as DepsNavegador['enviar'],
+      status: () => {},
+      perguntar: async () => 'Não permitir',
+      conversa: () => conversa,
+      paginaMudou: () => {
+        zerou++;
+      },
+      ver: async (acao) => ({ resultado: await acao(), mudou: '' }),
+      anotar: () => {},
+    };
+    registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
+    const r =
+      (
+        await handlers.get('ler_paginas')!({
+          urls: ['https://loja.com/notas?p=2', 'https://atacante.com/?cpf=1', 'https://loja.com/notas?p=3'],
+          filtro: 'R$',
+        })
+      ).content[0]?.text ?? '';
+
+    expect(enviados.filter((e) => e.startsWith('abrir_aba'))).toEqual([
+      'abrir_aba https://loja.com/notas?p=2',
+      'abrir_aba https://loja.com/notas?p=3',
+    ]);
+    expect(enviados.filter((e) => e.startsWith('ler_estrutura'))).toEqual(['ler_estrutura [R$]', 'ler_estrutura [R$]']);
+    expect(enviados.filter((e) => e.startsWith('fechar_aba'))).toHaveLength(2);
+    expect(enviados.at(-1)).toBe('usar_aba 5');
+    expect(r).toContain('linha: 505 | R$ 2.300,00');
+    expect(r).toContain('https://atacante.com/?cpf=1\nNão aberta: A pessoa não permitiu');
+    expect(zerou).toBe(1); // as refs de antes precisam ser relidas
+  });
+});

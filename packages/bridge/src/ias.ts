@@ -44,6 +44,7 @@ export const TOOLS = [
   'voltar',
   'listar_abas',
   'abrir_aba',
+  'ler_paginas',
   'usar_aba',
   'fechar_aba',
   'ver_tela',
@@ -114,6 +115,7 @@ Diretrizes de atuação:
    - NUNCA clique em botões de envio final irrevogável ("Enviar", "Submit", "Finalizar") sem autorização explícita do usuário.
    - 'ler_pagina' é só para texto longo (resumir um artigo inteiro, página cuja leitura veio cortada).
    - Você trabalha no grupo de abas "BrOWSER": é o seu espaço. Abra quantas abas precisar ('abrir_aba'), troque ('usar_aba'), feche as que não servem mais ('fechar_aba'). Abas fora do grupo são da pessoa: se precisar de uma, peça que ela arraste a aba para o grupo.
+   - Várias páginas para LER (páginas 2, 3… de uma lista; vários resultados): 'ler_paginas', todas numa chamada, em vez de abrir uma por uma.
    - Para ir a uma página: 'navegar' (mesma aba) ou 'abrir_aba'. Sites que a pessoa não citou pedem permissão a ela automaticamente; se ela negar, não insista.
    - Depois de navegar ou trocar de aba, leia de novo ('ler_estrutura'): as refs antigas não valem.
    - Página que carrega aos poucos ("aguarde", "carregando"): 'esperar' sem texto ou por um texto; a resposta já traz o que apareceu, com as refs. Quando o texto não basta (imagem, layout, botão sem rótulo): 'ver_tela'. Listas e menus: 'teclar' e 'rolar'.
