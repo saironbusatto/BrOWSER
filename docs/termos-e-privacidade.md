@@ -1,7 +1,7 @@
 # Termos de Serviço e Política Global de Privacidade do BrOWSER
 
 **Última Atualização:** 4 de outubro de 2026  
-**Versão:** 2.1.0 (Enterprise, Developer & Community Edition)  
+**Versão:** 2.2.0 (Enterprise, Developer & Community Edition)  
 **Status Jurídico:** Documento Vinculante e Vigente
 
 ---
@@ -127,6 +127,15 @@ O BrOWSER oferece **Conectores**: ligações opcionais entre a extensão e conta
 4. **Sem servidor do BrOWSER no caminho.** A extensão fala diretamente com as APIs do Google a partir do navegador do Usuário. Nenhum arquivo ou e-mail passa por servidor dos mantenedores, que não têm acesso a esses dados;
 5. **O que chega ao Provedor de IA.** Quando, durante um pedido do Usuário, a IA busca ou lê um arquivo do Drive ou um e-mail, o resultado (nome, remetente, assunto, data, trecho e texto do item lido) é entregue ao processo do Provedor de IA autenticado e selecionado pelo Usuário, do mesmo modo que o texto de uma página aberta. **Ao ligar um Conector, o Usuário consente com esse envio.** O tratamento desses dados pelo Provedor de IA segue os termos do próprio Provedor (Seção 2.3). O BrOWSER não copia a caixa de e-mail nem o Drive: só trafega o que a IA consultou naquele pedido, e nada disso é gravado em Blueprint ou telemetria;
 6. **Conteúdo de terceiros.** E-mails e arquivos podem ter sido escritos por terceiros e conter instruções maliciosas dirigidas à IA. O software marca esse conteúdo como dado, e não como instrução, e mantém a exigência de permissão do Usuário para abrir endereços que constem dentro dele. Essas salvaguardas reduzem o risco, mas não o eliminam (Seção 10.2); permanece o dever de conferência humana da Seção 7.
+
+### 6.5. Leitura Direta dos Dados da Página ("Portas de Bastidor")
+Para reduzir o tempo de cada tarefa, o agente pode consultar, na página em que o Usuário pediu o trabalho, fontes de dados além do texto visível:
+
+1. **O que é lido.** (a) Dados que a página já traz embutidos no próprio código (blocos JSON); (b) respostas de dados que a própria página buscou no servidor do site, relidas pela extensão; (c) os endereços dos links da página, o mapa do site (`sitemap.xml`) e o `robots.txt`, que são públicos; (d) o nome de botões de exportar ou baixar;
+2. **Somente leitura, por código.** Por este caminho o software só faz requisições de consulta (`GET`), e apenas para endereços que a própria página já havia buscado. **Nenhuma requisição que crie, altere, envie, pague ou apague algo é feita por aqui**: essas ações só acontecem pela interface da página, sujeitas à Cláusula 7.1;
+3. **O que nunca é lido.** Cabeçalhos de requisição, cookies, tokens de sessão e corpos de requisição não são lidos nem transmitidos. O recurso fica **desligado** em páginas de login, de pagamento e de instituições financeiras, e em qualquer página que contenha campo de senha;
+4. **Para onde vai.** O dado consultado é entregue ao processo do Provedor de IA selecionado pelo Usuário, do mesmo modo que o texto da página, e não é gravado em Blueprint ou telemetria. Trata-se de conteúdo de terceiros, marcado como dado e não como instrução (Seção 6.4, item 6);
+5. **Termos de uso do site visitado.** Alguns sites restringem, em seus próprios termos, o acesso automatizado ou o uso de seus endereços internos de dados. Cabe ao Usuário verificar e respeitar os termos dos sites em que utiliza o BrOWSER (Seções 9 e 10.6).
 
 ---
 

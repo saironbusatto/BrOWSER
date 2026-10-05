@@ -1,0 +1,18 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><style>body{font:15px system-ui;margin:24px;max-width:900px}#janela{height:336px;overflow:auto;border:1px solid #999;position:relative}.linha{position:absolute;left:0;right:0;height:28px;line-height:28px;display:grid;grid-template-columns:80px 1fr 120px 120px 100px;padding:0 8px;box-sizing:border-box;border-bottom:1px solid #eee}</style><title>Contas a receber</title></head><body>
+<h1>Contas a receber</h1>
+<p id="resumo">Carregando…</p>
+<div id="janela"><div id="trilho"></div></div>
+<script>
+// Lista virtualizada: os 240 registros vêm numa resposta só, mas a tela desenha 12 por vez.
+fetch('notas.json').then((r) => r.json()).then(({ total, notas }) => {
+  document.getElementById('resumo').textContent = total + ' notas. Role para ver todas.';
+  const janela = document.getElementById('janela'), trilho = document.getElementById('trilho');
+  trilho.style.height = notas.length * 28 + 'px';
+  const desenhar = () => {
+    const primeira = Math.floor(janela.scrollTop / 28);
+    trilho.innerHTML = notas.slice(primeira, primeira + 12).map((n, i) => '<div class="linha" style="top:' + (primeira + i) * 28 + 'px"><span>' + n.numero + '</span><span>' + n.cliente + '</span><span>' + n.emissao + '</span><span>R$ ' + n.valor.toFixed(2).replace('.', ',') + '</span><span>' + (n.paga ? 'paga' : 'em aberto') + '</span></div>').join('');
+  };
+  janela.addEventListener('scroll', desenhar);
+  desenhar();
+});
+</script></body></html>

@@ -51,6 +51,9 @@ export const TOOLS = [
   'esperar',
   'teclar',
   'rolar',
+  // Portas de bastidor (tools-bastidor.ts)
+  'sondar_site',
+  'ler_dados',
   // Drive pela API (tools-drive.ts)
   'buscar_no_drive',
   'ler_arquivo_drive',
@@ -100,6 +103,7 @@ ${contextoArquivos}
 Diretrizes de atuação:
 1. NAVEGAÇÃO E AÇÕES NA PÁGINA:
    - Comece por 'ler_estrutura': uma chamada mostra o texto e os controles da página juntos, cada controle com sua ref e dentro da linha, item ou janela a que pertence. Quase sempre basta para agir; não chame 'ler_campos' nem 'ler_pagina' para ver a mesma página de novo.
+   - ROTA MAIS CURTA: antes de um trabalho grande de leitura (somar, listar ou comparar muitos itens; tabela comprida; várias páginas; planilha ou tela desenhada), chame 'sondar_site'. Ele mostra se os dados já estão embutidos na página ou numa resposta do servidor ('ler_dados' entrega o dado exato numa chamada), se há endereço direto, mapa do site ou botão de exportar. A tela é a rota mais cara. O bastidor só lê: para alterar, enviar ou apagar, o caminho continua sendo a tela.
    - Se o site tem busca própria ou assistente de IA (busca do Drive, Copilot), prefira esse caminho a abrir item por item.
    - MENUS E FERRAMENTAS OCULTAS (ex.: Gemini, ChatGPT, ERPs):
      * Se a opção, ferramenta (ex.: "+", "Nano Banana", modo) não estiver visível inicialmente, clique no botão disparador do menu/gaveta: a resposta do clique já traz o menu que abriu.

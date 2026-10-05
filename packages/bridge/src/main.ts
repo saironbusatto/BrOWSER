@@ -33,6 +33,7 @@ import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
 import { escolherSkills, type Skill } from './skills';
+import { registrarToolsBastidor } from './tools-bastidor';
 import { registrarToolsDrive } from './tools-drive';
 import { registrarToolsGmail } from './tools-gmail';
 import { registrarToolsNavegador } from './tools-navegador';
@@ -503,6 +504,7 @@ function criarMcp() {
   };
   registrarToolsPagina(s, pagina);
   registrarToolsPassos(s, pagina);
+  registrarToolsBastidor(s, pagina);
 
   s.registerTool(
     'perguntar_ao_usuario',

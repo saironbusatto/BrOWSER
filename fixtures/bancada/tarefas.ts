@@ -92,4 +92,11 @@ export const TAREFAS: Tarefa[] = [
         return d(v.cnpj) === '12345678000190' && v.contato.trim() === 'Lúcia Prado' && /^8500(00)?$/.test(d(v.limite)) && !estado.enviado; })()`,
     },
   },
+  {
+    id: 'lista-longa',
+    exercita: '240 registros que a tela mostra de 12 em 12: o dado inteiro só existe na resposta do servidor',
+    pagina: 'virtual.html',
+    pedido: () => 'Quanto a Clínica Vida ainda deve? Some o valor das notas dela que estão em aberto e responda com o total.',
+    confere: { resposta: /16[.\s]?157[,.]39/ },
+  },
 ];

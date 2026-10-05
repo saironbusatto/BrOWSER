@@ -8,7 +8,8 @@ export const CHAVE_TERMOS = 'termosAceitos';
 // 3: o texto passou a incluir o aprendizado de formulários. Quem clicou "Entendi" no banner antigo
 // (localStorage browser_termos_aceitos_v2) aceitou um texto sem isso, então aceita de novo.
 // 4: entraram os conectores (§6.4): com o Gmail, texto de e-mail passa a ir para a IA escolhida.
-export const VERSAO_TERMOS = 4;
+// 5: portas de bastidor (§6.5): a IA pode ler dados embutidos na página e reler o que ela buscou.
+export const VERSAO_TERMOS = 5;
 
 export type RegistroTermos = { versao: number; em: string };
 

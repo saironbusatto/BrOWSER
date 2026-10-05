@@ -26,6 +26,12 @@ export type Comandos = {
     args: { filtro?: string };
     result: { url: string; titulo: string; texto: string; truncado: boolean; campos: Campo[] };
   };
+  // Portas de bastidor (extension/utils/bastidor.ts): o que o site oferece além da tela. Só leitura.
+  sondar_site: { args: Record<string, never>; result: { url: string; texto: string } };
+  ler_dados: {
+    args: { fonte: string; caminho?: string; filtro?: string; desde?: number };
+    result: { fonte: string; texto: string; truncado: boolean };
+  };
   // Texto da página inteira. A IA só tinha os campos, e por isso recusava "resume esta página".
   ler_pagina: {
     args: { limite?: number };

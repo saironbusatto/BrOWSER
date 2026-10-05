@@ -1,6 +1,7 @@
 import { type Campo, type Comandos, type Evento, HOST_NAME, type MensagemExtensao, type Pedido, type Resposta } from '@browser/shared';
 import * as acoes from '../utils/acoes-aba';
 import { ehCmdConector, executarConector } from '../utils/acoes-conector';
+import { lerDados, sondarSite } from '../utils/bastidor';
 import {
   anotarNaConversa,
   ehEventoDoPedido,
@@ -446,6 +447,12 @@ async function lerEstruturaDaAba(filtro?: string) {
 async function executar(p: Pedido): Promise<unknown> {
   if (ehCmdConector(p.cmd)) return executarConector(p.cmd, p.args);
   switch (p.cmd) {
+    case 'sondar_site':
+      return sondarSite(await abaAlvo());
+    case 'ler_dados': {
+      const a = p.args as Comandos['ler_dados']['args'];
+      return lerDados(await abaAlvo(), a.fonte, a);
+    }
     case 'ler_estrutura':
       return lerEstruturaDaAba((p.args as Comandos['ler_estrutura']['args']).filtro);
     case 'abrir':

@@ -79,7 +79,9 @@ const srv = Bun.serve({
   port: 0,
   fetch: (r) => {
     const arquivo = join(paginas, new URL(r.url).pathname.replace(/[^\w.-]/g, ''));
-    return existsSync(arquivo) && arquivo.endsWith('.html') ? new Response(Bun.file(arquivo)) : new Response('não existe', { status: 404 });
+    return existsSync(arquivo) && /\.(html|json)$/.test(arquivo)
+      ? new Response(Bun.file(arquivo))
+      : new Response('não existe', { status: 404 });
   },
 });
 const A = `http://127.0.0.1:${srv.port}`;
