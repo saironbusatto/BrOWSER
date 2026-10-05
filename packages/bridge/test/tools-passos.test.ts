@@ -30,8 +30,10 @@ describe('acharAlvo: o controle pelo nome, entre os que estão escritos na leitu
 /** Página falsa: menu "Mais opções" -> item "Arquivar" -> janela com "Arquivar projeto". */
 function montar() {
   const handlers = new Map<string, Handler>();
+  const anotados: string[] = [];
   const enviados: string[] = [];
   let etapa = 0;
+  let aoEsperar = 0;
   let campos = new Map<number, Campo>();
   const telas: Leitura[] = [
     leitura('Projeto Atlas\nbotão "Mais opções" [ref=1]\nbotão "Enviar" [ref=7]', [botao(1, 'Mais opções'), botao(7, 'Enviar')]),
@@ -52,6 +54,7 @@ function montar() {
       return { ok: true };
     }) as DepsPagina['enviar'],
     status: () => {},
+    anotar: (acao, alvo) => anotados.push(`${acao} ${alvo ?? ''}`.trim()),
     temPedido: () => true,
     campos: () => campos,
     definirCampos: (m) => {
@@ -59,9 +62,19 @@ function montar() {
     },
     log: () => {},
   };
-  registrarToolsPassos({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, d);
+  registrarToolsPassos({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, d, async () => {
+    if (aoEsperar) etapa = aoEsperar; // a página "termina de carregar" durante a espera
+  });
   const fazer = async (passos: unknown[]) => (await handlers.get('fazer_passos')!({ passos })).content[0]?.text ?? '';
-  return { fazer, enviados, campos: () => campos };
+  return {
+    fazer,
+    enviados,
+    anotados,
+    campos: () => campos,
+    carregarDepois: (n: number) => {
+      aoEsperar = n;
+    },
+  };
 }
 
 describe('fazer_passos', () => {
@@ -76,6 +89,7 @@ describe('fazer_passos', () => {
     expect(r).toContain('1. cliquei em "Mais opções"\n2. cliquei em "Arquivar"\n3. cliquei em "Arquivar projeto"');
     expect(r).toContain('Apareceu:\nProjeto arquivado.');
     expect(r).not.toContain('PAROU');
+    expect(t.anotados).toEqual(['clicar Mais opções', 'clicar Arquivar', 'clicar Arquivar projeto']);
   });
 
   it('para no passo que não acha o controle; os seguintes não são feitos e as refs da página atual ficam valendo', async () => {
@@ -111,6 +125,14 @@ describe('fazer_passos', () => {
     ]);
     expect(t.enviados).toEqual(['preencher 1', 'teclar Escape', 'esperar nunca']);
     expect(r).toContain('PAROU no passo 3 (esperar): o texto "nunca" não apareceu');
+  });
+
+  it('controle que ainda não apareceu: espera a página e segue, em vez de falhar', async () => {
+    const t = montar();
+    t.carregarDepois(2); // a janela de confirmação só existe depois de um tempo
+    const r = await t.fazer([{ acao: 'clicar', alvo: 'Arquivar projeto' }]);
+    expect(t.enviados).toEqual(['clicar 3']);
+    expect(r).toContain('1. cliquei em "Arquivar projeto"');
   });
 
   it('passo incompleto é recusado com o que falta', async () => {

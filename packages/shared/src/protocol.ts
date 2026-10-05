@@ -278,3 +278,4 @@ export type Evento =
   | { tipo: 'logout_fim'; ok: number; falhou: string[] };
 
 export * from './blueprint';
+export * from './sensivel';

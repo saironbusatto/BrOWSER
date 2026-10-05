@@ -24,6 +24,8 @@ export type DepsNavegador = {
   paginaMudou: () => void;
   /** Faz a ação e diz o que mudou na página (mudancas.ts), já atualizando as refs conhecidas. */
   ver: <T>(acao: () => Promise<T>) => Promise<{ resultado: T; mudou: string }>;
+  /** Anota o passo na trilha do pedido (receitas.ts). */
+  anotar: (acao: 'clicar' | 'teclar' | 'esperar', alvo?: string) => void;
 };
 
 const PERMITIR = 'Permitir';
@@ -172,6 +174,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
       if (recusa) return texto(recusa);
       d.status('Clicando na tela…');
       const v = await d.ver(() => d.enviar('clicar_ponto', { x, y }));
+      d.anotar('clicar'); // clique por coordenada não tem nome: a receita deste pedido não é guardada
       // Sem leitura da página não há como dizer o que mudou: as refs antigas deixam de valer.
       if (!v.mudou) d.paginaMudou();
       return v.mudou ? { content: [{ type: 'text' as const, text: `Clique feito.\n\n${v.mudou}` }] } : texto(v.resultado);
@@ -192,6 +195,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
       d.status(procurado ? `Esperando aparecer “${procurado.slice(0, 30)}”…` : 'Esperando a página…');
       // A espera já devolve o que apareceu: sem isso a IA esperava e depois relia a página.
       const v = await d.ver(() => d.enviar('esperar', { ...(procurado && { texto: procurado }), ...(segundos && { segundos }) }));
+      d.anotar('esperar');
       if (!v.mudou) return texto(v.resultado);
       const achou = procurado
         ? v.resultado.achou
@@ -211,6 +215,7 @@ export function registrarToolsNavegador(s: McpServer, d: DepsNavegador): void {
     },
     async ({ tecla }) => {
       const v = await d.ver(() => d.enviar('teclar', { tecla }));
+      d.anotar('teclar', tecla);
       return v.mudou ? { content: [{ type: 'text' as const, text: `Tecla ${tecla} apertada.\n\n${v.mudou}` }] } : texto(v.resultado);
     },
   );

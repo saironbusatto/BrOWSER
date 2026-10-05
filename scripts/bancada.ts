@@ -195,10 +195,13 @@ try {
     srv.stop();
     process.exit(0);
   }
-  for (const t of tarefas) {
-    process.stdout.write(`${t.id}… `);
+  // BANCADA_VEZES=2: a lista inteira duas vezes na mesma ponte. A segunda passada mede a memória
+  // de procedimento (fase 1.5): o que foi aprendido na primeira tem de encurtar a segunda.
+  const vezes = Number(process.env.BANCADA_VEZES) || 1;
+  for (const [vez, t] of Array.from({ length: vezes }, (_, v) => tarefas.map((x) => [v + 1, x] as const)).flat()) {
+    process.stdout.write(`${t.id}${vezes > 1 ? ` (${vez}ª vez)` : ''}… `);
     const linha: Linha = {
-      tarefa: t.id,
+      tarefa: vezes > 1 ? `${t.id} (${vez}ª)` : t.id,
       exercita: t.exercita,
       acertou: false,
       ferramentas: 0,

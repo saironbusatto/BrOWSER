@@ -41,7 +41,13 @@ export function acharAlvo(leitura: Leitura, alvo: string): { campo: Campo } | { 
   return { erro: `há ${achados.length} controles chamados "${alvo}": diga em "dentro" de qual linha, item ou janela é` };
 }
 
-export function registrarToolsPassos(s: McpServer, d: DepsPagina): void {
+// Controle que ainda não apareceu (página carregando, janela abrindo): tenta de novo por ~5 s antes
+// de desistir. É a espera automática do Playwright; sem ela a receita de um site lento falhava no
+// primeiro passo e a IA gastava mais chamadas do que sem receita.
+const ESPERAS_MS = [300, 700, 1500, 2500];
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export function registrarToolsPassos(s: McpServer, d: DepsPagina, pausa: (ms: number) => Promise<unknown> = dormir): void {
   s.registerTool(
     'fazer_passos',
     {
@@ -61,15 +67,22 @@ export function registrarToolsPassos(s: McpServer, d: DepsPagina): void {
         d.status(`Passo ${n} de ${passos.length}…`);
         let acao: (() => Promise<unknown>) | undefined;
         let rotulo = '';
+        let nomeDoAlvo: string | undefined;
 
         if (p.acao === 'clicar' || p.acao === 'preencher') {
           if (!p.alvo || (p.acao === 'preencher' && p.valor === undefined)) parou = `passo ${n}: falta "${p.alvo ? 'valor' : 'alvo'}"`;
           else {
-            const onde = p.dentro ? await ler(p.dentro) : atual;
-            const r = acharAlvo(onde, p.alvo);
+            let r = acharAlvo(p.dentro ? await ler(p.dentro) : atual, p.alvo);
+            for (const ms of ESPERAS_MS) {
+              if (!('erro' in r) || r.erro.startsWith('há ')) break; // achou, ou o problema é ambiguidade
+              await pausa(ms);
+              atual = await ler().catch(() => atual);
+              r = acharAlvo(p.dentro ? await ler(p.dentro) : atual, p.alvo);
+            }
             if ('erro' in r) parou = `passo ${n}: ${r.erro}${p.dentro ? ` dentro de "${p.dentro}"` : ''}`;
             else {
               const { campo } = r;
+              nomeDoAlvo = campo.nome;
               // A mesma guarda do `clicar`: nome de envio final não passa, venha por onde vier.
               const envio = p.acao === 'clicar' ? motivoEnvioIrreversivel(campo) : null;
               if (envio) {
@@ -100,6 +113,7 @@ export function registrarToolsPassos(s: McpServer, d: DepsPagina): void {
           const v = await agirEVer(d.enviar, acao);
           if (v.depois) atual = v.depois;
           feito.push(`${n}. ${rotulo}`);
+          d.anotar(p.acao, p.acao === 'teclar' ? p.tecla : p.acao === 'esperar' ? undefined : nomeDoAlvo);
         } catch (e) {
           parou = `passo ${n} (${p.acao}${p.alvo ? ` "${p.alvo}"` : ''}): ${e instanceof Error ? e.message : String(e)}`;
           atual = await ler().catch(() => atual);

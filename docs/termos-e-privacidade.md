@@ -76,6 +76,7 @@ A catalogação de páginas da web destina-se exclusivamente a criar mapas estru
 * Atributos W3C e HTML padronizados (ex.: `type="text"`, `type="email"`, `autocomplete="shipping postal-code"`, `name="cidade"`, `aria-label="Pesquisar"`);
 * Textos de rótulos genéricos públicos de formulários (ex.: *"Razão Social"*, *"Inscrição Estadual"*, *"CEP"*, *"Endereço de Entrega"*);
 * Seletores relativos para localização de botões de navegação (ex.: *"Avançar"*, *"Filtrar"*, *"Consultar"*).
+* **Sequências de ações que deram certo num site** (ex.: *abrir o menu → "Arquivar" → "Confirmar"*): apenas o tipo de ação e o nome do controle, **nunca** o valor digitado, o texto do pedido ou o item escolhido. Ficam **somente no computador do Usuário** (pasta `receitas` do diretório local indicado na Seção 5.4), não são enviadas a servidor algum e não são guardadas para sites de login, pagamento ou instituições financeiras. Servem para o agente repetir mais rápido uma tarefa que já fez naquele site.
 
 ### 4.2. O que é ESTRITAMENTE VEDADO e NUNCA Coletado ou Transmitido
 O BrOWSER possui filtros de sanitização ativos no código-fonte que bloqueiam:

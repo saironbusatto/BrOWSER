@@ -31,6 +31,7 @@ function montar(opcoes: { links?: string[]; resposta?: string; pedido?: string; 
     conversa: () => conversa,
     paginaMudou: () => {},
     ver: async (acao) => ({ resultado: await acao(), mudou: '' }),
+    anotar: () => {},
   };
   registrarToolsNavegador(servidor as never, deps);
   const chamar = async (nome: string, args: Record<string, unknown> = {}) => {
@@ -99,6 +100,7 @@ describe('as demais tools só repassam à extensão, com a forma certa', () => {
         mudou++;
       },
       ver: async (acao) => ({ resultado: await acao(), mudou: opcaoMudou }),
+      anotar: () => {},
     };
     registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
 
@@ -137,6 +139,7 @@ describe('clicar_ponto: a ponte olha o que há embaixo antes de clicar', () => {
         mudou++;
       },
       ver: async (acao) => ({ resultado: await acao(), mudou: opcaoMudou }),
+      anotar: () => {},
     };
     registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
     const clicar = async () => (await handlers.get('clicar_ponto')!({ x: 400, y: 300 })).content[0]?.text ?? '';
@@ -177,6 +180,7 @@ describe('ações que já dizem o que mudou', () => {
         zerou++;
       },
       ver: async (acao) => ({ resultado: await acao(), mudou: 'Apareceu:\nÁrea selecionada: azul' }),
+      anotar: () => {},
     };
     registrarToolsNavegador({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, deps);
     expect((await handlers.get('teclar')!({ tecla: 'Delete' })).content[0]?.text).toBe(

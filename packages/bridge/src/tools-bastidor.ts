@@ -10,6 +10,7 @@ import { z } from 'zod';
 export type DepsBastidor = {
   enviar: <C extends Cmd>(cmd: C, args: Comandos[C]['args']) => Promise<Comandos[C]['result']>;
   status: (texto: string) => void;
+  anotar: (acao: 'ler_dados', alvo?: string) => void;
 };
 
 export const AVISO_DADOS =
@@ -52,6 +53,7 @@ export function registrarToolsBastidor(s: McpServer, d: DepsBastidor): void {
       d.status('Lendo os dados do site…');
       try {
         const r = await d.enviar('ler_dados', { fonte, ...(caminho && { caminho }), ...(filtro && { filtro }), ...(desde && { desde }) });
+        d.anotar('ler_dados', fonte);
         return puro(`${AVISO_DADOS}\n\n${r.texto}`);
       } catch (e) {
         return erro(e);

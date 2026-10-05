@@ -7,10 +7,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { motivoEnvioIrreversivel, recusaEnvio } from './envio';
 import { agirEVer } from './mudancas';
+import type { PassoGuardado } from './receitas';
 
 export type DepsPagina = {
   enviar: <C extends Cmd>(cmd: C, args: Comandos[C]['args']) => Promise<Comandos[C]['result']>;
   status: (texto: string) => void;
+  /** Anota o passo na trilha do pedido (receitas.ts). Só ação e nome do controle, nunca valor. */
+  anotar: (acao: PassoGuardado['acao'], alvo?: string) => void;
   temPedido: () => boolean;
   /** Campos lidos nesta rodada: só dá para classificar um clique no que foi lido. */
   campos: () => Map<number, Campo>;
@@ -82,7 +85,9 @@ export function registrarToolsPagina(s: McpServer, d: DepsPagina): void {
     },
     async ({ ref, valor }) => {
       d.status(`Preenchendo: ${curto(valor)}`);
-      return texto(await d.enviar('preencher', { ref, valor }));
+      const r = await d.enviar('preencher', { ref, valor });
+      d.anotar('preencher', d.campos().get(ref)?.nome);
+      return texto(r);
     },
   );
 
@@ -108,7 +113,10 @@ export function registrarToolsPagina(s: McpServer, d: DepsPagina): void {
           for (const c of campos) {
             // Um campo que falha não derruba os outros: a IA recebe o motivo e conserta só aquele.
             const r = await d.enviar('preencher', c).then(
-              (ok) => `ref ${c.ref}: "${ok.valor}"`,
+              (ok) => {
+                d.anotar('preencher', d.campos().get(c.ref)?.nome);
+                return `ref ${c.ref}: "${ok.valor}"`;
+              },
               (e) => `ref ${c.ref}: NÃO preenchido (${e instanceof Error ? e.message : String(e)})`,
             );
             linhas.push(r);
@@ -139,6 +147,7 @@ export function registrarToolsPagina(s: McpServer, d: DepsPagina): void {
       }
       d.status('Navegando / abrindo menu na página…');
       const v = await verMudanca(d, () => d.enviar('clicar', { ref }));
+      d.anotar('clicar', campo.nome);
       // Sem leitura (aba sem modo completo, extensão antiga): devolve o que a extensão respondeu.
       return v.mudou ? puro(`Clique feito em "${campo.nome}".\n\n${v.mudou}`) : texto(v.resultado);
     },

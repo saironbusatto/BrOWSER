@@ -15,6 +15,7 @@ const DEPOIS = `${ANTES}\nmenu\n  item de menu "Arquivar" [ref=9]`;
 /** Extensão falsa: a página muda (abre um menu) depois do primeiro clique. */
 function montar(opcoes: { semEstrutura?: boolean; falhaNoRef?: number } = {}) {
   const handlers = new Map<string, Handler>();
+  const anotados: string[] = [];
   const enviados: { cmd: string; args: any }[] = [];
   let campos = new Map<number, Campo>();
   let clicou = false;
@@ -42,6 +43,7 @@ function montar(opcoes: { semEstrutura?: boolean; falhaNoRef?: number } = {}) {
       return { ok: true };
     }) as DepsPagina['enviar'],
     status: () => {},
+    anotar: (acao, alvo) => anotados.push(`${acao} ${alvo ?? ''}`.trim()),
     temPedido: () => true,
     campos: () => campos,
     definirCampos: (m) => {
@@ -51,7 +53,7 @@ function montar(opcoes: { semEstrutura?: boolean; falhaNoRef?: number } = {}) {
   };
   registrarToolsPagina({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, d);
   const chamar = async (nome: string, args: Record<string, unknown> = {}) => (await handlers.get(nome)!(args)).content[0]?.text ?? '';
-  return { chamar, enviados, campos: () => campos, cmds: () => enviados.map((e) => e.cmd) };
+  return { chamar, enviados, anotados, campos: () => campos, cmds: () => enviados.map((e) => e.cmd) };
 }
 
 describe('ler_estrutura', () => {
@@ -88,6 +90,8 @@ describe('clicar: a guarda de envio continua em código, e a resposta diz o que 
     expect(r).toBe('Clique feito em "Mais opções".\n\nApareceu:\nmenu\n  item de menu "Arquivar" [ref=9]');
     expect(t.campos().has(9)).toBe(true);
     expect(await t.chamar('clicar', { ref: 9 })).toContain('Clique feito em "Arquivar"');
+    // A trilha guarda a ação e o nome do controle: é o que vira receita do site.
+    expect(t.anotados).toEqual(['clicar Mais opções', 'clicar Arquivar']);
   });
 
   it('extensão que não sabe ler estrutura: o clique acontece e responde como antes', async () => {
@@ -112,6 +116,7 @@ describe('preencher e preencher_varios', () => {
     expect(r).toContain('ref 5: NÃO preenchido (opção não encontrada: Acre)');
     expect(r).toContain('ref 6: "true"');
     expect(r).toContain('Nada mais mudou na página.');
+    expect(t.anotados.join()).not.toContain('45.987'); // valor digitado nunca entra na trilha
   });
 
   it('preencher sozinho repassa à extensão', async () => {

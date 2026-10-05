@@ -32,6 +32,7 @@ import { registrarHost, removerHost } from './instalar';
 import { Relogio } from './latencia';
 import { listarModelos } from './modelos';
 import { motivoPerguntaVaga } from './perguntas';
+import { guardarReceita, type PassoGuardado, passoGuardavel, receitasParaIa } from './receitas';
 import { escolherSkills, type Skill } from './skills';
 import { registrarToolsBastidor } from './tools-bastidor';
 import { registrarToolsDrive } from './tools-drive';
@@ -317,6 +318,7 @@ async function rodarPedido(
   avisar: (t: string, agente?: PapelAgente) => void,
   ordem?: Ia[],
   skills: Skill[] = [],
+  urlAba?: string,
 ): Promise<Execucao> {
   if (!mcp) return { ok: false, texto: 'ponte ainda iniciando' };
   // ponytail: um pedido por vez (uma aba, um formulário); fila de pedidos se o lote (Q1) precisar.
@@ -330,6 +332,12 @@ async function rodarPedido(
   const conversa = conversaDe(conversas, p.conversaId ?? p.pedidoId);
   registrarMensagem(conversa, p.texto);
   conversaAtual = conversa;
+  // Memória de procedimento (receitas.ts): o que já deu certo neste site entra como sugestão, e
+  // a trilha deste pedido é anotada para virar receita se ele terminar bem.
+  trilha = [];
+  trilhaQuebrada = false;
+  const aprendido = receitasParaIa(urlAba);
+  const comReceitas = aprendido ? [...skills, { nome: 'aprendido-neste-site', dominios: [], palavras: [], corpo: aprendido }] : skills;
   try {
     const ordemFinal = ordem ?? [iaAtivaPreferencial, ...IAS.filter((i) => i !== iaAtivaPreferencial)];
     // Token novo a cada execução: o que o agy grava na config global dele fica inútil assim que
@@ -347,8 +355,10 @@ async function rodarPedido(
       },
       (ia) => modelosEscolhidos[ia] ?? '',
       (ia) => conversa.sessoes[ia],
-      skills,
+      comReceitas,
     ).then((r) => {
+      if (r.ok && urlAba && !trilhaQuebrada && guardarReceita(urlAba, trilha))
+        log(`receita guardada para ${urlAba.slice(0, 60)} (${trilha.length} passos)`);
       if (r.ok && r.ia && r.sessao) conversa.sessoes[r.ia] = r.sessao;
       return r;
     });
@@ -434,6 +444,7 @@ async function atenderPedido(p: Pedir) {
       (texto, agente) => emitir({ tipo: 'status', pedidoId: p.pedidoId, texto, agente }),
       p.ias?.filter((ia) => IAS.includes(ia)),
       skills,
+      urlAba,
     ).catch((e): Execucao => ({ ok: false, texto: String(e) }));
 
     // Pedido parado no meio: a IA foi morta, então o resultado não diz nada — quem decide a
@@ -464,6 +475,16 @@ async function atenderPedido(p: Pedir) {
   }
 }
 
+// ---- Trilha do pedido (memória de procedimento) ----
+let trilha: PassoGuardado[] = [];
+let trilhaQuebrada = false;
+/** Um passo sem nome guardável (conteúdo da pessoa, clique por coordenada) invalida a receita inteira. */
+function anotar(acao: PassoGuardado['acao'], alvo?: string) {
+  const passo = passoGuardavel(acao, alvo);
+  if (passo) trilha.push(passo);
+  else trilhaQuebrada = true;
+}
+
 // ---- MCP ----
 const texto = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
 
@@ -492,6 +513,7 @@ function criarMcp() {
   );
   const pagina: DepsPagina = {
     enviar,
+    anotar,
     status: (t) => {
       if (pedidoAtivo) escrever({ tipo: 'status', pedidoId: pedidoAtivo, texto: t, agente: 'scout' } satisfies Evento);
     },
@@ -540,8 +562,10 @@ function criarMcp() {
     conversa: () => conversaAtual,
     paginaMudou: () => {
       camposConhecidos = new Map();
+      trilhaQuebrada = true; // mudou de página ou de aba: a sequência deixa de ser de um lugar só
     },
     ver: (acao) => verMudanca(pagina, acao),
+    anotar,
   });
   registrarToolsDrive(s, {
     enviar,
@@ -649,7 +673,11 @@ async function atender(req: IncomingMessage, res: ServerResponse) {
     // respondem "nenhum pedido ativo" e a medição sai com a IA meio cega.
     pedidoAtivo = pedido.pedidoId;
     try {
-      const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined);
+      const urlAba = await enviar('ler_estrutura', {}).then(
+        (l) => l.url,
+        () => undefined,
+      );
+      const r = await rodarPedido(pedido, null, (t) => log(t), body.args?.ia ? [body.args.ia] : undefined, [], urlAba);
       // A medição vai junto: a bancada (scripts/bancada.ts) compara pedidos por ela.
       const result = { ...r, medida: relogio.medida(performance.now() - t0) };
       return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: true, result }));

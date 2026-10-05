@@ -8,6 +8,7 @@ function montar(enviar: DepsBastidor['enviar']) {
   registrarToolsBastidor({ registerTool: (n: string, _c: unknown, h: Handler) => handlers.set(n, h) } as never, {
     enviar,
     status: () => {},
+    anotar: () => {},
   });
   return async (nome: string, args: Record<string, unknown> = {}) => (await handlers.get(nome)!(args)).content[0]?.text ?? '';
 }
