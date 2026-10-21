@@ -1,8 +1,10 @@
-# Desinstalador do BrOWSER para Windows. Chamado por "Aplicativos instalados" ou manualmente.
+﻿# Desinstalador do BrOWSER para Windows. Chamado por "Aplicativos instalados" ou manualmente.
 #   -Sim  não pede confirmação (CI)
 # Não remove o Antigravity CLI (agy), que é do Google e pode ser usado por outros programas.
 param([switch]$Sim)
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $destino = Join-Path $env:LOCALAPPDATA 'BrOWSER'
 $chaveApp = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrOWSER'

@@ -247,7 +247,7 @@ function comandoLogin(entrada: Entrada): string[] | string {
   const exe = which(entrada.login[0]!);
   if (!exe) return entrada.login;
   const resto = entrada.login.slice(1);
-  if (!entrada.viaPty) return [exe, ...resto];
+  if (!entrada.viaPty || process.platform === 'win32') return [exe, ...resto];
   if (!which('python3')) return 'python3 não está instalado (necessário para o login interativo).';
   const pty = scriptPty();
   if (!pty) return 'não consegui preparar o pty para o login.';

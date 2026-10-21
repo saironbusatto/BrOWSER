@@ -82,6 +82,25 @@ describe('diagnosticar: registro da ponte', () => {
     expect(() => diagnosticar()).not.toThrow();
     expect(diagnosticar(HOME).navegador.find((n) => n.nome === 'Chrome')?.caminhoOk).toBe(false);
   });
+
+  it('reconhece manifesto no formato do Windows em %LOCALAPPDATA%/BrOWSER', () => {
+    const dirBr = join(HOME, 'AppData', 'Local', 'BrOWSER');
+    mkdirSync(dirBr, { recursive: true });
+    writeFileSync(join(dirBr, `${HOST_NAME}.json`), JSON.stringify({ name: HOST_NAME, path: join(dirBr, 'bridge.exe') }));
+    writeFileSync(join(dirBr, 'bridge.exe'), '');
+
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const d = diagnosticar(HOME);
+      expect(d.extensaoRegistrada).toBe(true);
+      const chrome = d.navegador.find((n) => n.nome === 'Chrome');
+      expect(chrome?.registrado).toBe(true);
+      expect(chrome?.caminhoOk).toBe(true);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
+  });
 });
 
 describe('navegadorInstalado: cada navegador no seu lugar', () => {
@@ -216,6 +235,27 @@ describe('relatorio: o que a pessoa realmente lê', () => {
     expect(texto(d)).toContain('nenhuma ferramenta de IA instalada');
     expect(texto(d)).toContain('./bridge --install');
     expect(texto(d)).not.toContain('Tudo pronto');
+  });
+
+  it('no Windows sugere bridge.exe --install e instalador ps1', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    try {
+      const d = relatorio(
+        com({
+          temNavegador: true,
+          extensaoRegistrada: false,
+          ias: [{ ia: 'codex' as const, instalado: true, conectado: true }],
+          pronto: false,
+          temComoConectar: true,
+          navegador: [{ nome: 'Chrome', pasta: '/x', existe: true, registrado: false, caminhoOk: false }],
+        }),
+      );
+      expect(texto(d)).toContain('bridge.exe --install');
+      expect(texto(d)).not.toContain('./bridge --install');
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
   });
 
   it('não diz "pronto" só porque uma IA está logada, se a ponte não está registrada', () => {

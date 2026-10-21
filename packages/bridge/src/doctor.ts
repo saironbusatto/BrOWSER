@@ -59,8 +59,54 @@ export type Ambiente = { which: (exe: string) => string | null; existe: (c: stri
 
 const AMBIENTE_REAL: Ambiente = { which: (exe) => which(exe), existe: (c) => existsSync(c) };
 
+function caminhosWindowsNavegador(nome: string): string[] {
+  if (process.platform !== 'win32') return [];
+  const prog = process.env.ProgramFiles ?? 'C:\\Program Files';
+  const progX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+  const local = process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local');
+  switch (nome) {
+    case 'Chrome':
+      return [
+        'chrome',
+        'chrome.exe',
+        join(prog, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(progX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        join(local, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      ];
+    case 'Brave':
+      return [
+        'brave',
+        'brave.exe',
+        join(prog, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+        join(progX86, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+        join(local, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      ];
+    case 'Edge':
+      return [
+        'msedge',
+        'msedge.exe',
+        join(prog, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+        join(progX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      ];
+    case 'Chromium':
+      return ['chromium', 'chromium.exe', join(local, 'Chromium', 'Application', 'chrome.exe')];
+    case 'Vivaldi':
+      return [
+        'vivaldi',
+        'vivaldi.exe',
+        join(prog, 'Vivaldi', 'Application', 'vivaldi.exe'),
+        join(local, 'Vivaldi', 'Application', 'vivaldi.exe'),
+      ];
+    case 'Opera':
+      return ['opera', 'opera.exe', join(prog, 'Opera', 'launcher.exe'), join(local, 'Programs', 'Opera', 'launcher.exe')];
+    default:
+      return [];
+  }
+}
+
 export function navegadorInstalado(nome: string, amb: Ambiente = AMBIENTE_REAL): boolean {
-  return (EXECUTAVEIS[nome] ?? []).some((exe) => amb.which(exe) !== null || amb.existe(exe));
+  const lista = [...(EXECUTAVEIS[nome] ?? []), ...caminhosWindowsNavegador(nome)];
+  return lista.some((exe) => amb.which(exe) !== null || amb.existe(exe));
 }
 
 /**
@@ -74,20 +120,26 @@ function python3Instalado(): boolean {
 }
 
 export function diagnosticar(base = homedir()): Diagnostico {
-  const manifestoWindows = join(process.env.LOCALAPPDATA ?? join(base, 'AppData', 'Local'), HOST_NAME, `${HOST_NAME}.json`);
+  const localAppData = base !== homedir() ? join(base, 'AppData', 'Local') : (process.env.LOCALAPPDATA ?? join(base, 'AppData', 'Local'));
+  const manifestoWindows = join(localAppData, 'BrOWSER', `${HOST_NAME}.json`);
 
   const navegador = pastasDeNavegador(base).map(([nome, pasta]) => {
     const manifesto = join(pasta, 'NativeMessagingHosts', `${HOST_NAME}.json`);
     const existe = navegadorInstalado(nome);
-    if (process.platform === 'win32' && nome === 'Chrome' && !existsSync(manifesto) && existsSync(manifestoWindows)) {
-      // No Windows o manifesto vive em LOCALAPPDATA e o registro está no HKCU, que não é
+    if (
+      process.platform === 'win32' &&
+      ['Chrome', 'Brave', 'Edge', 'Chromium'].includes(nome) &&
+      !existsSync(manifesto) &&
+      existsSync(manifestoWindows)
+    ) {
+      // No Windows o manifesto vive em LOCALAPPDATA\BrOWSER e o registro está no HKCU, que não é
       // legível como arquivo. A ponte instalada é a referência: se o registro existe, funciona.
       return {
         nome,
         pasta,
         existe: true,
         registrado: true,
-        caminhoOk: existsSync(join(homedir(), 'AppData', 'Local', 'BrOWSER', 'bridge.exe')),
+        caminhoOk: existsSync(join(localAppData, 'BrOWSER', 'bridge.exe')),
       };
     }
     if (!existsSync(manifesto)) return { nome, pasta, existe, registrado: false, caminhoOk: false };
@@ -158,7 +210,7 @@ export function relatorio(d: Diagnostico): { linhas: string[]; saida: 0 | 1 } {
   }
   if (!d.extensaoRegistrada) {
     linhas.push('', erro('a ponte não está registrada em nenhum navegador'));
-    linhas.push('  rode:  ./bridge --install');
+    linhas.push(process.platform === 'win32' ? '  rode:  bridge.exe --install' : '  rode:  ./bridge --install');
     linhas.push('  e reinicie o navegador depois disso');
   }
 
@@ -183,7 +235,13 @@ export function relatorio(d: Diagnostico): { linhas: string[]; saida: 0 | 1 } {
   if (temSecundaria && !temPrincipal) {
     linhas.push('');
     linhas.push(aviso('Você está usando uma alternativa. O plano principal do BrOWSER é o Google AI Pro (agy),'));
-    linhas.push(aviso('instalador oficial do Google: https://antigravity.google/cli/install.sh'));
+    linhas.push(
+      aviso(
+        process.platform === 'win32'
+          ? 'instalador oficial do Google: https://antigravity.google/cli/install.ps1'
+          : 'instalador oficial do Google: https://antigravity.google/cli/install.sh',
+      ),
+    );
   }
 
   if (!d.temComoConectar) {
@@ -199,7 +257,11 @@ export function relatorio(d: Diagnostico): { linhas: string[]; saida: 0 | 1 } {
   if (d.precisaPty) {
     linhas.push('');
     linhas.push(erro('o login do Google AI Pro precisa de python3 (pty), que não está instalado'));
-    linhas.push('  sudo apt install python3   ·   ou use ChatGPT (codex) / Claude, que não precisam');
+    linhas.push(
+      process.platform === 'win32'
+        ? '  instale o Python 3 (https://www.python.org/downloads/) ou use ChatGPT / Claude'
+        : '  sudo apt install python3   ·   ou use ChatGPT (codex) / Claude, que não precisam',
+    );
   }
 
   linhas.push('', 'Onde procurar se algo falhar', `  log da ponte:  ${join(DIR_PONTE, 'bridge.log')}`);

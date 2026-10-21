@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 title BrOWSER - instalacao
 REM ===================================================================
 REM  BrOWSER - instalador para Windows.
@@ -99,16 +100,27 @@ if not "%CODIGO%"=="0" (
   goto :fim
 )
 
-echo [OK] Instalacao concluida.
+echo [OK] Instalacao concluida com sucesso.
 echo.
-echo Falta um passo, porque o Chrome nao deixa nenhum programa instalar extensao
-echo sem a sua confirmacao:
-echo   1. Feche e abra de novo o navegador
-echo   2. Em chrome://extensions, ative Modo do desenvolvedor
-echo   3. Clique em "Carregar sem compactacao" e escolha a pasta extensao
-echo      que esta ao lado deste arquivo
+echo ============================================================
+echo   ATENCAO: O BrOWSER e uma EXTENSAO DE NAVEGADOR!
+echo   Ele NAO e um executavel avulso. A ponte (bridge.exe) roda
+echo   automaticamente em segundo plano quando o navegador pedir.
+echo ============================================================
 echo.
-echo Para conferir se esta tudo certo:
+echo Ultimo passo para ativar no navegador (Chrome, Brave ou Edge):
+echo   1. Acesse: chrome://extensions
+echo   2. Ative "Modo do desenvolvedor" (no canto superior direito)
+echo   3. Clique em "Carregar sem compactacao"
+echo   4. Escolha a pasta "extensao" ao lado deste instalador:
+echo      "%~dp0extensao"
+echo.
+if "!PAUSA!"=="on" (
+  echo Abrindo a pasta da extensao para facilitar a selecao...
+  start "" explorer "%~dp0extensao"
+)
+echo.
+echo Para conferir se esta tudo certo a qualquer momento:
 echo   "%LOCALAPPDATA%\BrOWSER\bridge.exe" --doctor
 echo.
 echo Para desinstalar: Aplicativos instalados ^> BrOWSER ^> Desinstalar

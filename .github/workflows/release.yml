@@ -138,7 +138,7 @@ jobs:
           else
             echo "sem assinatura (falta SIGNPATH_API_TOKEN); publicando o binario do CI"
           fi
-          cp packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd design/icone.ico LICENSE pacotes/windows/
+          cp packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd packages/bridge/scripts/install.cmd design/icone.ico LICENSE pacotes/windows/
           cp packages/bridge/dist/bridge packages/bridge/scripts/install.sh packages/bridge/scripts/leia-me.md LICENSE pacotes/linux/
           chmod +x pacotes/windows/bridge.exe pacotes/linux/bridge pacotes/linux/install.sh
           sed "s/\[string\]\$Versao = '[^']*'/[string]\$Versao = '$VERSAO'/" packages/bridge/scripts/setup.ps1 > pacotes/windows/setup.ps1
@@ -155,7 +155,7 @@ jobs:
           done
           # A extensão tem que estar dentro: é o que faz o release ser um download só.
           for f in pacotes/windows/extensao/manifest.json pacotes/linux/extensao/manifest.json \
-                   pacotes/windows/setup.ps1 pacotes/windows/instalar.cmd \
+                   pacotes/windows/setup.ps1 pacotes/windows/instalar.cmd pacotes/windows/install.cmd \
                    pacotes/linux/install.sh; do
             test -f "$f" || { echo "faltando no pacote: $f"; exit 1; }
           done

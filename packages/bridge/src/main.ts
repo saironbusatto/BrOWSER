@@ -65,6 +65,45 @@ if (process.argv.includes('--uninstall')) {
   process.exit(0);
 }
 
+// Execução interativa (duplo clique no Windows Explorer ou terminal sem navegador conectado).
+// A ponte é iniciada automaticamente pelo navegador (Native Messaging por stdio pipeado).
+// Sem um navegador conectado, exibir diagnóstico e instruções em vez de travar numa tela preta vazia.
+if (process.stdin.isTTY || process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(
+    [
+      '============================================================',
+      '  BrOWSER — Ponte Nativa (Native Messaging Host)',
+      '============================================================',
+      '',
+      'Este executável é a ponte interna entre a extensão do navegador',
+      'e as ferramentas de IA (Google AI Pro, ChatGPT, Claude).',
+      '',
+      'Ele é iniciado AUTOMATICAMENTE pelo navegador (Chrome/Edge/Brave)',
+      'quando você utiliza o painel lateral da extensão.',
+      'Não é necessário executá-lo diretamente com duplo clique.',
+      '',
+      'Para instalar o BrOWSER no Windows, execute:',
+      '  instalar.cmd',
+      '',
+      'Diagnóstico do sistema (--doctor):',
+      '------------------------------------------------------------',
+    ].join('\n'),
+  );
+
+  const saida = await rodarDiagnostico();
+  console.log('------------------------------------------------------------');
+
+  if (process.platform === 'win32') {
+    console.log('\nPressione Enter para fechar esta janela...');
+    try {
+      const fs = await import('node:fs');
+      const buf = Buffer.alloc(1);
+      fs.readSync(0, buf, 0, 1, null);
+    } catch {}
+  }
+  process.exit(saida);
+}
+
 export const DIR = DIR_PONTE;
 const TIMEOUT_MS = 30_000;
 const CONTROLE: Cmd[] = ['abrir', 'avaliar', 'ler_campos', 'ler_estrutura', 'recarregar', 'forcar_modo_dom']; // comandos do runner do teste

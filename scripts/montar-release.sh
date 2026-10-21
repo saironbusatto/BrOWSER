@@ -6,7 +6,7 @@
 #Descobrir o problema lá.
 set -euo pipefail
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
-VERSAO=${VERSAO:-0.5.1}
+VERSAO=${VERSAO:-$(bun -e 'console.log(require("./packages/extension/package.json").version)')}
 SAIDA=${SAIDA:-"$RAIZ/Downloads-brOWSER"}
 SAIDA="$SAIDA/BrOWSER-$VERSAO"
 
@@ -37,7 +37,7 @@ for alvo in windows linux; do
 done
 
 cp packages/bridge/dist/bridge.exe "$SAIDA/windows/"
-cp packages/bridge/scripts/setup.ps1 packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd "$SAIDA/windows/"
+cp packages/bridge/scripts/setup.ps1 packages/bridge/scripts/uninstall.ps1 packages/bridge/scripts/instalar.cmd packages/bridge/scripts/install.cmd "$SAIDA/windows/"
 cp design/icone.ico LICENSE "$SAIDA/windows/"
 
 cp packages/bridge/dist/bridge "$SAIDA/linux/"
@@ -54,7 +54,7 @@ chmod +x "$SAIDA/linux/bridge" "$SAIDA/linux/install.sh"
 
 echo "==> conferindo o conteúdo de cada pacote"
 for f in "$SAIDA/windows/bridge.exe" "$SAIDA/windows/setup.ps1" "$SAIDA/windows/uninstall.ps1" \
-         "$SAIDA/windows/instalar.cmd" "$SAIDA/windows/icone.ico" "$SAIDA/windows/extensao/manifest.json" \
+         "$SAIDA/windows/instalar.cmd" "$SAIDA/windows/install.cmd" "$SAIDA/windows/icone.ico" "$SAIDA/windows/extensao/manifest.json" \
          "$SAIDA/linux/bridge" "$SAIDA/linux/install.sh" "$SAIDA/linux/leia-me.md" "$SAIDA/linux/extensao/manifest.json"; do
   test -f "$f" || { echo "faltando no pacote: ${f#$SAIDA/}"; exit 1; }
 done
