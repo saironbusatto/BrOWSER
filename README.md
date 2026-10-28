@@ -1,3 +1,5 @@
+**English** · [Português (BR)](README.pt-BR.md)
+
 <p align="center"><img src="design/icone-512.png" width="96" alt="BrOWSER"></p>
 
 <h1 align="center">BrOWSER</h1>
